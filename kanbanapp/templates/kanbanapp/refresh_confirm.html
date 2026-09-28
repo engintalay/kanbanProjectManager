@@ -1,0 +1,20 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Proje Güncelle — {{ project.key }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Projeyi Güncelle</h1>
+</div>
+<div class="auth-card">
+  <p>Şu anda güncellenecek proje:</p>
+  <ul>
+    <li><strong>{{ project.key }}</strong> — {{ project.name }}</li>
+    <li>Bu projeye bağlı Jira issue'lar (en fazla 500) yeniden çekilecek.</li>
+  </ul>
+  <p class="message message-warn">Bu işlem geri alınamaz.</p>
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <button type="submit" class="btn-primary">GÜNCELLE</button>
+    <a href="{% url 'projects' %}" class="btn-ghost">İptal</a>
+  </form>
+</div>
+{% endblock %}

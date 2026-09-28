@@ -96,6 +96,10 @@ class JiraConnection(models.Model):
     username = models.CharField(max_length=255)
     password = EncryptedCharField(max_length=512, default="")
     is_default = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, related_name="created_jira_connections",
+        blank=True, null=True, default=None,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -185,6 +189,38 @@ class KanbanCard(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class JiraIssue(models.Model):
+    """A Jira issue pulled into this application (READ-ONLY snapshot)."""
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="jira_issues"
+    )
+    jira_id = models.CharField(max_length=50, db_index=True)
+    jira_key = models.CharField(max_length=50, db_index=True)
+    summary = models.CharField(max_length=1000, default="")
+    description = models.TextField(blank=True, default="")
+    status_id = models.IntegerField(null=True, blank=True, db_index=True)
+    status_key = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    assignee = models.CharField(max_length=255, null=True, blank=True)
+    reporter = models.CharField(max_length=255, null=True, blank=True)
+    created = models.CharField(max_length=100, null=True, blank=True)
+    updated = models.CharField(max_length=100, null=True, blank=True)
+    sprint = models.CharField(max_length=255, null=True, blank=True)
+    epic_key = models.CharField(max_length=100, null=True, blank=True)
+    blocks = models.JSONField(default=list, blank=True)
+    blocked_by = models.JSONField(default=list, blank=True)
+    pulled_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["jira_key"]
+        constraints = [
+            models.UniqueConstraint(fields=["project", "jira_id"], name="unique_project_jira_id"),
+        ]
+
+    def __str__(self):
+        return f"{self.project.key}:{self.jira_key}"
 
 
 class RefreshLog(models.Model):

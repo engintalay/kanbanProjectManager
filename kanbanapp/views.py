@@ -3,8 +3,9 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import ProjectForm
-from .models import JiraConnection, Project, Role
+from .forms import JiraConnectionForm, ProjectForm
+from .models import JiraConnection, JiraIssue, JiraStatus, Project, RefreshLog, Role
+from .services import JiraService
 
 
 def login_view(request):
@@ -174,3 +175,138 @@ def project_delete_view(request, project_id):
         messages.success(request, f"{project.name} projesi silindi.")
         return redirect("projects")
     return render(request, "kanbanapp/project_confirm_delete.html", {"project": project})
+
+
+@login_required
+def jira_connections(request):
+    """List all Jira connections. Admin sees all, project managers see their own."""
+    connections = JiraConnection.objects.all()
+    if not _is_admin(request.user):
+        connections = connections.filter(created_by=request.user)
+    return render(
+        request,
+        "kanbanapp/jira_connections.html",
+        {"connections": connections, "can_manage_jira": _can_manage_jira(request.user)},
+    )
+
+
+@login_required
+def jira_connection_create(request):
+    if not _can_manage_jira(request.user):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = JiraConnectionForm(request.POST)
+        if form.is_valid():
+            connection = form.save(commit=False)
+            connection.created_by = request.user
+            connection.save()
+            messages.success(request, "Jira bağlantısı eklendi.")
+            return redirect("jira_connections")
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = JiraConnectionForm()
+    return render(request, "kanbanapp/jira_connection_form.html", {"form": form, "mode": "create"})
+
+
+@login_required
+def jira_connection_edit(request, connection_id):
+    connection = get_object_or_404(JiraConnection, id=connection_id)
+    if not _can_manage_jira(request.user):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = JiraConnectionForm(request.POST, instance=connection)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Jira bağlantısı güncellendi.")
+            return redirect("jira_connections")
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = JiraConnectionForm(instance=connection)
+    return render(request, "kanbanapp/jira_connection_form.html", {"form": form, "mode": "edit", "connection": connection})
+
+
+def _can_manage_jira(user):
+    return _role_level(user) <= 2
+
+
+@login_required
+def jira_connection_delete(request, connection_id):
+    connection = get_object_or_404(JiraConnection, id=connection_id)
+    if not _can_manage_jira(request.user):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        connection.delete()
+        messages.success(request, "Jira bağlantısı silindi.")
+        return redirect("jira_connections")
+    return render(request, "kanbanapp/connection_confirm_delete.html", {"connection": connection})
+
+
+@login_required
+def jira_test_connection(request, connection_id):
+    connection = get_object_or_404(JiraConnection, id=connection_id)
+    if not _can_manage_jira(request.user):
+        return _forbidden(request)
+
+    if not connection.is_valid:
+        messages.error(request, "Bağlantı bilgileri eksik.")
+        return redirect("jira_connections")
+
+    service = JiraService()
+    try:
+        service.connect(connection)
+        messages.success(request, "Jira bağlantısı başarılı.")
+    except Exception as exc:  # noqa: BLE001
+        messages.error(request, f"Jira bağlantısı başarısız: {exc}")
+    finally:
+        service.close()
+    return redirect("jira_connections")
+
+
+@login_required
+def refresh_project(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if not project.jira_connection:
+        messages.error(request, "Bu projeye bir Jira bağlantısı tanımlı değil.")
+        return redirect("projects")
+
+    if request.method == "POST":
+        service = JiraService()
+        log = RefreshLog.objects.create(
+            project=project, jira_connection=project.jira_connection, status="success", pulled_count=0
+        )
+        try:
+            count = service.pull_project_issues(project, "project = %s" % (project.key or ""), max_results=500)
+            if count:
+                for issue in count:
+                    JiraIssue.objects.update_or_create(
+                        project=project, jira_id=issue["id"],
+                        defaults={
+                            "jira_key": issue["key"], "summary": issue["summary"],
+                            "description": issue["description"], "status_id": issue["status_id"],
+                            "status_key": issue["status_key"], "assignee": issue["assignee"],
+                            "reporter": issue["reporter"], "created": issue["created"],
+                            "updated": issue["updated"], "sprint": issue["sprint"],
+                            "epic_key": issue["epic_key"], "blocks": issue.get("blocks", []),
+                             "blocked_by": issue.get("blocked_by", []),
+                         },
+                     )
+                log.pulled_count = len(count)
+                log.status = "success"
+                messages.success(request, f"{len(count)} issue başarıyla çekildi.")
+            else:
+                messages.info(request, "İssue bulunamadı.")
+        except Exception as exc:  # noqa: BLE001
+            log.status = "failed"
+            log.error = str(exc)
+            messages.error(request, f"Çekim başarısız: {exc}")
+        finally:
+            service.close()
+        return redirect("projects")
+
+    return render(request, "kanbanapp/refresh_confirm.html", {"project": project})

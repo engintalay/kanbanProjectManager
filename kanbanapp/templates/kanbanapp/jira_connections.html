@@ -1,0 +1,33 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Jira Bağlantıları{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Jira Bağlantıları</h1>
+  {% if can_manage_jira %}
+  <a href="{% url 'jira_connection_create' %}" class="btn-primary">Yeni Bağlantı Ekle</a>
+  {% endif %}
+</div>
+<div class="projects-grid">
+  {% for conn in connections %}
+  <div class="project-card">
+    <div class="project-key">{{ conn.name }}</div>
+    <div class="project-name">{{ conn.host }} <span class="muted">({{ conn.username }})</span></div>
+    <div class="project-meta">
+      <span>{% if conn.is_default %}Varsayılan{% else %}Varsayılan değil{% endif %}</span>
+      <span>Oluşturan: {{ conn.created_by.get_full_name|default:conn.created_by.username }}</span>
+    </div>
+    <div class="project-actions">
+      <a href="{% url 'jira_test_connection' conn.id %}" class="btn-ghost">Bağlantı Testi</a>
+      <a href="{% url 'jira_connection_edit' conn.id %}" class="btn-ghost">Düzenle</a>
+      <form method="post" action="{% url 'jira_connection_delete' conn.id %}" class="inline-delete"
+            onclick="return confirm('Bu Jira bağlantısını silmek istediğinizden emin misiniz?');">
+        {% csrf_token %}
+        <button type="submit" class="btn-danger">Sil</button>
+      </form>
+    </div>
+  </div>
+  {% empty %}
+  <p class="empty">Henüz Jira bağlantısı yok.</p>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import JiraConnection, JiraCustomStatus, JiraStatus, KanbanColumn, KanbanCard, Project, RefreshLog, Role, User
+from .models import JiraConnection, JiraCustomStatus, JiraIssue, JiraStatus, KanbanColumn, KanbanCard, Project, RefreshLog, Role, User
 
 
 @admin.register(Role)
@@ -39,9 +39,17 @@ class ProjectAdmin(admin.ModelAdmin):
 
 @admin.register(JiraConnection)
 class JiraConnectionAdmin(admin.ModelAdmin):
-    list_display = ("name", "host", "username", "is_default")
+    list_display = ("name", "host", "username", "is_default", "created_by", "created_at")
     search_fields = ("name", "host", "username")
     list_filter = ("is_default",)
+
+
+@admin.register(JiraIssue)
+class JiraIssueAdmin(admin.ModelAdmin):
+    list_display = ("jira_key", "project", "status_key", "assignee", "pulled_at")
+    list_filter = ("project",)
+    search_fields = ("jira_key", "summary")
+    readonly_fields = ("jira_id", "jira_key", "status_id", "pulled_at")
 
 
 @admin.register(JiraStatus)

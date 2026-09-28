@@ -26,6 +26,7 @@ body {
 
 a { color: var(--primary); text-decoration: none; }
 a:hover { text-decoration: underline; }
+.muted { color: var(--muted); }
 
 .topbar {
   background: var(--bg-soft);
