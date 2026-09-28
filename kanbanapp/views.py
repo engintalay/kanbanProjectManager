@@ -3,7 +3,8 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .models import Project, Role
+from .forms import ProjectForm
+from .models import JiraConnection, Project, Role
 
 
 def login_view(request):
@@ -82,4 +83,94 @@ def dashboard_view(request):
 @login_required
 def project_list_view(request):
     projects = Project.objects.all()
-    return render(request, "kanbanapp/projects.html", {"projects": projects})
+    return render(
+        request,
+        "kanbanapp/projects.html",
+        {"projects": projects, "can_create_project": _can_create_project(request.user)},
+    )
+
+
+def _role_level(user):
+    role = getattr(user, "role", None)
+    if role is not None:
+        return getattr(role, "level", 1)
+    return 1
+
+
+def _forbidden(request):
+    from django.http import HttpResponse
+
+    return HttpResponse("<h1>403</h1><p>Bu işlem için yetkiniz yok.</p>", status=403, content_type="text/html")
+
+
+def _is_admin(user):
+    return _role_level(user) <= 1
+
+
+def _is_project_manager(user):
+    return _role_level(user) <= 2
+
+
+def _can_create_project(user):
+    """Admin: any project. Project Manager: only projects they created."""
+    if _is_admin(user):
+        return True
+    if _is_project_manager(user):
+        return user.project is not None
+    return False
+
+
+def _can_manage_project(user, project):
+    """Admin: any project. Project Manager: only their own. Others: no."""
+    if _is_admin(user):
+        return True
+    if _is_project_manager(user):
+        return project.created_by_id == user.id
+    return False
+
+
+def project_create_view(request):
+    if not _can_create_project(request.user):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = ProjectForm(request.POST)
+        if form.is_valid():
+            project = form.save(commit=False)
+            project.created_by = request.user
+            project.save()
+            messages.success(request, f"{project.name} projesi oluşturuldu.")
+            return redirect("projects")
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = ProjectForm(initial={"created_by": request.user})
+    return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "create"})
+
+
+def project_edit_view(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = ProjectForm(request.POST, instance=project)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"{project.name} projesi güncellendi.")
+            return redirect("projects")
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = ProjectForm(instance=project)
+    return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "edit", "project": project})
+
+
+def project_delete_view(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        project.delete()
+        messages.success(request, f"{project.name} projesi silindi.")
+        return redirect("projects")
+    return render(request, "kanbanapp/project_confirm_delete.html", {"project": project})

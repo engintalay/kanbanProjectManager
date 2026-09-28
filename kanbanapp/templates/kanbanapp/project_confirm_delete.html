@@ -1,0 +1,20 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Proje Sil - {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Projeyi Sil</h1>
+</div>
+<div class="auth-card">
+  <p>Şu anda silinecek proje:</p>
+  <ul>
+    <li><strong>{{ project.key }}</strong> — {{ project.name }}</li>
+    <li>{{ project.description|default:"Açıklama yok." }}</li>
+  </ul>
+  <p class="message message-warn">Bu işlem geri alınamaz.</p>
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <button type="submit" class="btn-danger">SİL</button>
+    <a href="{% url 'projects' %}" class="btn-ghost">İptal</a>
+  </form>
+</div>
+{% endblock %}

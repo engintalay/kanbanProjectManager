@@ -3,10 +3,13 @@
 {% block content %}
 <div class="page-head">
   <h1>Projeler</h1>
+  {% if can_create_project %}
+  <a href="{% url 'project_create' %}" class="btn-primary">Yeni Proje Ekle</a>
+  {% endif %}
 </div>
 <div class="projects-grid">
   {% for project in projects %}
-  <a href="#" class="project-card" onclick="event.preventDefault();">
+  <div class="project-card">
     <div class="project-key">{{ project.key }}</div>
     <div class="project-name">{{ project.name }}</div>
     <div class="project-meta">
@@ -14,7 +17,15 @@
       <span>{{ project.columns.count }} kolon</span>
       {% if project.jira_connection %}<span class="badge badge-ok">Jira bağlı</span>{% else %}<span class="badge badge-warn">Jira yok</span>{% endif %}
     </div>
-  </a>
+    <div class="project-actions">
+      <a href="{% url 'project_edit' project.id %}" class="btn-ghost">Düzenle</a>
+      <form method="post" action="{% url 'project_delete' project.id %}" class="inline-delete"
+            onclick="return confirm('Bu projeyi silmek istediğinizden emin misiniz?');">
+        {% csrf_token %}
+        <button type="submit" class="btn-danger">Sil</button>
+      </form>
+    </div>
+  </div>
   {% empty %}
   <p class="empty">Henüz proje yok.</p>
   {% endfor %}

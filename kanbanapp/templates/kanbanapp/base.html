@@ -14,7 +14,7 @@
       <a href="{% url 'dashboard' %}" class="brand">Kanban Manager</a>
       <nav>
         <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a>
-        <a href="{% url 'project_list' %}" class="{% if request.resolver_match.url_name == 'project_list' %}active{% endif %}">Projeler</a>
+        <a href="{% url 'projects' %}" class="{% if request.resolver_match.url_name == 'projects' %}active{% endif %}">Projeler</a>
         {% if role_level >= 1 %}<a href="{% url 'admin:index' %}" target="_blank">Admin</a>{% endif %}
       </nav>
       <div class="user-box">

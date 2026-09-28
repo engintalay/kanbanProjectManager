@@ -82,6 +82,17 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: .85rem;
 }
 .btn-ghost:hover { color: var(--text); border-color: var(--primary); }
+.btn-danger {
+  background: var(--danger); color: #fff; border: none;
+  padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: .85rem; font-weight: 600;
+}
+.btn-danger:hover { filter: brightness(1.1); }
+.form-text { color: var(--muted); font-size: .8rem; margin-top: 4px; }
+.form-control { width: 100%; }
+.message-warn { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.4); }
+.project-actions { display: flex; gap: 8px; margin-top: 14px; }
+.project-actions a, .project-actions form { margin: 0; }
+.inline-delete { flex: 1; }
 
 /* Projects grid */
 .projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
