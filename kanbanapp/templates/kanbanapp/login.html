@@ -1,0 +1,19 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Giriş - Kanban Manager{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>Giriş</h1>
+  {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <label>Kullanıcı adı
+      <input type="text" name="username" autofocus required>
+    </label>
+    <label>Şifre
+      <input type="password" name="password" required>
+    </label>
+    <button type="submit" class="btn-primary">Giriş Yap</button>
+  </form>
+  <p class="auth-link">Hesabınız yok mu? <a href="{% url 'register' %}">Kayıt olun</a></p>
+</div>
+{% endblock %}

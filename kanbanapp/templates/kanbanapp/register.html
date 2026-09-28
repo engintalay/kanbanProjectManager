@@ -1,0 +1,40 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Kayıt - Kanban Manager{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>Kullanıcı Kaydı</h1>
+  <p class="hint">(Sadece admin tarafından yapılır)</p>
+  {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <label>Kullanıcı adı <input type="text" name="username" required></label>
+    <label>Email <input type="email" name="email" required></label>
+    <label>Ad <input type="text" name="first_name"></label>
+    <label>Soyad <input type="text" name="last_name"></label>
+    <label>Şifre <input type="password" name="password1" required></label>
+    <label>Şifre (tekrar) <input type="password" name="password2" required></label>
+    <label>Rol
+      <select name="role">
+        <option value="">Seçiniz</option>
+        {% for role in roles %}
+          <option value="{{ role.id }}">{{ role.name }} (Seviye {{ role.level }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn-primary">Kaydet</button>
+  </form>
+  <p class="auth-link"><a href="{% url 'login' %}">&larr; Geri</a></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.querySelector('form').addEventListener('submit', function(e) {
+    const p1 = this.querySelector('[name=password1]').value;
+    const p2 = this.querySelector('[name=password2]').value;
+    if (p1 && p1 !== p2) {
+      e.preventDefault();
+      alert('Şifreler eşleşmiyor!');
+    }
+  });
+</script>
+{% endblock %}

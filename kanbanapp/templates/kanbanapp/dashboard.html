@@ -1,0 +1,22 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Dashboard - Kanban Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Dashboard</h1>
+</div>
+<div class="projects-grid">
+  {% for project in projects %}
+  <a href="#" class="project-card" onclick="event.preventDefault();">
+    <div class="project-key">{{ project.key }}</div>
+    <div class="project-name">{{ project.name }}</div>
+    <div class="project-meta">
+      <span>{{ project.cards.count }} kart</span>
+      <span>{{ project.columns.count }} kolon</span>
+    </div>
+    {% if project.jira_connection %}<span class="badge badge-ok">Jira bağlı</span>{% else %}<span class="badge badge-warn">Jira yok</span>{% endif %}
+  </a>
+  {% empty %}
+  <p class="empty">Henüz proje yok. Admin panelinden veya Proje yöneticisi olarak yeni proje ekleyin.</p>
+  {% endfor %}
+</div>
+{% endblock %}
