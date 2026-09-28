@@ -1,0 +1,19 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Kolon Sil — {{ column.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Kolonu Sil</h1>
+</div>
+<div class="auth-card">
+  <p>Şu anda silinecek kolon:</p>
+  <ul>
+    <li><strong>{{ column.name }}</strong> <span class="muted">({{ column.status_type }})</span></li>
+  </ul>
+  <p class="message message-warn">Bu işlem geri alınamaz. Kolondaki kartlar da silinecek.</p>
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <button type="submit" class="btn-danger">SİL</button>
+    <a href="{% url 'board' project.id %}" class="btn-ghost">İptal</a>
+  </form>
+</div>
+{% endblock %}

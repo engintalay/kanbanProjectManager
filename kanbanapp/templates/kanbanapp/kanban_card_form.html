@@ -1,0 +1,23 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{% if mode == "edit" %}Kart Düzenle{% else %}Yeni Kart{% endif %} — {{ project.key }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% if mode == "edit" %}Kartı Düzenle{% else %}Yeni Kart{% endif %}</h1>
+</div>
+<div class="auth-card">
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    {% for field in form %}
+    <label>
+      {{ field.label }}
+      {{ field }}
+      {% if field.help_text %}<small class="form-text">{{ field.help_text }}</small>{% endif %}
+    </label>
+    {% for error in field.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+    {% endfor %}
+    {% for error in form.non_field_errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+    <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Oluştur{% endif %}</button>
+    <a href="{% url 'board' project.id %}" class="btn-ghost">İptal</a>
+  </form>
+</div>
+{% endblock %}

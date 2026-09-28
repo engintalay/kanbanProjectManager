@@ -19,6 +19,7 @@
     </div>
     <div class="project-actions">
       <a href="{% url 'project_edit' project.id %}" class="btn-ghost">Düzenle</a>
+      <a href="{% url 'board' project.id %}" class="btn-ghost">Kanban</a>
       <form method="post" action="{% url 'project_delete' project.id %}" class="inline-delete"
             onclick="return confirm('Bu projeyi silmek istediğinizden emin misiniz?');">
         {% csrf_token %}

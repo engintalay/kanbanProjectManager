@@ -18,4 +18,11 @@ urlpatterns = [
     path("jira/<int:connection_id>/delete/", views.jira_connection_delete, name="jira_connection_delete"),
     path("jira/<int:connection_id>/test/", views.jira_test_connection, name="jira_test_connection"),
     path("projects/<int:project_id>/refresh/", views.refresh_project, name="refresh_project"),
+    path("projects/<int:project_id>/board/", views.board_view, name="board"),
+    path("projects/<int:project_id>/column/create/", views.kanban_column_create_view, name="kanban_column_create"),
+    path("projects/<int:project_id>/column/<int:column_id>/edit/", views.kanban_column_edit_view, name="kanban_column_edit"),
+    path("projects/<int:project_id>/column/<int:column_id>/delete/", views.kanban_column_delete_view, name="kanban_column_delete"),
+    path("projects/<int:project_id>/card/create/", views.kanban_card_create_view, name="kanban_card_create"),
+    path("projects/<int:project_id>/card/<int:card_id>/edit/", views.kanban_card_edit_view, name="kanban_card_edit"),
+    path("projects/<int:project_id>/card/<int:card_id>/delete/", views.kanban_card_delete_view, name="kanban_card_delete"),
 ]

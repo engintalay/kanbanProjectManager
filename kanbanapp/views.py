@@ -3,8 +3,8 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import JiraConnectionForm, ProjectForm
-from .models import JiraConnection, JiraIssue, JiraStatus, Project, RefreshLog, Role
+from .forms import JiraConnectionForm, KanbanCardForm, KanbanColumnForm, ProjectForm
+from .models import JiraConnection, JiraIssue, JiraStatus, KanbanCard, KanbanColumn, Project, RefreshLog, Role
 from .services import JiraService
 
 
@@ -310,3 +310,136 @@ def refresh_project(request, project_id):
         return redirect("projects")
 
     return render(request, "kanbanapp/refresh_confirm.html", {"project": project})
+
+
+@login_required
+def board_view(request, project_id):
+    """Read-only kanban board for a project: columns grouped, cards within each column."""
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method != "GET":
+        return _forbidden(request)
+
+    columns = KanbanColumn.objects.filter(project=project).order_by("position", "id")
+    return render(
+        request,
+        "kanbanapp/board.html",
+        {"project": project, "columns": columns, "can_manage_project": _can_manage_project(request.user, project)},
+    )
+
+
+def _next_position(model, project, exclude=None):
+    """Return the next position value for a new column/card in this project."""
+    exclude = exclude or []
+    max_pos = model.objects.filter(project=project, id__notin=exclude).values_list("position", flat=True)
+    return max(max_pos) + 1 if max_pos else 0
+
+
+@login_required
+def kanban_column_create_view(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = KanbanColumnForm(request.POST)
+        if form.is_valid():
+            column = form.save(commit=False)
+            column.project = project
+            column.save()
+            messages.success(request, f"{column.name} kolonu oluşturuldu.")
+            return redirect("board", project_id=project.id)
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = KanbanColumnForm()
+    return render(request, "kanbanapp/kanban_column_form.html", {"form": form, "project": project, "mode": "create"})
+
+
+@login_required
+def kanban_column_edit_view(request, project_id, column_id):
+    project = get_object_or_404(Project, id=project_id)
+    column = get_object_or_404(KanbanColumn, id=column_id, project=project)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = KanbanColumnForm(request.POST, instance=column)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"{column.name} kolonu güncellendi.")
+            return redirect("board", project_id=project.id)
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = KanbanColumnForm(instance=column)
+    return render(request, "kanbanapp/kanban_column_form.html", {"form": form, "project": project, "mode": "edit", "column": column})
+
+
+@login_required
+def kanban_column_delete_view(request, project_id, column_id):
+    project = get_object_or_404(Project, id=project_id)
+    column = get_object_or_404(KanbanColumn, id=column_id, project=project)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        column.delete()
+        messages.success(request, f"{column.name} kolonu silindi.")
+        return redirect("board", project_id=project.id)
+    return render(request, "kanbanapp/kanban_column_confirm_delete.html", {"column": column, "project": project})
+
+
+@login_required
+def kanban_card_create_view(request, project_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = KanbanCardForm(request.POST)
+        form.instance.project = project
+        if form.is_valid():
+            card = form.save(commit=False)
+            card.project = project
+            card.save()
+            messages.success(request, f"'{card.title}' kartı oluşturuldu.")
+            return redirect("board", project_id=project.id)
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = KanbanCardForm()
+        form.fields["column"].queryset = project.columns.all()
+    return render(request, "kanbanapp/kanban_card_form.html", {"form": form, "project": project, "mode": "create"})
+
+
+@login_required
+def kanban_card_edit_view(request, project_id, card_id):
+    project = get_object_or_404(Project, id=project_id)
+    card = get_object_or_404(KanbanCard, id=card_id, project=project)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = KanbanCardForm(request.POST, instance=card)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"'{card.title}' kartı güncellendi.")
+            return redirect("board", project_id=project.id)
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = KanbanCardForm(instance=card)
+    return render(request, "kanbanapp/kanban_card_form.html", {"form": form, "project": project, "mode": "edit", "card": card})
+
+
+@login_required
+def kanban_card_delete_view(request, project_id, card_id):
+    project = get_object_or_404(Project, id=project_id)
+    card = get_object_or_404(KanbanCard, id=card_id, project=project)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        card.delete()
+        messages.success(request, f"'{card.title}' kartı silindi.")
+        return redirect("board", project_id=project.id)
+    return render(request, "kanbanapp/kanban_card_confirm_delete.html", {"card": card, "project": project})

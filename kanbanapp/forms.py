@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import JiraConnection, Project
+from .models import JiraConnection, JiraIssue, KanbanColumn, KanbanCard, Project
 
 
 class ProjectForm(forms.ModelForm):
@@ -37,3 +37,40 @@ class JiraConnectionForm(forms.ModelForm):
         if not host.startswith("http://") and not host.startswith("https://"):
             raise forms.ValidationError("Host bir URL olmalı (https://... ile başlatın).")
         return host
+
+
+class KanbanColumnForm(forms.ModelForm):
+    class Meta:
+        model = KanbanColumn
+        fields = ["name", "status_type", "color", "position"]
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
+            "status_type": forms.Select(attrs={"class": "form-control"}),
+            "color": forms.HiddenInput(),
+            "position": forms.NumberInput(attrs={"class": "form-control"}),
+        }
+
+
+class KanbanCardForm(forms.ModelForm):
+    """Kanban card. Optionally link to a Jira issue via its key."""
+
+    class Meta:
+        model = KanbanCard
+        fields = ["column", "title", "description", "jira_key", "is_extra"]
+        widgets = {
+            "column": forms.Select(attrs={"class": "form-control"}),
+            "title": forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "jira_key": forms.TextInput(attrs={"class": "form-control", "placeholder": "PROJ-123 (isteğe bağlı)"}),
+            "is_extra": forms.CheckboxInput(),
+        }
+
+    def clean_jira_key(self):
+        jira_key = self.cleaned_data.get("jira_key") or ""
+        if jira_key:
+            jira_key = jira_key.strip()
+            issue = JiraIssue.objects.filter(project=self.instance.project, jira_key=jira_key).first()
+            if issue is None:
+                raise forms.ValidationError("Bu projede böyle bir Jira issue yok.")
+            self.instance.jira_issue_id = issue.jira_id
+        return jira_key

@@ -1,0 +1,20 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Kart Sil — {{ card.title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Kartı Sil</h1>
+</div>
+<div class="auth-card">
+  <p>Şu anda silinecek kart:</p>
+  <ul>
+    <li><strong>{{ card.title }}</strong> <span class="muted">({{ project.key }})</span></li>
+    {% if card.jira_key %}<li>Jira issue: {{ card.jira_key }}</li>{% endif %}
+  </ul>
+  <p class="message message-warn">Bu işlem geri alınamaz.</p>
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <button type="submit" class="btn-danger">SİL</button>
+    <a href="{% url 'board' project.id %}" class="btn-ghost">İptal</a>
+  </form>
+</div>
+{% endblock %}
