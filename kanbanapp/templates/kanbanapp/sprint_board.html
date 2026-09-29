@@ -122,8 +122,19 @@
 
             <div class="card-actions">
               {% if can_edit_cards %}
-              <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost">Düzenle</a>
-              <a href="{% url 'card_request_create' project.id card.id %}" class="btn-ghost">Talep Aç</a>
+              {% if card.jira_key and project.jira_connection %}
+              <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path|urlencode }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">🔄 Jira</a>
+              {% endif %}
+              <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost" title="Kartı düzenle">Düzenle</a>
+              <a href="{% url 'card_request_create' project.id card.id %}" class="btn-ghost" title="Zorluk veya atama değişikliği talep et">Talep Aç</a>
+              {% endif %}
+              {% if can_manage_project %}
+              <a href="{% url 'card_split' project.id card.id %}" class="btn-ghost" title="Alt görevlere böl">Böl</a>
+              <form method="post" action="{% url 'kanban_card_delete' project.id card.id %}" class="inline-delete">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'sprint_board' project.id sprint.id %}">
+                <button type="submit" class="btn-danger" title="Kartı sil" onclick="return confirm('Bu kartı silmek istediğinizden emin misiniz?');">Sil</button>
+              </form>
               {% endif %}
             </div>
           </div>

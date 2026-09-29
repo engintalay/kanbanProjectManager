@@ -980,7 +980,8 @@ def kanban_card_delete_view(request, project_id, card_id):
     if request.method == "POST":
         card.delete()
         messages.success(request, f"'{card.title}' kartı silindi.")
-        return redirect("board", project_id=project.id)
+        next_url = request.POST.get("next") or request.GET.get("next")
+        return redirect(next_url or "board", project_id=project.id)
     return render(request, "kanbanapp/kanban_card_confirm_delete.html", {"card": card, "project": project})
 
 
