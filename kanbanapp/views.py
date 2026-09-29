@@ -145,12 +145,35 @@ def _can_create_project(user):
     return _role_level(user) <= 2
 
 
+def _user_has_project_access(user, project):
+    """Check if a user has access to a project.
+    Admins, reporters, viewers have global visibility.
+    Project managers and programmers have access if:
+    - they created the project
+    - the project is assigned to them directly (user.project)
+    - they are a member via ProjectMember
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if _is_admin(user):
+        return True
+    if _role_level(user) in (4, 5):
+        return True
+    if project.created_by_id == user.id:
+        return True
+    if getattr(user, "project_id", None) == project.id:
+        return True
+    if project.project_members.filter(user_id=user.id).exists():
+        return True
+    return False
+
+
 def _can_manage_project(user, project):
-    """Admin: any project. Project Manager: only their own. Others: no."""
+    """Admin: any project. Project Manager: projects they created or are assigned to. Others: no."""
     if _is_admin(user):
         return True
     if _is_project_manager(user):
-        return project.created_by_id == user.id
+        return _user_has_project_access(user, project)
     return False
 
 
@@ -159,32 +182,27 @@ def _get_visible_projects(user):
     level = _role_level(user)
     if level <= 1 or level in (4, 5):
         return Project.objects.all()
-    if level == 2:
-        return Project.objects.filter(created_by=user)
-    if level == 3:
-        return Project.objects.filter(Q(id=getattr(user, "project_id", None)) | Q(created_by=user))
-    return Project.objects.none()
+    # Level 2 (Project Manager) and Level 3 (Programmer)
+    return Project.objects.filter(
+        Q(created_by=user) |
+        Q(id=getattr(user, "project_id", None)) |
+        Q(project_members__user=user)
+    ).distinct()
 
 
 def _can_view_project(user, project):
     level = _role_level(user)
     if level <= 1 or level in (4, 5):
         return True
-    if level == 2:
-        return project.created_by_id == user.id
-    if level == 3:
-        return user.project_id == project.id or project.created_by_id == user.id
-    return False
+    return _user_has_project_access(user, project)
 
 
 def _can_edit_cards(user, project):
     level = _role_level(user)
     if level <= 1:
         return True
-    if level == 2 and project.created_by_id == user.id:
-        return True
-    if level == 3 and (user.project_id == project.id or project.created_by_id == user.id):
-        return True
+    if level in (2, 3):
+        return _user_has_project_access(user, project)
     return False
 
 
@@ -274,7 +292,7 @@ def project_edit_view(request, project_id):
 @login_required
 def project_delete_view(request, project_id):
     project = get_object_or_404(Project, id=project_id)
-    if not _can_manage_project(request.user, project):
+    if not (_is_admin(request.user) or project.created_by_id == request.user.id):
         return _forbidden(request)
 
     if request.method == "POST":

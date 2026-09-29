@@ -928,6 +928,69 @@ class CardEditJiraFormatTests(TestCase):
             "h2. Başlık\n*bold*\n{code:python}\nprint('hello')\n{code}\n<script>alert(1)</script>",
         )
 
+class ProjectAccessAndMemberTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_superuser(username="admin_perm", password="p")
+        self.pm_role, _ = Role.objects.get_or_create(
+            slug="pm_perm_slug", defaults={"name": "Proje Yöneticisi Perm", "level": Role.LEVEL_PROJECT_MANAGER}
+        )
+        self.prog_role, _ = Role.objects.get_or_create(
+            slug="prog_perm_slug", defaults={"name": "Proje Programcısı Perm", "level": Role.LEVEL_PROGRAMMER}
+        )
+
+    def test_assigned_project_manager_can_view_and_manage_project(self):
+        pm_user = User.objects.create_user(username="pm_assigned", password="p", email="pm_a@test.com", role=self.pm_role)
+        p = Project.objects.create(key="PRM", name="Permission Project", created_by=self.admin)
+        from .models import ProjectMember
+        ProjectMember.objects.create(project=p, user=pm_user)
+
+        self.client.force_login(pm_user)
+        # Dashboard lists the project
+        dash_resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(dash_resp.status_code, 200)
+        self.assertContains(dash_resp, "Permission Project")
+
+        # Projects list shows the project
+        proj_resp = self.client.get(reverse("projects"))
+        self.assertEqual(proj_resp.status_code, 200)
+        self.assertContains(proj_resp, "Permission Project")
+
+        # Board access is allowed
+        board_resp = self.client.get(reverse("board", kwargs={"project_id": p.id}))
+        self.assertEqual(board_resp.status_code, 200)
+        self.assertTrue(board_resp.context["can_manage_project"])
+
+    def test_project_member_programmer_can_view_project(self):
+        prog_user = User.objects.create_user(username="prog_member", password="p", email="pr_m@test.com", role=self.prog_role)
+        p = Project.objects.create(key="MBR", name="Member Project", created_by=self.admin)
+        from .models import ProjectMember
+        ProjectMember.objects.create(project=p, user=prog_user)
+
+        self.client.force_login(prog_user)
+        # Dashboard lists the project
+        dash_resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(dash_resp.status_code, 200)
+        self.assertContains(dash_resp, "Member Project")
+
+        # Board access is allowed
+        board_resp = self.client.get(reverse("board", kwargs={"project_id": p.id}))
+        self.assertEqual(board_resp.status_code, 200)
+
+    def test_user_project_and_project_member_sync(self):
+        p = Project.objects.create(key="SNC", name="Sync Project", created_by=self.admin)
+        from .models import ProjectMember
+        u = User.objects.create_user(username="sync_user", password="p", email="sync@test.com", project=p)
+        # ProjectMember is auto-created on User save
+        self.assertTrue(ProjectMember.objects.filter(project=p, user=u).exists())
+
+        u2 = User.objects.create_user(username="sync_user2", password="p", email="sync2@test.com")
+        self.assertIsNone(u2.project)
+        pm = ProjectMember.objects.create(project=p, user=u2)
+        u2.refresh_from_db()
+        self.assertEqual(u2.project_id, p.id)
+
+
 
 
 

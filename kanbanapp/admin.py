@@ -26,6 +26,12 @@ class RoleAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug")
 
 
+class UserProjectMemberInline(admin.TabularInline):
+    model = ProjectMember
+    fk_name = "user"
+    extra = 1
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     ordering = ("username",)
@@ -43,6 +49,13 @@ class UserAdmin(BaseUserAdmin):
             "fields": ("username", "email", "password1", "password2", "role"),
         }),
     )
+    inlines = [UserProjectMemberInline]
+
+
+class ProjectMemberInline(admin.TabularInline):
+    model = ProjectMember
+    fk_name = "project"
+    extra = 1
 
 
 @admin.register(Project)
@@ -50,6 +63,7 @@ class ProjectAdmin(admin.ModelAdmin):
     list_display = ("key", "name", "jira_connection", "created_by", "created_at")
     search_fields = ("key", "name")
     list_filter = ("created_by",)
+    inlines = [ProjectMemberInline]
 
 
 @admin.register(ProjectMember)

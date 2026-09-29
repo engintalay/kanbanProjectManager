@@ -145,7 +145,7 @@ class KanbanCardForm(forms.ModelForm):
             self.fields["sprint"].queryset = proj.sprints.all().order_by("position", "-created_at")
             from django.db.models import Q
             self.fields["assignee"].queryset = User.objects.filter(
-                Q(project=proj) | Q(created_projects=proj) | Q(is_superuser=True)
+                Q(project=proj) | Q(project_memberships__project=proj) | Q(created_projects=proj) | Q(is_superuser=True)
             ).distinct().order_by("username")
 
         # Title and description are sourced and updated from Jira
@@ -273,7 +273,7 @@ class SprintForm(forms.ModelForm):
         if project:
             from django.db.models import Q
             self.fields["team_members"].queryset = User.objects.filter(
-                Q(project=project) | Q(created_projects=project) | Q(is_superuser=True)
+                Q(project=project) | Q(project_memberships__project=project) | Q(created_projects=project) | Q(is_superuser=True)
             ).distinct().order_by("username")
 
 
@@ -309,7 +309,7 @@ class SubTaskForm(forms.ModelForm):
         if project:
             from django.db.models import Q
             self.fields["assignee"].queryset = User.objects.filter(
-                Q(project=project) | Q(created_projects=project) | Q(is_superuser=True)
+                Q(project=project) | Q(project_memberships__project=project) | Q(created_projects=project) | Q(is_superuser=True)
             ).distinct().order_by("username")
 
 

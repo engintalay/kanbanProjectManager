@@ -27,12 +27,14 @@
       {% if project.jira_connection %}
       <a href="{% url 'refresh_project' project.id %}" class="btn-ghost" title="Jira'dan en güncel işleri ve statüleri çek">🔄 Jira</a>
       {% else %}
-      {% if is_admin or project.created_by_id == user.id %}
+      {% if is_admin or project.created_by_id == user.id or role_level == 2 %}
       <a href="{% url 'project_edit' project.id %}" class="btn-ghost" style="color: #f59e0b;" title="Bu projeye Jira bağlantısı tanımlayın">🔗 Jira Bağla</a>
       {% endif %}
       {% endif %}
-      {% if is_admin or project.created_by_id == user.id %}
+      {% if is_admin or project.created_by_id == user.id or role_level == 2 %}
       <a href="{% url 'project_edit' project.id %}" class="btn-ghost" title="Projeyi Düzenle">Düzenle</a>
+      {% endif %}
+      {% if is_admin or project.created_by_id == user.id %}
       <form method="post" action="{% url 'project_delete' project.id %}" class="inline-delete">
         {% csrf_token %}
         <button type="submit" class="btn-danger" title="Projeyi Sil" onclick="return confirm('Bu projeyi silmek istediğinizden emin misiniz?');">Sil</button>

@@ -78,9 +78,19 @@ class User(AbstractUser):
 
     @property
     def role_level(self):
+        if getattr(self, "is_superuser", False):
+            return Role.ADMIN
         if self.role_id:
             return self.role.level
         return Role.ADMIN
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.project_id:
+            try:
+                self.project_memberships.get_or_create(project_id=self.project_id)
+            except Exception:
+                pass
 
 
 class Project(models.Model):
@@ -104,6 +114,15 @@ class Project(models.Model):
 
     def __str__(self):
         return f"{self.key} - {self.name}"
+
+    def has_member(self, user):
+        if not user or not user.is_authenticated:
+            return False
+        if self.created_by_id == user.id:
+            return True
+        if getattr(user, "project_id", None) == self.id:
+            return True
+        return self.project_members.filter(user_id=user.id).exists()
 
     def delete(self, *args, **kwargs):
         from django.db import transaction
@@ -431,6 +450,11 @@ class ProjectMember(models.Model):
 
     def __str__(self):
         return f"{self.user.username} @ {self.project.key}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.user_id and not getattr(self.user, "project_id", None):
+            User.objects.filter(id=self.user_id, project__isnull=True).update(project=self.project)
 
 
 class StatusMapping(models.Model):
