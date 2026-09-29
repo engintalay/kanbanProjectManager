@@ -18,6 +18,7 @@
     </div>
     <div class="project-actions">
       <a href="{% url 'jira_test_connection' conn.id %}" class="btn-ghost">Bağlantı Testi</a>
+      <a href="{% url 'jira_sync_statuses' conn.id %}" class="btn-ghost">Statüleri Çek</a>
       <a href="{% url 'jira_connection_edit' conn.id %}" class="btn-ghost">Düzenle</a>
       <form method="post" action="{% url 'jira_connection_delete' conn.id %}" class="inline-delete"
             onclick="return confirm('Bu Jira bağlantısını silmek istediğinizden emin misiniz?');">

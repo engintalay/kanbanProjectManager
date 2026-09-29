@@ -1,0 +1,82 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Jira'dan İş Ekle — {{ project.key }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'board' project.id %}" class="back-link">← {{ project.name }} Panosu</a>
+    <h1>Jira'dan İş Ekle</h1>
+    <span class="muted">Jira üzerindeki görevi kart olarak panoya ekleyin; başlık, açıklama ve durum Jira'dan otomatik çekilir.</span>
+  </div>
+</div>
+
+<div class="auth-card" style="max-width: 600px;">
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+
+    {% if unimported_issues %}
+    <label>
+      Daha Önce Çekilmiş İşlerden Seçin
+      <select id="issue-select" class="form-control" onchange="if(this.value){ document.getElementById('jira-key-input').value = this.value; }">
+        <option value="">-- Listeden seçmek için tıklayın --</option>
+        {% for issue in unimported_issues %}
+        <option value="{{ issue.jira_key }}">{{ issue.jira_key }} — {{ issue.summary|truncatechars:60 }} ({{ issue.status_key|default:"-" }})</option>
+        {% endfor %}
+      </select>
+      <small class="form-text">Daha önce "Jira Yenile" ile çekilmiş işlerden birini seçebilir veya aşağıya doğrudan anahtar yazabilirsiniz.</small>
+    </label>
+    {% endif %}
+
+    <label>
+      Jira İş Anahtarı (Issue Key) <span style="color:#ef4444;">*</span>
+      <input type="text" name="jira_key" id="jira-key-input" class="form-control" placeholder="örn. EVDBS-101 veya KONF-42" required autofocus>
+      <small class="form-text">Detayları Jira REST API üzerinden anlık olarak çekilir.</small>
+    </label>
+
+    <label>
+      Pano Kolonu (Durum)
+      <select name="column_id" class="form-control">
+        <option value="">Otomatik (Jira Durum Eşlemesine Göre)</option>
+        {% for col in columns %}
+        <option value="{{ col.id }}">{{ col.name }}</option>
+        {% endfor %}
+      </select>
+      <small class="form-text">Boş bırakırsanız, Jira'daki statüye denk gelen kolon otomatik seçilir.</small>
+    </label>
+
+    <label>
+      Zorluk Derecesi (Fibonacci)
+      <select name="difficulty_level" class="form-control">
+        <option value="">--- Belirlenmedi ---</option>
+        {% for val, label in fibonacci_choices %}
+        <option value="{{ val }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Atanacak Geliştirici
+      <select name="assignee_id" class="form-control">
+        <option value="">Otomatik / Atanmamış (Jira ile eşleşirse atanır)</option>
+        {% for m in members %}
+        <option value="{{ m.id }}">{{ m.get_full_name|default:m.username }} ({{ m.username }})</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Sprint
+      <select name="sprint_id" class="form-control">
+        <option value="">Otomatik (Jira Sprinti ile eşleşirse eklenir)</option>
+        {% for sp in sprints %}
+        <option value="{{ sp.id }}">{{ sp.name }} ({{ sp.get_status_display }})</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-primary" style="background:#0284c7;">Jira'dan Çek ve Ekle</button>
+      <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

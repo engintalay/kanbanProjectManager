@@ -18,8 +18,16 @@
     {% for error in form.non_field_errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
     <div class="form-actions">
       <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Oluştur{% endif %}</button>
+      {% if mode == "edit" and card.jira_key and project.jira_connection %}
+      <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">Jira'dan Detayları Yenile</a>
+      {% endif %}
       <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>
     </div>
+    {% if mode != "edit" and project.jira_connection %}
+    <p class="form-text" style="margin-top: 15px; text-align: center;">
+      İş Jira'da kayıtlı mı? <a href="{% url 'kanban_card_import_jira' project.id %}">Jira'dan anlık çekerek eklemek için tıklayın →</a>
+    </p>
+    {% endif %}
   </form>
 </div>
 {% endblock %}

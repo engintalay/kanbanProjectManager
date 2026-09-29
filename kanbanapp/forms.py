@@ -158,9 +158,39 @@ class KanbanCardForm(forms.ModelForm):
             proj = getattr(self.instance, "project", None)
             if proj:
                 issue = JiraIssue.objects.filter(project=proj, jira_key=jira_key).first()
+                if issue is None and proj.jira_connection:
+                    from .services import JiraService
+
+                    service = JiraService()
+                    try:
+                        issue_data = service.get_project_issue(proj, jira_key)
+                        issue, _ = JiraIssue.objects.update_or_create(
+                            project=proj,
+                            jira_id=issue_data["id"],
+                            defaults={
+                                "jira_key": issue_data["key"],
+                                "summary": issue_data.get("summary", ""),
+                                "description": issue_data.get("description", ""),
+                                "status_id": issue_data.get("status_id"),
+                                "status_key": issue_data.get("status_key"),
+                                "assignee": issue_data.get("assignee"),
+                                "reporter": issue_data.get("reporter"),
+                                "created": issue_data.get("created", ""),
+                                "updated": issue_data.get("updated", ""),
+                                "sprint": issue_data.get("sprint"),
+                                "epic_key": issue_data.get("epic_key"),
+                                "blocks": issue_data.get("blocks", []),
+                                "blocked_by": issue_data.get("blocked_by", []),
+                            },
+                        )
+                    except Exception:
+                        pass
+                    finally:
+                        service.close()
+
                 if issue is None:
                     raise forms.ValidationError("Bu projede böyle bir Jira issue yok.")
-                self.instance.jira_issue_id = issue.jira_id
+                self.instance.jira_issue_id = int(issue.jira_id) if str(issue.jira_id).isdigit() else None
         return jira_key
 
 

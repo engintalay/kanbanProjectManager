@@ -539,6 +539,243 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertIn("kartlar bulunmaktadır".encode("utf-8"), resp.content)
 
 
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class JiraImportAndSyncTests(TestCase):
+    def setUp(self):
+        from unittest.mock import MagicMock
+        from .models import JiraConnection, Sprint
+
+        self.admin_role = Role.objects.create(name="Admin", slug="admin", level=Role.LEVEL_ADMIN)
+        self.pm_role = Role.objects.create(name="Proje Yöneticisi", slug="pm", level=Role.LEVEL_PROJECT_MANAGER)
+        self.prog_role = Role.objects.create(name="Proje Programcısı", slug="prog", level=Role.LEVEL_PROGRAMMER)
+        self.viewer_role = Role.objects.create(name="İzleyici", slug="viewer", level=Role.LEVEL_VIEWER)
+
+        self.admin = User.objects.create_superuser(username="admin_user", password="p", email="adm@e.com", role=self.admin_role)
+        self.pm = User.objects.create_user(username="pm_jira", password="p", email="pm_j@e.com", role=self.pm_role)
+        self.prog = User.objects.create_user(username="prog_jira", password="p", email="prog_j@e.com", role=self.prog_role)
+        self.viewer = User.objects.create_user(username="view_jira", password="p", email="view_j@e.com", role=self.viewer_role)
+
+        self.conn = JiraConnection.objects.create(
+            name="Test Jira",
+            host="https://jira.example.local",
+            username="testuser",
+            password="secretpassword",
+            created_by=self.pm,
+        )
+        self.project = Project.objects.create(
+            key="KONF",
+            name="Konfigürasyon Projesi",
+            jira_connection=self.conn,
+            created_by=self.pm,
+        )
+        self.prog.project = self.project
+        self.prog.save()
+        self.col_todo = KanbanColumn.objects.create(project=self.project, name="Yapılacak", position=0)
+        self.col_doing = KanbanColumn.objects.create(project=self.project, name="Geliştirmede", position=1)
+        self.col_done = KanbanColumn.objects.create(project=self.project, name="Tamamlandı", position=2)
+
+        self.client = Client()
+
+    def test_sync_statuses_creates_jira_status_objects(self):
+        from unittest.mock import MagicMock, patch
+        from .services import JiraService
+
+        dummy_status1 = MagicMock()
+        dummy_status1.name = "In Progress"
+        dummy_status1.id = "3"
+        dummy_status1.statusCategory = {"key": "indeterminate", "colorName": "yellow"}
+
+        dummy_status2 = MagicMock()
+        dummy_status2.name = "Done"
+        dummy_status2.id = "6"
+        dummy_status2.statusCategory = {"key": "done", "colorName": "green"}
+
+        service = JiraService()
+        with patch.object(service, "connect", return_value={"name": "testuser"}):
+            service.client = MagicMock()
+            service.client.jira.statuses.return_value = [dummy_status1, dummy_status2]
+            count = service.sync_statuses()
+            self.assertEqual(count, 2)
+
+        self.assertTrue(JiraStatus.objects.filter(jira_status_key="In Progress").exists())
+        self.assertTrue(JiraStatus.objects.filter(jira_status_key="Done").exists())
+        s1 = JiraStatus.objects.get(jira_status_key="In Progress")
+        self.assertEqual(s1.jira_id, 3)
+        self.assertEqual(s1.color.get("colorName"), "yellow")
+
+    def test_jira_sync_statuses_view_success(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.pm)
+        with patch("kanbanapp.views.JiraService.sync_statuses", return_value=5):
+            resp = self.client.get(reverse("jira_sync_statuses", kwargs={"connection_id": self.conn.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("5 adet statü başarıyla çekildi".encode("utf-8"), resp.content)
+
+    def test_jira_sync_statuses_view_permission_denied_for_programmer(self):
+        self.client.force_login(self.prog)
+        resp = self.client.get(reverse("jira_sync_statuses", kwargs={"connection_id": self.conn.id}))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_project_jira_sync_statuses_view_success(self):
+        from unittest.mock import patch
+
+        self.client.force_login(self.pm)
+        with patch("kanbanapp.views.JiraService.sync_statuses", return_value=8):
+            resp = self.client.get(reverse("project_jira_sync_statuses", kwargs={"project_id": self.project.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("8 adet statü başarıyla çekildi".encode("utf-8"), resp.content)
+
+    def test_kanban_card_import_jira_view_creates_card_and_maps_status(self):
+        from unittest.mock import patch
+
+        # Create JiraStatus and StatusMapping for "In Progress" -> col_doing
+        js = JiraStatus.objects.create(jira_status_key="In Progress", name="In Progress", jira_id=3)
+        StatusMapping.objects.create(project=self.project, app_status=self.col_doing, jira_status=js)
+
+        mock_issue = {
+            "id": "10042",
+            "key": "KONF-42",
+            "summary": "Veritabanı migration hatası çözülecek",
+            "description": "Migration dosyaları sıralanacak",
+            "status_key": "In Progress",
+            "status_id": 3,
+            "assignee": "prog_jira",
+            "reporter": "pm_jira",
+            "created": "2026-09-29",
+            "updated": "2026-09-29",
+            "sprint": None,
+            "epic_key": None,
+            "blocks": [],
+            "blocked_by": [],
+        }
+
+        self.client.force_login(self.pm)
+
+        # GET should render import form
+        get_resp = self.client.get(reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}))
+        self.assertEqual(get_resp.status_code, 200)
+        self.assertIn("Jira'dan İş Ekle".encode("utf-8"), get_resp.content)
+
+        # POST with issue key
+        with patch("kanbanapp.views.JiraService.get_project_issue", return_value=mock_issue):
+            post_resp = self.client.post(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {
+                    "jira_key": "KONF-42",
+                    "difficulty_level": "5",
+                },
+                follow=True,
+            )
+            self.assertEqual(post_resp.status_code, 200)
+            self.assertContains(post_resp, "panoya eklendi")
+
+        # Verify card
+        card = KanbanCard.objects.filter(project=self.project, jira_key="KONF-42").first()
+        self.assertIsNotNone(card)
+        self.assertEqual(card.title, "Veritabanı migration hatası çözülecek")
+        self.assertEqual(card.description, "Migration dosyaları sıralanacak")
+        self.assertEqual(card.jira_issue_id, 10042)
+        self.assertEqual(card.difficulty_level, 5)
+        # Verify it mapped to col_doing
+        self.assertEqual(card.column_id, self.col_doing.id)
+
+        # Verify JiraIssue snapshot
+        jissue = JiraIssue.objects.filter(project=self.project, jira_key="KONF-42").first()
+        self.assertIsNotNone(jissue)
+        self.assertEqual(jissue.summary, "Veritabanı migration hatası çözülecek")
+        self.assertEqual(jissue.status_key, "In Progress")
+
+    def test_kanban_card_import_jira_updates_existing_card(self):
+        from unittest.mock import patch
+
+        card = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="Eski Başlık",
+            jira_key="KONF-10",
+        )
+
+        mock_issue = {
+            "id": "10010",
+            "key": "KONF-10",
+            "summary": "Yeni Güncel Başlık",
+            "description": "Yeni Açıklama",
+            "status_key": "Yapılacak",
+            "status_id": 1,
+            "assignee": None,
+            "reporter": None,
+            "created": "",
+            "updated": "",
+            "sprint": None,
+            "epic_key": None,
+            "blocks": [],
+            "blocked_by": [],
+        }
+
+        self.client.force_login(self.prog)
+        with patch("kanbanapp.views.JiraService.get_project_issue", return_value=mock_issue):
+            post_resp = self.client.post(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {"jira_key": "KONF-10"},
+                follow=True,
+            )
+            self.assertEqual(post_resp.status_code, 200)
+            self.assertContains(post_resp, "zaten panoda mevcuttu")
+
+        card.refresh_from_db()
+        self.assertEqual(card.title, "Yeni Güncel Başlık")
+        self.assertEqual(card.description, "Yeni Açıklama")
+
+    def test_kanban_card_jira_refresh_view(self):
+        from unittest.mock import patch
+
+        js_done = JiraStatus.objects.create(jira_status_key="Done", name="Done", jira_id=6)
+        StatusMapping.objects.create(project=self.project, app_status=self.col_done, jira_status=js_done)
+
+        card = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="Önceki Başlık",
+            description="Önceki açıklama",
+            jira_key="KONF-99",
+            jira_issue_id=10099,
+        )
+
+        mock_updated = {
+            "id": "10099",
+            "key": "KONF-99",
+            "summary": "Jira'da Güncellenmiş Başlık",
+            "description": "Jira'da Güncellenmiş Açıklama",
+            "status_key": "Done",
+            "status_id": 6,
+            "assignee": "prog_jira",
+            "reporter": "pm_jira",
+            "created": "",
+            "updated": "2026-09-29T10:00:00",
+            "sprint": None,
+            "epic_key": None,
+            "blocks": [],
+            "blocked_by": [],
+        }
+
+        self.client.force_login(self.prog)
+        with patch("kanbanapp.views.JiraService.get_project_issue", return_value=mock_updated):
+            resp = self.client.get(
+                reverse("kanban_card_jira_refresh", kwargs={"project_id": self.project.id, "card_id": card.id}),
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, "güncellendi")
+
+        card.refresh_from_db()
+        self.assertEqual(card.title, "Jira'da Güncellenmiş Başlık")
+        self.assertEqual(card.description, "Jira'da Güncellenmiş Açıklama")
+        # Column should have updated to col_done via StatusMapping
+        self.assertEqual(card.column_id, self.col_done.id)
+
+
+
 
 
 

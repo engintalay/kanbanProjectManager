@@ -5,7 +5,12 @@
   <h1>{% if mode == "edit" %}Durum Eşlemesini Düzenle{% else %}Durum Eşlemesi Oluştur{% endif %}</h1>
 </div>
 <div class="auth-card">
-  <p>Uygulama durumu: <strong>{{ column.name }}</strong></p>
+  <div style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+    <span>Uygulama durumu: <strong>{{ column.name }}</strong></span>
+    {% if project.jira_connection %}
+    <a href="{% url 'project_jira_sync_statuses' project.id %}?next={{ request.get_full_path }}" class="btn-ghost" style="font-size: 0.8rem;">🔄 Jira Statülerini Çek</a>
+    {% endif %}
+  </div>
   <form method="post" class="auth-form">
     {% csrf_token %}
     {% for field in form %}
