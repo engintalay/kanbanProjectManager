@@ -42,19 +42,48 @@ User = get_user_model()
 CLOSED_STATUS_NAMES = {
     "resolved",
     "closed",
+    "ready",
     "done",
     "kapatıldı",
+    "kapatildi",
+    "kapalı",
+    "kapali",
     "çözüldü",
+    "cozuldu",
     "tamamlandı",
+    "tamamlandi",
     "iptal",
     "cancelled",
+    "canceled",
     "rejected",
     "bitti",
+    "hazır",
+    "hazir",
 }
+
+CLOSED_STATUS_PATTERNS = (
+    "resolved",
+    "closed",
+    "ready",
+    "done",
+    "tamamlan",
+    "kapatıl",
+    "kapatil",
+    "kapalı",
+    "kapali",
+    "çözül",
+    "cozul",
+    "bitti",
+    "hazır",
+    "hazir",
+    "iptal",
+    "cancel",
+    "reject",
+)
 
 
 def is_issue_closed(issue_dict: dict) -> bool:
-    """Return True if a Jira issue is resolved or closed."""
+    """Return True if a Jira issue is resolved, closed, or ready."""
     # 1. statusCategory in Jira (e.g. 'done')
     cat = (issue_dict.get("status_category") or "").strip().lower()
     if cat in ("done", "closed"):
@@ -64,16 +93,27 @@ def is_issue_closed(issue_dict: dict) -> bool:
     if issue_dict.get("resolution"):
         return True
 
-    # 3. status name matching closed statuses
+    # 3. status name matching closed / resolved / ready statuses (exact or pattern)
     status_name = (issue_dict.get("status_key") or "").strip().lower()
+    if not status_name:
+        return False
+
     if status_name in CLOSED_STATUS_NAMES:
         return True
+
+    for pattern in CLOSED_STATUS_PATTERNS:
+        if pattern in status_name:
+            return True
 
     return False
 
 
 def build_open_issues_jql(base_jql: str, project_key: str = "") -> str:
-    """Construct a JQL query string ensuring resolved and closed issues are excluded."""
+    """Construct a JQL query string ensuring resolved and closed issues are excluded.
+
+    Uses standard Jira JQL fields (resolution and statusCategory) without hardcoding
+    custom status names that may not exist on a given Jira instance.
+    """
     jql = (base_jql or "").strip()
     if not jql and project_key:
         jql = f'project = "{project_key}"'
@@ -90,11 +130,7 @@ def build_open_issues_jql(base_jql: str, project_key: str = "") -> str:
     elif jql and re.match(r"^[A-Za-z0-9_]+$", jql) and not any(k in jql.lower() for k in ["=", "in", "~", "is"]):
         jql = f'project = "{jql}"'
 
-    closed_filter = (
-        "statusCategory != Done "
-        "AND status not in ('Resolved', 'Closed', 'Done', 'Kapatıldı', 'Çözüldü', 'Tamamlandı') "
-        "AND resolution is EMPTY"
-    )
+    closed_filter = "resolution is EMPTY AND statusCategory != Done"
 
     combined = f"({jql}) AND {closed_filter}" if jql else closed_filter
 
@@ -120,10 +156,7 @@ def build_fallback_open_issues_jql(base_jql: str, project_key: str = "") -> str:
     elif jql and re.match(r"^[A-Za-z0-9_]+$", jql) and not any(k in jql.lower() for k in ["=", "in", "~", "is"]):
         jql = f'project = "{jql}"'
 
-    closed_filter = (
-        "status not in ('Resolved', 'Closed', 'Done', 'Kapatıldı', 'Çözüldü', 'Tamamlandı') "
-        "AND resolution is EMPTY"
-    )
+    closed_filter = "resolution is EMPTY"
 
     combined = f"({jql}) AND {closed_filter}" if jql else closed_filter
 
@@ -1320,11 +1353,22 @@ def kanban_card_import_jira_view(request, project_id):
                 raw_issues = service.pull_project_issues(project, jql_query, max_results=100)
             except Exception as exc:
                 err_str = str(exc).lower()
-                if any(x in err_str for x in ["connection", "timeout", "unreachable", "dns", "refused", "name or service not known"]):
+                if any(x in err_str for x in ["connection", "timeout", "unreachable", "dns", "refused", "name or service not known", "401", "403"]):
                     raise exc
-                logger.info("JQL statusCategory ile başarısız oldu, fallback deneniyor: %s", exc)
+                logger.info("JQL primary query (%s) başarısız oldu: %s, fallback deneniyor", jql_query, exc)
                 fallback_jql = build_fallback_open_issues_jql(search_jql, project.key)
-                raw_issues = service.pull_project_issues(project, fallback_jql, max_results=100)
+                try:
+                    raw_issues = service.pull_project_issues(project, fallback_jql, max_results=100)
+                except Exception as exc2:
+                    err_str2 = str(exc2).lower()
+                    if any(x in err_str2 for x in ["connection", "timeout", "unreachable", "dns", "refused", "name or service not known", "401", "403"]):
+                        raise exc2
+                    logger.info("JQL fallback (%s) başarısız oldu: %s, yalın sorgu deneniyor", fallback_jql, exc2)
+                    raw_jql = search_jql if search_jql else (f'project = "{project.key}"' if project.key else "")
+                    if raw_jql:
+                        raw_issues = service.pull_project_issues(project, raw_jql, max_results=100)
+                    else:
+                        raise exc2
         except Exception as exc:
             search_error = str(exc)
             logger.warning("Jira JQL araması başarısız (%s): %s", search_jql, exc)

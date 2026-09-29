@@ -1363,6 +1363,9 @@ class JqlCardImportTests(TestCase):
             {"id": "606", "key": "JQLP-15", "summary": "Resolution Set", "status_key": "Open", "resolution": "Fixed", "description": ""},
             {"id": "607", "key": "JQLP-16", "summary": "Kapatıldı", "status_key": "Kapatıldı", "description": ""},
             {"id": "608", "key": "JQLP-17", "summary": "Çözüldü", "status_key": "Çözüldü", "description": ""},
+            {"id": "609", "key": "JQLP-18", "summary": "Ready Issue", "status_key": "Ready", "description": ""},
+            {"id": "610", "key": "JQLP-19", "summary": "Ready for Deploy", "status_key": "Ready for Deploy", "description": ""},
+            {"id": "611", "key": "JQLP-20", "summary": "Hazır Issue", "status_key": "Hazır", "description": ""},
         ]
         from unittest.mock import patch
         with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_issues):
@@ -1372,13 +1375,16 @@ class JqlCardImportTests(TestCase):
             )
             self.assertEqual(resp.status_code, 200)
             issues_in_context = resp.context["issues"]
-            # Only JQLP-10 is open! All other 7 closed/resolved issues MUST be excluded!
+            # Only JQLP-10 is open! All other 10 closed/resolved/ready issues MUST be excluded!
             self.assertEqual(len(issues_in_context), 1)
             self.assertEqual(issues_in_context[0]["key"], "JQLP-10")
             self.assertContains(resp, "Open Issue")
             self.assertNotContains(resp, "Resolved Issue")
             self.assertNotContains(resp, "Closed Issue")
             self.assertNotContains(resp, "Resolution Set")
+            self.assertNotContains(resp, "Ready Issue")
+            self.assertNotContains(resp, "Ready for Deploy")
+            self.assertNotContains(resp, "Hazır Issue")
 
     def test_direct_import_of_closed_issue_is_rejected(self):
         closed_issue = {
@@ -1399,6 +1405,64 @@ class JqlCardImportTests(TestCase):
             self.assertContains(resp, "kapalı veya çözülmüş durumda")
             # Card must NOT be created
             self.assertFalse(KanbanCard.objects.filter(project=self.project, jira_key="JQLP-99").exists())
+
+    def test_direct_import_of_ready_issue_is_rejected(self):
+        ready_issue = {
+            "id": "702",
+            "key": "JQLP-98",
+            "summary": "Ready For Release",
+            "status_key": "Ready for Release",
+            "description": "",
+        }
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.get_project_issue", return_value=ready_issue):
+            resp = self.client.post(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {"jira_key": "JQLP-98"},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, "kapalı veya çözülmüş durumda")
+            self.assertFalse(KanbanCard.objects.filter(project=self.project, jira_key="JQLP-98").exists())
+
+    def test_build_open_issues_jql_does_not_contain_invalid_status_names(self):
+        from kanbanapp.views import build_open_issues_jql, build_fallback_open_issues_jql
+        query = build_open_issues_jql('assignee in ("engin.talay")', "EVDBS")
+        # Ensure hardcoded status values that cause 400 are NOT in the JQL
+        self.assertNotIn("status not in", query)
+        self.assertNotIn("Kapatıldı", query)
+        self.assertNotIn("Çözüldü", query)
+        self.assertNotIn("Tamamlandı", query)
+        self.assertIn("resolution is EMPTY", query)
+        self.assertIn("statusCategory != Done", query)
+
+        fallback = build_fallback_open_issues_jql('assignee in ("engin.talay")', "EVDBS")
+        self.assertNotIn("status not in", fallback)
+        self.assertIn("resolution is EMPTY", fallback)
+
+    def test_import_jira_fallback_ladder(self):
+        from unittest.mock import patch
+        calls = []
+
+        def mock_pull(project, jql, max_results=100):
+            calls.append(jql)
+            if "statusCategory" in jql:
+                raise Exception("JiraError HTTP 400: statusCategory is not valid")
+            if "resolution is EMPTY" in jql:
+                raise Exception("JiraError HTTP 400: resolution error")
+            return [{"id": "999", "key": "JQLP-RAW", "summary": "Raw Issue", "status_key": "Open"}]
+
+        with patch("kanbanapp.views.JiraService.pull_project_issues", side_effect=mock_pull):
+            resp = self.client.get(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {"jql": 'assignee = "test"'},
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(len(calls), 3)
+            self.assertIn("statusCategory", calls[0])
+            self.assertIn("resolution is EMPTY", calls[1])
+            self.assertEqual(calls[2], 'assignee = "test"')
+            self.assertContains(resp, "Raw Issue")
 
     def test_already_imported_cards_are_cleaned_out_of_search_results(self):
         # Already created on the board
