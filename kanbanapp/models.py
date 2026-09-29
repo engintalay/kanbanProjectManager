@@ -105,6 +105,15 @@ class Project(models.Model):
     def __str__(self):
         return f"{self.key} - {self.name}"
 
+    def delete(self, *args, **kwargs):
+        from django.db import transaction
+
+        with transaction.atomic():
+            self.cards.all().delete()
+            self.status_mappings.all().delete()
+            self.columns.all().delete()
+            return super().delete(*args, **kwargs)
+
 
 class JiraConnection(models.Model):
     name = models.CharField(max_length=200)
@@ -307,7 +316,7 @@ class KanbanCard(models.Model):
         Project, on_delete=models.CASCADE, related_name="cards"
     )
     column = models.ForeignKey(
-        KanbanColumn, on_delete=models.PROTECT, related_name="cards"
+        KanbanColumn, on_delete=models.CASCADE, related_name="cards"
     )
     title = models.CharField(max_length=500)
     description = models.TextField(blank=True, default="")

@@ -509,6 +509,36 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertEqual(created.first_name, "Ahmet")
         self.assertEqual(created.last_name, "Yılmaz")
 
+    def test_project_delete_with_cards_and_columns_no_500(self):
+        # Create a dedicated project with columns, cards, sprint, and status mapping
+        p = Project.objects.create(name="Project To Delete", key="DELPRJ", created_by=self.pm)
+        col1 = KanbanColumn.objects.create(project=p, name="Col1", position=0)
+        col2 = KanbanColumn.objects.create(project=p, name="Col2", position=1)
+        card1 = KanbanCard.objects.create(project=p, column=col1, title="Card 1")
+        card2 = KanbanCard.objects.create(project=p, column=col2, title="Card 2")
+        StatusMapping.objects.create(project=p, app_status=col1, position=0)
+
+        self.client.force_login(self.pm)
+        resp = self.client.post(reverse("project_delete", kwargs={"project_id": p.id}), follow=True)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(Project.objects.filter(key="DELPRJ").exists())
+        self.assertFalse(KanbanCard.objects.filter(id__in=[card1.id, card2.id]).exists())
+        self.assertFalse(KanbanColumn.objects.filter(id__in=[col1.id, col2.id]).exists())
+        self.assertIn(b"ba\xc5\x9far\xc4\xb1yla silindi", resp.content)
+
+    def test_column_delete_with_cards_blocked(self):
+        p = Project.objects.create(name="Col Delete Test", key="COLDEL", created_by=self.pm)
+        col = KanbanColumn.objects.create(project=p, name="Busy Col", position=0)
+        KanbanCard.objects.create(project=p, column=col, title="Busy Card")
+
+        self.client.force_login(self.pm)
+        resp = self.client.post(reverse("kanban_column_delete", kwargs={"project_id": p.id, "column_id": col.id}), follow=True)
+        self.assertEqual(resp.status_code, 200)
+        # Column must still exist
+        self.assertTrue(KanbanColumn.objects.filter(id=col.id).exists())
+        self.assertIn("kartlar bulunmaktadır".encode("utf-8"), resp.content)
+
+
 
 
 

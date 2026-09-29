@@ -267,14 +267,23 @@ def project_edit_view(request, project_id):
     return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "edit", "project": project})
 
 
+@login_required
 def project_delete_view(request, project_id):
     project = get_object_or_404(Project, id=project_id)
     if not _can_manage_project(request.user, project):
         return _forbidden(request)
 
     if request.method == "POST":
-        project.delete()
-        messages.success(request, f"{project.name} projesi silindi.")
+        name = project.name
+        try:
+            from django.db import transaction
+
+            with transaction.atomic():
+                project.delete()
+            messages.success(request, f"'{name}' projesi ve bağlı tüm veriler başarıyla silindi.")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Proje silme hatası: %s", exc)
+            messages.error(request, f"Proje silinirken hata oluştu: {exc}")
         return redirect("projects")
     return render(request, "kanbanapp/project_confirm_delete.html", {"project": project})
 
@@ -584,6 +593,12 @@ def kanban_column_delete_view(request, project_id, column_id):
         return _forbidden(request)
 
     if request.method == "POST":
+        if column.cards.exists():
+            messages.error(
+                request,
+                f"'{column.name}' kolonu içinde kartlar bulunmaktadır. Kolonu silmeden önce lütfen kartları başka bir kolona taşıyın.",
+            )
+            return redirect("board", project_id=project.id)
         column.delete()
         messages.success(request, f"{column.name} kolonu silindi.")
         return redirect("board", project_id=project.id)
