@@ -5,6 +5,7 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import (
@@ -1497,9 +1498,12 @@ def kanban_card_move_view(request, project_id, card_id):
     if request.method == "POST":
         target_col_id = request.POST.get("column_id")
         target_column = get_object_or_404(KanbanColumn, id=target_col_id, project=project)
+        target_pos = request.POST.get("position")
 
         old_column = card.column
         card.column = target_column
+        if target_pos is not None and str(target_pos).isdigit():
+            card.position = int(target_pos)
         card.save()
 
         # Jira Transition (READ-WRITE) if card is linked and mapping exists
@@ -1533,6 +1537,57 @@ def kanban_card_move_view(request, project_id, card_id):
 
     next_url = request.POST.get("next") or request.GET.get("next")
     return redirect(next_url or "board", project_id=project.id)
+
+
+@login_required
+def kanban_cards_reorder_view(request, project_id):
+    """Reorder cards within a column via mouse drag-and-drop (PLAN.md §7)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_edit_cards(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        import json
+
+        data = {}
+        if request.content_type == "application/json" and request.body:
+            try:
+                data = json.loads(request.body)
+            except Exception:
+                data = {}
+        if not data:
+            data = request.POST
+
+        column_id = data.get("column_id")
+        card_ids = data.get("card_ids")
+
+        if not column_id or not card_ids:
+            return JsonResponse({"status": "error", "message": "Eksik parametreler (column_id, card_ids)."}, status=400)
+
+        column = get_object_or_404(KanbanColumn, id=column_id, project=project)
+
+        if isinstance(card_ids, str):
+            try:
+                card_ids = json.loads(card_ids)
+            except Exception:
+                card_ids = [int(x.strip()) for x in card_ids.split(",") if x.strip().isdigit()]
+
+        from django.db import transaction
+
+        with transaction.atomic():
+            for position, card_id in enumerate(card_ids):
+                try:
+                    cid = int(card_id)
+                    KanbanCard.objects.filter(project=project, id=cid).update(
+                        column=column,
+                        position=position,
+                    )
+                except (ValueError, TypeError):
+                    continue
+
+        return JsonResponse({"status": "ok", "message": "Kart sıralaması güncellendi."})
+
+    return JsonResponse({"status": "error", "message": "Sadece POST metodu desteklenir."}, status=405)
 
 
 @login_required

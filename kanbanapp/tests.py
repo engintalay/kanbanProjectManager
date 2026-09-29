@@ -1279,6 +1279,44 @@ class MultiStatusMappingAndScreenTests(TestCase):
         self.assertEqual(m1.app_status_id, self.col_dev.id)
         self.assertContains(resp, "taşındı")
 
+    def test_kanban_cards_reorder_view_success(self):
+        col = KanbanColumn.objects.create(project=self.project, name="Col1", status_type="custom", position=0)
+        c1 = KanbanCard.objects.create(project=self.project, column=col, title="Card 1", position=0)
+        c2 = KanbanCard.objects.create(project=self.project, column=col, title="Card 2", position=1)
+        c3 = KanbanCard.objects.create(project=self.project, column=col, title="Card 3", position=2)
+
+        import json
+        resp = self.client.post(
+            reverse("kanban_cards_reorder", kwargs={"project_id": self.project.id}),
+            data=json.dumps({"column_id": col.id, "card_ids": [c3.id, c1.id, c2.id]}),
+            content_type="application/json",
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "ok")
+
+        c1.refresh_from_db()
+        c2.refresh_from_db()
+        c3.refresh_from_db()
+        self.assertEqual(c3.position, 0)
+        self.assertEqual(c1.position, 1)
+        self.assertEqual(c2.position, 2)
+
+    def test_kanban_card_move_view_with_position(self):
+        col1 = KanbanColumn.objects.create(project=self.project, name="Col A", status_type="custom", position=0)
+        col2 = KanbanColumn.objects.create(project=self.project, name="Col B", status_type="custom", position=1)
+        card = KanbanCard.objects.create(project=self.project, column=col1, title="Move Card", position=0)
+
+        resp = self.client.post(
+            reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": card.id}),
+            {"column_id": col2.id, "position": "3", "skip_jira_sync": "1"},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        card.refresh_from_db()
+        self.assertEqual(card.column_id, col2.id)
+        self.assertEqual(card.position, 3)
 
 
 class JqlCardImportTests(TestCase):
