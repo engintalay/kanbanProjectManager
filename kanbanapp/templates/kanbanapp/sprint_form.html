@@ -30,9 +30,9 @@
       <span class="form-text">Birden fazla seçmek için Ctrl (veya Cmd) tuşuna basılı tutun.</span>
     </label>
 
-    <div style="display:flex; gap:10px; margin-top:14px;">
+    <div class="form-actions">
       <button type="submit" class="btn-primary">Kaydet</button>
-      <a href="{% url 'sprints' project.id %}" class="btn-ghost">İptal</a>
+      <a href="{% url 'sprints' project.id %}" class="btn-secondary">İptal</a>
     </div>
   </form>
 </div>

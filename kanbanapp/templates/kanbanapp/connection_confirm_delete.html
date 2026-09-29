@@ -13,8 +13,10 @@
   <p class="message message-warn">Bu işlem geri alınamaz.</p>
   <form method="post" class="auth-form">
     {% csrf_token %}
-    <button type="submit" class="btn-danger">SİL</button>
-    <a href="{% url 'jira_connections' %}" class="btn-ghost">İptal</a>
+    <div class="form-actions">
+      <button type="submit" class="btn-danger">SİL</button>
+      <a href="{% url 'jira_connections' %}" class="btn-secondary">İptal</a>
+    </div>
   </form>
 </div>
 {% endblock %}

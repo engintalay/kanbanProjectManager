@@ -15,8 +15,10 @@
     {% for error in field.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
     {% endfor %}
     {% for error in form.non_field_errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
-    <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Oluştur{% endif %}</button>
-    <a href="{% url 'projects' %}" class="btn-ghost">İptal</a>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Oluştur{% endif %}</button>
+      <a href="{% url 'projects' %}" class="btn-secondary">İptal</a>
+    </div>
   </form>
 </div>
 {% endblock %}

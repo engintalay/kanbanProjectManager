@@ -29,9 +29,11 @@
         {% endfor %}
       </select>
     </label>
-    <button type="submit" class="btn-primary">Kullanıcıyı Kaydet</button>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">Kullanıcıyı Kaydet</button>
+      <a href="{% url 'dashboard' %}" class="btn-secondary">İptal</a>
+    </div>
   </form>
-  <p class="auth-link"><a href="{% url 'dashboard' %}">&larr; Dashboard'a Dön</a></p>
 </div>
 {% endblock %}
 {% block scripts %}

@@ -15,8 +15,10 @@
     {% for error in field.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
     {% endfor %}
     {% for error in form.non_field_errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
-    <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Ekle{% endif %}</button>
-    <a href="{% url 'jira_connections' %}" class="btn-ghost">İptal</a>
+    <div class="form-actions">
+      <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Ekle{% endif %}</button>
+      <a href="{% url 'jira_connections' %}" class="btn-secondary">İptal</a>
+    </div>
   </form>
   <p class="hint">Sadece okunur (READ-ONLY). Durum değiştirme, atama ve yorum ekleme yapılmaz.</p>
 </div>

@@ -72,22 +72,97 @@ input, select {
 }
 input:focus, select:focus { outline: none; border-color: var(--primary); }
 
-.btn-primary {
-  background: var(--primary); color: #fff; border: none;
-  padding: 11px 16px; border-radius: 8px; font-weight: 600; cursor: pointer;
-  justify-self: flex-start;
-}
-.btn-primary:hover { background: var(--primary-hover); }
-.btn-ghost {
-  background: transparent; color: var(--muted); border: 1px solid var(--border);
-  padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: .85rem;
-}
-.btn-ghost:hover { color: var(--text); border-color: var(--primary); }
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-ghost,
 .btn-danger {
-  background: var(--danger); color: #fff; border: none;
-  padding: 7px 12px; border-radius: 8px; cursor: pointer; font-size: .85rem; font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none !important;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  line-height: 1.2;
+  box-sizing: border-box;
+  white-space: nowrap;
+  transition: all 0.15s ease-in-out;
 }
-.btn-danger:hover { filter: brightness(1.1); }
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border: 1px solid var(--primary);
+  padding: 10px 18px;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.btn-primary:hover {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: #334155;
+  color: #f1f5f9;
+  border: 1px solid #475569;
+  padding: 10px 18px;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+.btn-secondary:hover {
+  background: #475569;
+  border-color: #64748b;
+  color: #fff;
+}
+
+.btn-ghost {
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.btn-ghost:hover {
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text);
+  border-color: #64748b;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+  border: 1px solid var(--danger);
+  padding: 10px 18px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.btn-danger:hover {
+  filter: brightness(1.1);
+  color: #fff;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+.form-actions .btn-primary,
+.form-actions .btn-secondary,
+.form-actions .btn-danger,
+.form-actions .btn-ghost {
+  flex: 0 0 auto;
+}
+
+.auth-form .btn-ghost,
+.auth-form .btn-secondary {
+  align-self: flex-start;
+}
 .form-text { color: var(--muted); font-size: .8rem; margin-top: 4px; }
 .form-control { width: 100%; }
 .message-warn { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.4); }
