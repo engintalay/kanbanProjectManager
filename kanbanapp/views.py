@@ -858,7 +858,44 @@ def project_status_mappings_view(request, project_id):
             messages.success(request, f"'{mapping_title}' eşlemesi silindi.")
             return redirect("project_status_mappings", project_id=project.id)
 
-        # 5. Toggle transfer_to_jira
+        # 5. Move mapping (drag and drop between columns)
+        elif action == "move_mapping":
+            mapping_id = request.POST.get("mapping_id")
+            target_col_id = request.POST.get("target_column_id")
+            mapping = get_object_or_404(StatusMapping, id=mapping_id, project=project)
+            target_column = get_object_or_404(KanbanColumn, id=target_col_id, project=project)
+            old_col = mapping.app_status
+            was_primary = mapping.is_primary
+
+            if old_col.id != target_column.id:
+                existing = StatusMapping.objects.filter(
+                    project=project, app_status=target_column, jira_status=mapping.jira_status
+                ).first()
+                if existing:
+                    mapping.delete()
+                    messages.info(request, f"'{mapping.jira_status.name}' statüsü zaten '{target_column.name}' durumunda eşliydi.")
+                else:
+                    has_target_primary = StatusMapping.objects.filter(
+                        project=project, app_status=target_column, is_primary=True
+                    ).exists()
+                    mapping.app_status = target_column
+                    if not has_target_primary:
+                        mapping.is_primary = True
+                    mapping.save(update_fields=["app_status", "is_primary"])
+                    messages.success(
+                        request,
+                        f"'{mapping.jira_status.name}' statüsü '{old_col.name}' durumundan '{target_column.name}' durumuna taşındı."
+                    )
+
+                if was_primary:
+                    next_primary = StatusMapping.objects.filter(project=project, app_status=old_col).first()
+                    if next_primary:
+                        next_primary.is_primary = True
+                        next_primary.save(update_fields=["is_primary"])
+
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 6. Toggle transfer_to_jira
         elif action == "toggle_transfer":
             mapping_id = request.POST.get("mapping_id")
             mapping = get_object_or_404(StatusMapping, id=mapping_id, project=project)

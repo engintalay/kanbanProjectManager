@@ -31,6 +31,8 @@ class KanbanBoardTests(TestCase):
         self.assertIn(b"First Task", resp.content)
         self.assertIn(b"Second Task", resp.content)
         self.assertIn(b"Yeni Kart Ekle", resp.content)
+        self.assertIn(b'draggable="true"', resp.content)
+        self.assertIn(b"cardMoveModal", resp.content)
 
     def test_column_and_card_crud_flow(self):
         col_resp = self.client.post(
@@ -1261,6 +1263,22 @@ class MultiStatusMappingAndScreenTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.project.refresh_from_db()
         self.assertFalse(self.project.sync_jira_status)
+
+    def test_project_status_mappings_move_mapping(self):
+        m1 = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_todo, jira_status=self.js_todo,
+            is_primary=True, transfer_to_jira=True
+        )
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "move_mapping", "mapping_id": m1.id, "target_column_id": self.col_dev.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        m1.refresh_from_db()
+        self.assertEqual(m1.app_status_id, self.col_dev.id)
+        self.assertContains(resp, "taşındı")
+
 
 
 class JqlCardImportTests(TestCase):

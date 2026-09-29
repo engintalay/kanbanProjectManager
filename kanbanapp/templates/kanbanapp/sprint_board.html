@@ -82,10 +82,16 @@
       </div>
       {% endif %}
     </div>
-    <div class="board-column-body">
+    <div class="board-column-body" data-column-id="{{ column.id }}" data-column-name="{{ column.name }}">
       {% for card in column.cards.all %}
         {% if card.sprint_id == sprint.id %}
-        <div class="card">
+        <div class="card"
+             {% if can_edit_cards %}draggable="true"{% endif %}
+             data-card-id="{{ card.id }}"
+             data-card-title="{{ card.title|escape }}"
+             data-column-id="{{ column.id }}"
+             data-column-name="{{ column.name|escape }}"
+             data-jira-key="{{ card.jira_key|default:'' }}">
           <div class="card-header">
             <div class="card-title">{{ card.title }}</div>
             {% if card.difficulty_level %}
@@ -159,4 +165,135 @@
   <p class="empty">Kolon bulunamadı.</p>
   {% endfor %}
 </div>
+
+<!-- Card Drag Move Confirmation Modal -->
+<div class="drag-modal-backdrop" id="cardMoveModal">
+  <div class="drag-modal">
+    <div class="drag-modal-header">
+      <h3><span>📋</span> Kartı Taşı & Statü Aktar</h3>
+      <button type="button" class="drag-modal-close" onclick="closeCardMoveModal()">&times;</button>
+    </div>
+    <form method="post" id="cardMoveForm" action="">
+      {% csrf_token %}
+      <input type="hidden" name="column_id" id="cardMoveTargetColumnId">
+      <input type="hidden" name="skip_jira_sync" id="cardMoveSkipJira" value="0">
+      <input type="hidden" name="next" value="{% url 'sprint_board' project.id sprint.id %}">
+
+      <div class="drag-modal-body">
+        <p style="margin-top: 0; margin-bottom: 12px; font-size: 0.95rem;">
+          <strong id="cardMoveTitle" style="color: #f8fafc;">-</strong> kartını
+          <strong id="cardMoveTargetColName" style="color: #22c55e;">-</strong> durumuna taşımak istediğinizden emin misiniz?
+        </p>
+
+        <div id="cardMoveJiraInfo" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 12px; font-size: 0.84rem; color: #c7d2fe; display: none;">
+          ⚡ <strong>Jira Statü Aktarımı:</strong> Bu kart Jira ile bağlantılıdır. Onayladığınızda kart hedef duruma taşınacak ve Jira'daki statüsü de otomatik güncellenecektir.
+        </div>
+      </div>
+
+      <div class="drag-modal-footer">
+        <button type="button" class="btn-ghost" onclick="closeCardMoveModal()">Vazgeç</button>
+        <button type="button" class="btn-ghost" id="cardMoveSkipBtn" onclick="submitCardMove(true)" style="display: none;">Sadece Panoda Taşı</button>
+        <button type="button" class="btn-primary" onclick="submitCardMove(false)">Taşı & Jira'ya Aktar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  let draggedCard = null;
+
+  function closeCardMoveModal() {
+    const m = document.getElementById('cardMoveModal');
+    if (m) m.classList.remove('active');
+  }
+
+  function submitCardMove(skipJira) {
+    document.getElementById('cardMoveSkipJira').value = skipJira ? "1" : "0";
+    document.getElementById('cardMoveForm').submit();
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeCardMoveModal();
+  });
+
+  const cardModalBackdrop = document.getElementById('cardMoveModal');
+  if (cardModalBackdrop) {
+    cardModalBackdrop.addEventListener('click', function(e) {
+      if (e.target === cardModalBackdrop) closeCardMoveModal();
+    });
+  }
+
+  // Card dragging
+  document.querySelectorAll('.card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      draggedCard = {
+        cardId: card.dataset.cardId,
+        cardTitle: card.dataset.cardTitle,
+        columnId: card.dataset.columnId,
+        columnName: card.dataset.columnName,
+        jiraKey: card.dataset.jiraKey
+      };
+      card.classList.add('is-dragging');
+      e.dataTransfer.setData('text/plain', JSON.stringify(draggedCard));
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('is-dragging');
+      document.querySelectorAll('.board-column-body').forEach(b => b.classList.remove('drag-over'));
+      draggedCard = null;
+    });
+  });
+
+  // Column bodies drop targets
+  document.querySelectorAll('.board-column-body').forEach(body => {
+    body.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      body.classList.add('drag-over');
+    });
+
+    body.addEventListener('dragleave', () => {
+      body.classList.remove('drag-over');
+    });
+
+    body.addEventListener('drop', (e) => {
+      e.preventDefault();
+      body.classList.remove('drag-over');
+
+      let cardData = draggedCard;
+      if (!cardData) {
+        try {
+          cardData = JSON.parse(e.dataTransfer.getData('text/plain'));
+        } catch (err) {}
+      }
+      if (!cardData) return;
+
+      const targetColId = body.dataset.columnId;
+      const targetColName = body.dataset.columnName;
+
+      if (cardData.columnId === targetColId) return; // Dropped in same column
+
+      const form = document.getElementById('cardMoveForm');
+      form.action = `/projects/{{ project.id }}/card/${cardData.cardId}/move/`;
+      document.getElementById('cardMoveTargetColumnId').value = targetColId;
+      document.getElementById('cardMoveTitle').textContent = cardData.cardTitle;
+      document.getElementById('cardMoveTargetColName').textContent = targetColName;
+
+      const jiraInfo = document.getElementById('cardMoveJiraInfo');
+      const skipBtn = document.getElementById('cardMoveSkipBtn');
+      const hasJira = Boolean(cardData.jiraKey) && {% if project.jira_connection %}true{% else %}false{% endif %};
+
+      if (hasJira) {
+        jiraInfo.style.display = 'block';
+        skipBtn.style.display = 'inline-block';
+      } else {
+        jiraInfo.style.display = 'none';
+        skipBtn.style.display = 'none';
+      }
+
+      document.getElementById('cardMoveModal').classList.add('active');
+    });
+  });
+</script>
 {% endblock %}

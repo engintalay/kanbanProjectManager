@@ -957,3 +957,241 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   font-size: 0.88rem;
   border-radius: 6px;
 }
+
+/* Drag & Drop Modals */
+.drag-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(3px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.drag-modal-backdrop.active {
+  display: flex;
+  opacity: 1;
+}
+.drag-modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 92%;
+  max-width: 480px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  transform: translateY(12px) scale(0.97);
+  transition: transform 0.15s ease;
+}
+.drag-modal-backdrop.active .drag-modal {
+  transform: translateY(0) scale(1);
+}
+.drag-modal-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.02);
+}
+.drag-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drag-modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.drag-modal-close:hover {
+  color: var(--text);
+}
+.drag-modal-body {
+  padding: 18px 20px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.drag-modal-footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Board Card Dragging */
+.card[draggable="true"] {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-drag: element;
+}
+.card[draggable="true"]:active {
+  cursor: grabbing;
+}
+.card.is-dragging {
+  opacity: 0.35;
+  outline: 2px dashed #6366f1;
+  transform: scale(0.98);
+}
+.board-column-body.drag-over {
+  background: rgba(99, 102, 241, 0.12) !important;
+  outline: 2px dashed #6366f1;
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+
+/* Status Sync Drag & Drop Styles */
+.jira-status-chip-pool {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.status-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.jira-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: grab;
+  user-select: none;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+.jira-status-chip:hover {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.08);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+.jira-status-chip:active {
+  cursor: grabbing;
+}
+.jira-status-chip.is-dragging {
+  opacity: 0.35;
+  transform: scale(0.95);
+}
+.jira-status-chip .drag-grip {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.jira-status-chip .chip-badge {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.jira-status-chip .chip-badge.ok {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+.jira-status-chip .chip-badge.warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.status-drop-zone {
+  border: 2px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.01);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.status-drop-zone:hover {
+  border-color: rgba(99, 102, 241, 0.5);
+  color: var(--text);
+  background: rgba(99, 102, 241, 0.04);
+}
+.status-drop-zone.drag-active {
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.08);
+  color: #a5b4fc;
+}
+.status-drop-zone.drag-over {
+  border-color: #22c55e !important;
+  background: rgba(34, 197, 94, 0.16) !important;
+  color: #22c55e !important;
+  transform: scale(1.02);
+}
+
+.mapped-status-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mapped-status-card[draggable="true"] {
+  cursor: grab;
+  user-select: none;
+}
+.mapped-status-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+.mapped-status-card.is-dragging {
+  opacity: 0.35;
+  outline: 2px dashed #f59e0b;
+}
+
+.pool-drop-unmap-zone {
+  border: 2px dashed rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: center;
+  color: #f87171;
+  font-size: 0.82rem;
+  margin-top: 10px;
+  background: rgba(239, 68, 68, 0.04);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.pool-drop-unmap-zone.drag-over {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.2);
+  color: #fff;
+  transform: scale(1.02);
+}
+

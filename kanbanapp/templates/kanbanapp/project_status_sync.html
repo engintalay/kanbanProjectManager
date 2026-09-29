@@ -70,7 +70,7 @@
   </div>
 
   <p style="margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.5;">
-    💡 <strong>Detaylı Statü Yönetimi:</strong> Uygulama içinde Jira'dakinden daha detaylı statüler tutabilirsiniz. Bir uygulama durumuna birden fazla Jira statüsü eşlenebilir veya birden fazla uygulama durumu tek bir Jira statüsüne bağlanabilir. Kart bir duruma taşındığında Jira'da <strong>[Birincil]</strong> olarak işaretlenen statüye geçiş yapılır. "Jira Aktarımı Kapalı" seçilen durumlarda Jira geçişi yapılmaz.
+    💡 <strong>Detaylı Statü Yönetimi & Mouse ile Taşıma:</strong> Aşağıdaki Jira statülerini <strong>mouse ile tutup sürükleyerek</strong> uygulama durumları üzerine bırakabilir, durumlar arasında taşıyabilir veya havuza bırakıp eşlemeyi kaldırabilirsiniz. Kart bir duruma taşındığında Jira'da <strong>[Birincil]</strong> olarak işaretlenen statüye geçiş yapılır. "Jira Aktarımı Kapalı" olan durumlarda Jira geçişi yapılmaz.
   </p>
 </div>
 
@@ -88,7 +88,7 @@
 
     <div style="display: flex; flex-direction: column; gap: 16px;">
       {% for item in columns_data %}
-      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px;">
+      <div class="column-card-box" data-column-id="{{ item.column.id }}" style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px;">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span style="font-size: 1.1rem; font-weight: 600; color: var(--text);">{{ item.column.name }}</span>
@@ -111,8 +111,17 @@
           {% if item.mappings %}
           <div style="display: flex; flex-direction: column; gap: 8px;">
             {% for m in item.mappings %}
-            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px;">
+            <div class="mapped-status-card"
+                 {% if can_manage_project %}draggable="true"{% endif %}
+                 data-mapping-id="{{ m.id }}"
+                 data-jira-status-id="{{ m.jira_status.id }}"
+                 data-jira-status-name="{{ m.jira_status.name|default:'Tanımsız' }}"
+                 data-column-id="{{ item.column.id }}"
+                 data-column-name="{{ item.column.name }}">
               <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+                {% if can_manage_project %}
+                <span class="drag-grip" title="Mouse ile başka bir kolona veya havuza taşımak için sürükleyin" style="cursor: grab; color: var(--muted); padding: 0 4px; font-size: 0.95rem;">⠿</span>
+                {% endif %}
                 <span style="font-weight: 600; color: #f8fafc; font-size: 0.92rem;">
                   ↔ {{ m.jira_status.name|default:"(Tanımsız Jira Statüsü)" }}
                 </span>
@@ -175,15 +184,25 @@
           {% endif %}
         </div>
 
-        <!-- Inline Add Mapping Form -->
+        <!-- Mouse Drag & Drop Target Zone -->
+        {% if can_manage_project %}
+        <div class="status-drop-zone"
+             data-column-id="{{ item.column.id }}"
+             data-column-name="{{ item.column.name }}"
+             title="Jira statüsünü buraya sürükleyip bırakarak eşleyin">
+          <span>🎯 Jira Statüsünü Buraya Sürükleyip Bırakın</span>
+        </div>
+        {% endif %}
+
+        <!-- Inline Add Mapping Form (Alternative / Keyboard Fallback) -->
         {% if can_manage_project %}
         {% if item.available_jira_statuses %}
-        <form method="post" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <form method="post" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 10px;">
           {% csrf_token %}
           <input type="hidden" name="action" value="add_mapping">
           <input type="hidden" name="column_id" value="{{ item.column.id }}">
 
-          <span style="font-size: 0.82rem; font-weight: 500; color: var(--text);">+ Jira Statüsü Ekle:</span>
+          <span style="font-size: 0.82rem; font-weight: 500; color: var(--text);">+ Açılır Menüden Ekle:</span>
 
           <select name="jira_status_id" required style="padding: 5px 10px; font-size: 0.85rem; min-width: 200px;">
             <option value="">-- Jira Statüsü Seçin --</option>
@@ -205,11 +224,11 @@
           <button type="submit" class="btn-primary" style="font-size: 0.8rem; padding: 5px 12px;">Eşle</button>
         </form>
         {% elif total_jira_statuses == 0 %}
-        <div style="font-size: 0.82rem; color: var(--muted);">
+        <div style="font-size: 0.82rem; color: var(--muted); margin-top: 8px;">
           Sistemde Jira statüsü bulunmuyor. Sayfa başındaki <strong>"Jira'dan Statüleri Çek"</strong> butonunu kullanarak Jira'daki statüleri getirebilirsiniz.
         </div>
         {% else %}
-        <div style="font-size: 0.82rem; color: var(--muted);">
+        <div style="font-size: 0.82rem; color: var(--muted); margin-top: 8px;">
           Tüm mevcut Jira statüleri bu duruma eşlenmiş.
         </div>
         {% endif %}
@@ -223,7 +242,7 @@
     </div>
   </div>
 
-  <!-- Section 2: Jira Status Pool -->
+  <!-- Section 2: Jira Status Pool with Draggable Chips -->
   <div style="margin-top: 10px;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
       <h2 style="margin: 0; font-size: 1.25rem;">🌐 Jira Sunucusu Statü Havuzu</h2>
@@ -236,6 +255,45 @@
       {% endif %}
     </div>
 
+    <!-- Draggable Chips Pool Card -->
+    {% if jira_statuses_data %}
+    <div class="jira-status-chip-pool">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <span style="font-size: 0.88rem; color: var(--text); font-weight: 600;">
+          🖐️ Mouse ile Kolonlara Sürükle & Bırak
+        </span>
+        <span style="font-size: 0.8rem; color: var(--muted);">
+          Aşağıdaki Jira statü kartlarını tutup yukarıdaki kolonların üzerine bırakarak doğrudan eşleyebilirsiniz.
+        </span>
+      </div>
+
+      <div class="status-chips-container">
+        {% for js_row in jira_statuses_data %}
+        <div class="jira-status-chip"
+             {% if can_manage_project %}draggable="true"{% endif %}
+             data-jira-status-id="{{ js_row.status.id }}"
+             data-jira-status-name="{{ js_row.status.name }}"
+             title="Mouse ile tutup yukarıdaki bir uygulama durumuna sürükleyin">
+          <span class="drag-grip">⠿</span>
+          <span style="font-weight: 600;">{{ js_row.status.name }}</span>
+          {% if js_row.is_mapped %}
+          <span class="chip-badge ok">Eşli ({{ js_row.mapped_columns|length }})</span>
+          {% else %}
+          <span class="chip-badge warn">+ Eşle</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+
+      {% if can_manage_project %}
+      <div class="pool-drop-unmap-zone" id="poolUnmapZone">
+        <span>🗑️ <strong>Eşlemeyi Kaldır:</strong> Yukarıdan eşlenmiş bir statü kartını buraya sürükleyip bırakarak eşlemeyi silebilirsiniz</span>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Status Details Table -->
     <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto;">
       {% if jira_statuses_data %}
       <table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left;">
@@ -299,4 +357,266 @@
   </div>
 
 </div>
+
+<!-- Drag & Drop Interactive Modals -->
+<!-- 1. Add Mapping Modal -->
+<div class="drag-modal-backdrop" id="addMappingModal">
+  <div class="drag-modal">
+    <div class="drag-modal-header">
+      <h3><span>🎯</span> Jira Statü Eşleme & Aktarma</h3>
+      <button type="button" class="drag-modal-close" onclick="closeModal('addMappingModal')">&times;</button>
+    </div>
+    <form method="post" id="addMappingForm">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_mapping">
+      <input type="hidden" name="column_id" id="modalColumnId">
+      <input type="hidden" name="jira_status_id" id="modalJiraStatusId">
+
+      <div class="drag-modal-body">
+        <p style="margin-top: 0; margin-bottom: 16px;">
+          <strong id="modalJiraStatusName" style="color: #818cf8;">-</strong> Jira statüsünü
+          <strong id="modalColumnName" style="color: #22c55e;">-</strong> uygulama durumu ile eşlemek ve statü aktarımına bağlamak üzeresiniz.
+        </p>
+
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer; margin: 0;">
+            <input type="checkbox" name="transfer_to_jira" value="1" checked id="modalTransferCheck">
+            <span><strong>Jira'ya Aktar:</strong> Kart bu duruma taşındığında Jira statüsü de güncellensin</span>
+          </label>
+
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer; margin: 0;">
+            <input type="checkbox" name="is_primary" value="1" id="modalPrimaryCheck">
+            <span><strong>Birincil Hedef:</strong> Bu durum için varsayılan Jira hedef statüsü olsun</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="drag-modal-footer">
+        <button type="button" class="btn-ghost" onclick="closeModal('addMappingModal')">Vazgeç</button>
+        <button type="submit" class="btn-primary">Eşle & Aktar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 2. Move Mapping Modal -->
+<div class="drag-modal-backdrop" id="moveMappingModal">
+  <div class="drag-modal">
+    <div class="drag-modal-header">
+      <h3><span>↔️</span> Statü Aktarımını Başka Kolona Taşı</h3>
+      <button type="button" class="drag-modal-close" onclick="closeModal('moveMappingModal')">&times;</button>
+    </div>
+    <form method="post" id="moveMappingForm">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="move_mapping">
+      <input type="hidden" name="mapping_id" id="moveMappingId">
+      <input type="hidden" name="target_column_id" id="moveTargetColumnId">
+
+      <div class="drag-modal-body">
+        <p style="margin-top: 0; margin-bottom: 12px;">
+          <strong id="moveJiraStatusName" style="color: #818cf8;">-</strong> Jira statüsünün aktarım eşlemesini
+          <strong id="moveFromColumnName" style="color: #f59e0b;">-</strong> durumundan
+          <strong id="moveToColumnName" style="color: #22c55e;">-</strong> durumuna taşımak istediğinizden emin misiniz?
+        </p>
+        <span class="muted" style="font-size: 0.82rem;">Taşındığında, hedef kolondaki kart hareketleri bu Jira statüsüne aktarılacaktır.</span>
+      </div>
+
+      <div class="drag-modal-footer">
+        <button type="button" class="btn-ghost" onclick="closeModal('moveMappingModal')">Vazgeç</button>
+        <button type="submit" class="btn-primary">Taşı</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 3. Delete Mapping Modal (dropped on unmap zone) -->
+<div class="drag-modal-backdrop" id="deleteMappingModal">
+  <div class="drag-modal">
+    <div class="drag-modal-header">
+      <h3><span>🗑️</span> Statü Eşlemesini Kaldır</h3>
+      <button type="button" class="drag-modal-close" onclick="closeModal('deleteMappingModal')">&times;</button>
+    </div>
+    <form method="post" id="deleteMappingForm">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="delete_mapping">
+      <input type="hidden" name="mapping_id" id="deleteMappingId">
+
+      <div class="drag-modal-body">
+        <p style="margin-top: 0; margin-bottom: 12px;">
+          <strong id="deleteJiraStatusName" style="color: #f87171;">-</strong> Jira statüsünün
+          <strong id="deleteFromColumnName">-</strong> durumu ile olan eşlemesini kaldırmak üzeresiniz.
+        </p>
+        <span class="muted" style="font-size: 0.82rem;">Eşleme kaldırıldığında bu kolon için ilgili Jira statüsü aktarımı sonlandırılacaktır.</span>
+      </div>
+
+      <div class="drag-modal-footer">
+        <button type="button" class="btn-ghost" onclick="closeModal('deleteMappingModal')">Vazgeç</button>
+        <button type="submit" class="btn-danger">Kaldır</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  let draggedStatusData = null;
+
+  function closeModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove('active');
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      ['addMappingModal', 'moveMappingModal', 'deleteMappingModal'].forEach(closeModal);
+    }
+  });
+
+  // Close modals on backdrop click
+  document.querySelectorAll('.drag-modal-backdrop').forEach(b => {
+    b.addEventListener('click', function(e) {
+      if (e.target === b) closeModal(b.id);
+    });
+  });
+
+  // 1. Jira Pool Chips Dragging
+  document.querySelectorAll('.jira-status-chip[draggable="true"]').forEach(chip => {
+    chip.addEventListener('dragstart', (e) => {
+      draggedStatusData = {
+        type: 'chip',
+        statusId: chip.dataset.jiraStatusId,
+        statusName: chip.dataset.jiraStatusName
+      };
+      chip.classList.add('is-dragging');
+      e.dataTransfer.setData('text/plain', JSON.stringify(draggedStatusData));
+      e.dataTransfer.effectAllowed = 'copy';
+      document.querySelectorAll('.status-drop-zone').forEach(z => z.classList.add('drag-active'));
+    });
+
+    chip.addEventListener('dragend', () => {
+      chip.classList.remove('is-dragging');
+      document.querySelectorAll('.status-drop-zone').forEach(z => {
+        z.classList.remove('drag-active');
+        z.classList.remove('drag-over');
+      });
+      draggedStatusData = null;
+    });
+  });
+
+  // 2. Mapped Cards Dragging (between columns or to unmap zone)
+  document.querySelectorAll('.mapped-status-card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      draggedStatusData = {
+        type: 'mapped',
+        mappingId: card.dataset.mappingId,
+        statusId: card.dataset.jiraStatusId,
+        statusName: card.dataset.jiraStatusName,
+        columnId: card.dataset.columnId,
+        columnName: card.dataset.columnName
+      };
+      card.classList.add('is-dragging');
+      e.dataTransfer.setData('text/plain', JSON.stringify(draggedStatusData));
+      e.dataTransfer.effectAllowed = 'move';
+      document.querySelectorAll('.status-drop-zone').forEach(z => {
+        if (z.dataset.columnId !== card.dataset.columnId) {
+          z.classList.add('drag-active');
+        }
+      });
+      const unmapZone = document.getElementById('poolUnmapZone');
+      if (unmapZone) unmapZone.classList.add('drag-active');
+    });
+
+    card.addEventListener('dragend', () => {
+      card.classList.remove('is-dragging');
+      document.querySelectorAll('.status-drop-zone').forEach(z => {
+        z.classList.remove('drag-active');
+        z.classList.remove('drag-over');
+      });
+      const unmapZone = document.getElementById('poolUnmapZone');
+      if (unmapZone) {
+        unmapZone.classList.remove('drag-active');
+        unmapZone.classList.remove('drag-over');
+      }
+      draggedStatusData = null;
+    });
+  });
+
+  // 3. Drop Zones in Columns
+  document.querySelectorAll('.status-drop-zone').forEach(zone => {
+    zone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      zone.classList.add('drag-over');
+    });
+
+    zone.addEventListener('dragleave', () => {
+      zone.classList.remove('drag-over');
+    });
+
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      zone.classList.remove('drag-active');
+
+      let data = draggedStatusData;
+      if (!data) {
+        try {
+          data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        } catch (err) {}
+      }
+      if (!data) return;
+
+      const targetColId = zone.dataset.columnId;
+      const targetColName = zone.dataset.columnName;
+
+      if (data.type === 'chip') {
+        document.getElementById('modalColumnId').value = targetColId;
+        document.getElementById('modalJiraStatusId').value = data.statusId;
+        document.getElementById('modalJiraStatusName').textContent = data.statusName;
+        document.getElementById('modalColumnName').textContent = targetColName;
+        document.getElementById('modalTransferCheck').checked = true;
+        document.getElementById('addMappingModal').classList.add('active');
+      } else if (data.type === 'mapped') {
+        if (data.columnId === targetColId) return; // Same column
+        document.getElementById('moveMappingId').value = data.mappingId;
+        document.getElementById('moveTargetColumnId').value = targetColId;
+        document.getElementById('moveJiraStatusName').textContent = data.statusName;
+        document.getElementById('moveFromColumnName').textContent = data.columnName;
+        document.getElementById('moveToColumnName').textContent = targetColName;
+        document.getElementById('moveMappingModal').classList.add('active');
+      }
+    });
+  });
+
+  // 4. Unmap Drop Zone
+  const unmapZone = document.getElementById('poolUnmapZone');
+  if (unmapZone) {
+    unmapZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      unmapZone.classList.add('drag-over');
+    });
+
+    unmapZone.addEventListener('dragleave', () => {
+      unmapZone.classList.remove('drag-over');
+    });
+
+    unmapZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      unmapZone.classList.remove('drag-over');
+
+      let data = draggedStatusData;
+      if (!data) {
+        try {
+          data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        } catch (err) {}
+      }
+      if (!data || data.type !== 'mapped') return;
+
+      document.getElementById('deleteMappingId').value = data.mappingId;
+      document.getElementById('deleteJiraStatusName').textContent = data.statusName;
+      document.getElementById('deleteFromColumnName').textContent = data.columnName;
+      document.getElementById('deleteMappingModal').classList.add('active');
+    });
+  }
+</script>
 {% endblock %}
