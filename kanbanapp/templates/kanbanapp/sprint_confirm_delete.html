@@ -1,0 +1,15 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Sprint Sil — {{ sprint.name }}{% endblock %}
+{% block content %}
+<div class="auth-card">
+  <h1>Sprint Sil</h1>
+  <p><strong>{{ sprint.name }}</strong> sprintini silmek istediğinizden emin misiniz? (İçindeki kartlar silinmez, sadece sprint atamaları kaldırılır.)</p>
+  <form method="post">
+    {% csrf_token %}
+    <div style="display:flex; gap:10px;">
+      <button type="submit" class="btn-danger">Evet, Sil</button>
+      <a href="{% url 'sprints' project.id %}" class="btn-ghost">İptal</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

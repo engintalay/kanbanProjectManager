@@ -1,0 +1,44 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}İş Değişiklik Talebi — {{ card.title }}{% endblock %}
+{% block content %}
+<div class="auth-card" style="max-width: 540px;">
+  <a href="{% url 'board' project.id %}" class="back-link">← Panoya Dön</a>
+  <h1>İş Değişiklik Talebi</h1>
+  <p class="hint"><strong>{{ card.title }}</strong> {% if card.jira_key %}({{ card.jira_key }}){% endif %} için yöneticiye talep gönderin.</p>
+
+  <div style="background:var(--bg); padding:10px 14px; border-radius:8px; border:1px solid var(--border); margin-bottom:16px; font-size:0.88rem;">
+    Mevcut Zorluk Derecesi:
+    {% if card.difficulty_level %}
+    <span class="diff-badge" style="background-color: {{ card.difficulty_color }};">{{ card.difficulty_level }} ({{ card.difficulty_label }})</span>
+    {% else %}
+    <span class="muted">Belirlenmedi</span>
+    {% endif %}
+  </div>
+
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <label>
+      Talep Türü:
+      {{ form.type }}
+    </label>
+    <label>
+      Gerekçe:
+      {{ form.reason }}
+    </label>
+    <label>
+      Talep Edilen Zorluk Seviyesi (Fibonacci):
+      {{ form.requested_difficulty }}
+      <span class="form-text">Zor gelen işler için Fibonacci 55 ve 89 seçenekleri mevcuttur.</span>
+    </label>
+    <label>
+      Açıklama:
+      {{ form.description }}
+    </label>
+
+    <div style="display:flex; gap:10px; margin-top:14px;">
+      <button type="submit" class="btn-primary">Talebi İlet</button>
+      <a href="{% url 'board' project.id %}" class="btn-ghost">İptal</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

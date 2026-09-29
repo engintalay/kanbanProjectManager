@@ -1,0 +1,71 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}İş Bölme — {{ card.title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'board' project.id %}" class="back-link">← Panoya Dön</a>
+    <h1>İş Bölme &mdash; {{ card.title }}</h1>
+    <p class="muted">Ana işi alt görevlere (sub-task) bölerek takip edin. Ana işin zorluk seviyesi 0'a çekilir.</p>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px;">
+  <!-- Sub-task addition form -->
+  <div class="auth-card" style="margin:0; max-width:none;">
+    <h2>Yeni Alt Görev Ekle</h2>
+    <form method="post" class="auth-form">
+      {% csrf_token %}
+      <label>
+        Alt Görev Başlığı:
+        {{ form.title }}
+      </label>
+      <label>
+        Zorluk Seviyesi (Fibonacci):
+        {{ form.difficulty_level }}
+      </label>
+      <label>
+        Atanan Programcı:
+        {{ form.assignee }}
+      </label>
+      <label>
+        Açıklama:
+        {{ form.description }}
+      </label>
+      <div style="display:flex; gap:10px; margin-top:14px;">
+        <button type="submit" class="btn-primary">Alt Görev Ekle</button>
+        <a href="{% url 'board' project.id %}" class="btn-ghost">Tamamla & Panoya Dön</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Existing sub-tasks list -->
+  <div>
+    <h2>Mevcut Alt Görevler ({{ sub_tasks.count }})</h2>
+    <div style="display:flex; flex-direction:column; gap:12px;">
+      {% for sub in sub_tasks %}
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">{{ sub.title }}</div>
+          {% if sub.difficulty_level %}
+          <span class="diff-badge" style="background-color: {{ sub.difficulty_color }};">
+            {{ sub.difficulty_level }}
+          </span>
+          {% endif %}
+        </div>
+        <div class="card-meta-row">
+          {% if sub.assignee %}
+          <span class="assignee-badge">👤 {{ sub.assignee.username }}</span>
+          {% else %}
+          <span class="muted" style="font-size:0.75rem;">Atanmadı</span>
+          {% endif %}
+          <span class="badge">{{ sub.column.name }}</span>
+        </div>
+        {% if sub.description %}<div class="card-desc">{{ sub.description }}</div>{% endif %}
+      </div>
+      {% empty %}
+      <p class="empty">Henüz eklenmiş alt görev yok.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

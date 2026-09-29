@@ -1,0 +1,72 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{{ project.key }} — Geliştirici Talepleri{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'board' project.id %}" class="back-link">← {{ project.name }} Panosu</a>
+    <h1>Geliştirici Talepleri &mdash; {{ project.name }}</h1>
+    <p class="muted">Programcılardan gelen zorluk değişikliği, iş bölme ve yeniden atama talepleri.</p>
+  </div>
+</div>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Tarih</th>
+      <th>Kart</th>
+      <th>Talep Eden</th>
+      <th>Tür</th>
+      <th>Gerekçe</th>
+      <th>İstenen Zorluk</th>
+      <th>Açıklama</th>
+      <th>Durum</th>
+      <th>İşlem</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for req in requests %}
+    <tr>
+      <td class="muted">{{ req.created_at|date:"d M H:i" }}</td>
+      <td>
+        <strong>{{ req.card.title }}</strong>
+        {% if req.card.jira_key %}<br><span class="card-key">{{ req.card.jira_key }}</span>{% endif %}
+      </td>
+      <td>{{ req.requested_by.username }}</td>
+      <td><span class="badge">{{ req.get_type_display }}</span></td>
+      <td>{{ req.get_reason_display|default:"-" }}</td>
+      <td>
+        {% if req.requested_difficulty %}
+        <span class="diff-badge" style="background:#4f46e5;">{{ req.requested_difficulty }}</span>
+        {% else %}-{% endif %}
+      </td>
+      <td>{{ req.description|default:"-" }}</td>
+      <td>
+        <span class="badge {% if req.status == 'approved' %}badge-ok{% elif req.status == 'rejected' %}badge-warn{% endif %}">
+          {{ req.get_status_display }}
+        </span>
+      </td>
+      <td>
+        {% if req.status == 'pending' %}
+        <div style="display:flex; gap:6px;">
+          <form method="post" action="{% url 'issue_request_action' project.id req.id 'approve' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary" style="padding:4px 8px; font-size:0.75rem;">Onayla</button>
+          </form>
+          <form method="post" action="{% url 'issue_request_action' project.id req.id 'reject' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-danger" style="padding:4px 8px; font-size:0.75rem;">Reddet</button>
+          </form>
+        </div>
+        {% else %}
+        <span class="muted" style="font-size:0.8rem;">İncelendi</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td colspan="9" class="empty" style="text-align:center; padding:30px;">Henüz bir talep bulunmuyor.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

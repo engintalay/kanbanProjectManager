@@ -1,7 +1,22 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import JiraConnection, JiraCustomStatus, JiraIssue, JiraStatus, KanbanColumn, KanbanCard, Project, RefreshLog, Role, User
+from .models import (
+    IssueRequest,
+    JiraConnection,
+    JiraCustomStatus,
+    JiraIssue,
+    JiraStatus,
+    KanbanCard,
+    KanbanColumn,
+    Project,
+    ProjectMember,
+    RefreshLog,
+    Role,
+    Sprint,
+    StatusMapping,
+    User,
+)
 
 
 @admin.register(Role)
@@ -35,6 +50,12 @@ class ProjectAdmin(admin.ModelAdmin):
     list_display = ("key", "name", "jira_connection", "created_by", "created_at")
     search_fields = ("key", "name")
     list_filter = ("created_by",)
+
+
+@admin.register(ProjectMember)
+class ProjectMemberAdmin(admin.ModelAdmin):
+    list_display = ("project", "user", "created_at")
+    list_filter = ("project",)
 
 
 @admin.register(JiraConnection)
@@ -72,10 +93,30 @@ class KanbanColumnAdmin(admin.ModelAdmin):
 
 @admin.register(KanbanCard)
 class KanbanCardAdmin(admin.ModelAdmin):
-    list_display = ("title", "column", "project", "jira_key", "is_extra")
-    list_filter = ("column", "project", "is_extra")
+    list_display = ("title", "column", "project", "difficulty_level", "assignee", "sprint", "jira_key", "is_extra")
+    list_filter = ("column", "project", "difficulty_level", "sprint", "is_extra")
     search_fields = ("title", "jira_key")
     readonly_fields = ("jira_issue_id", "jira_key", "created_at", "updated_at")
+
+
+@admin.register(StatusMapping)
+class StatusMappingAdmin(admin.ModelAdmin):
+    list_display = ("app_status", "jira_status", "project", "position")
+    list_filter = ("project",)
+
+
+@admin.register(Sprint)
+class SprintAdmin(admin.ModelAdmin):
+    list_display = ("name", "project", "status", "duration", "start_date", "total_difficulty", "default_capacity")
+    list_filter = ("project", "status", "duration")
+    search_fields = ("name", "project__key")
+
+
+@admin.register(IssueRequest)
+class IssueRequestAdmin(admin.ModelAdmin):
+    list_display = ("card", "project", "type", "reason", "requested_difficulty", "status", "requested_by", "created_at")
+    list_filter = ("project", "type", "status")
+    search_fields = ("card__title", "description")
 
 
 @admin.register(RefreshLog)

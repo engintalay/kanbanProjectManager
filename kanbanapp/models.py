@@ -168,6 +168,119 @@ class KanbanColumn(models.Model):
         return self.name
 
 
+FIBONACCI_DIFFICULTIES = [
+    (1, "1 - Çok Kolay"),
+    (2, "2 - Kolay"),
+    (3, "3 - Orta (3)"),
+    (5, "5 - Orta (5)"),
+    (8, "8 - Zor"),
+    (13, "13 - Çok Zor"),
+    (21, "21 - Aşırı Zor"),
+    (34, "34 - Kritik (Bölünmeli)"),
+    (55, "55 - Programcı Talebi (55)"),
+    (89, "89 - Programcı Talebi (89)"),
+]
+
+DIFFICULTY_COLORS = {
+    1: "#10b981",
+    2: "#10b981",
+    3: "#f59e0b",
+    5: "#ea580c",
+    8: "#ef4444",
+    13: "#b91c1c",
+    21: "#8b5cf6",
+    34: "#18181b",
+    55: "#4c1d95",
+    89: "#09090b",
+}
+
+DIFFICULTY_LABELS = {
+    1: "Çok Kolay",
+    2: "Kolay",
+    3: "Orta",
+    5: "Orta",
+    8: "Zor",
+    13: "Çok Zor",
+    21: "Aşırı Zor",
+    34: "Kritik",
+    55: "Aşırı Zor (55)",
+    89: "Aşırı Zor (89)",
+}
+
+
+class Sprint(models.Model):
+    DURATION_1_WEEK = "1_hafta"
+    DURATION_2_WEEKS = "2_hafta"
+    DURATION_3_WEEKS = "3_hafta"
+    DURATION_4_WEEKS = "4_hafta"
+    DURATION_FREE = "serbest"
+
+    DURATION_CHOICES = [
+        (DURATION_1_WEEK, "1 Hafta"),
+        (DURATION_2_WEEKS, "2 Hafta"),
+        (DURATION_3_WEEKS, "3 Hafta"),
+        (DURATION_4_WEEKS, "4 Hafta"),
+        (DURATION_FREE, "Serbest"),
+    ]
+
+    STATUS_PLANNING = "planning"
+    STATUS_ACTIVE = "active"
+    STATUS_COMPLETED = "completed"
+
+    STATUS_CHOICES = [
+        (STATUS_PLANNING, "Planlama"),
+        (STATUS_ACTIVE, "Aktif"),
+        (STATUS_COMPLETED, "Tamamlandı"),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="sprints")
+    name = models.CharField(max_length=200)
+    start_date = models.DateField(null=True, blank=True)
+    duration = models.CharField(max_length=20, choices=DURATION_CHOICES, default=DURATION_2_WEEKS)
+    team_members = models.ManyToManyField(User, blank=True, related_name="sprints")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PLANNING)
+    position = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["position", "-created_at"]
+
+    def __str__(self):
+        return f"{self.project.key} - {self.name} ({self.get_status_display()})"
+
+    @property
+    def total_difficulty(self):
+        """Sum of difficulty_level for all cards in this sprint."""
+        cards = self.cards.all()
+        return sum(c.difficulty_level or 0 for c in cards)
+
+    @property
+    def default_capacity(self):
+        """Average difficulty of previous completed sprints in this project, or default 40."""
+        prev = Sprint.objects.filter(project=self.project, status=Sprint.STATUS_COMPLETED).exclude(id=self.id)
+        if prev.exists():
+            totals = [s.total_difficulty for s in prev if s.total_difficulty > 0]
+            if totals:
+                return round(sum(totals) / len(totals))
+        return 40
+
+    @property
+    def capacity_percentage(self):
+        cap = self.default_capacity
+        if cap <= 0:
+            return 0
+        return round((self.total_difficulty / cap) * 100)
+
+    @property
+    def is_under_capacity(self):
+        return self.capacity_percentage < 75
+
+    @property
+    def is_over_capacity(self):
+        return self.capacity_percentage > 100
+
+
 class KanbanCard(models.Model):
     project = models.ForeignKey(
         Project, on_delete=models.CASCADE, related_name="cards"
@@ -181,6 +294,27 @@ class KanbanCard(models.Model):
     jira_key = models.CharField(max_length=50, null=True, blank=True, db_index=True)
     is_extra = models.BooleanField(default=False, help_text="Jira issue'ye bağlı olmayan kart")
     position = models.IntegerField(default=0)
+
+    # Fibonacci Zorluk Seviyeleri (PLAN.md §7)
+    difficulty_level = models.IntegerField(null=True, blank=True, choices=FIBONACCI_DIFFICULTIES)
+    initial_difficulty_level = models.IntegerField(null=True, blank=True)
+    requested_difficulty_level = models.IntegerField(null=True, blank=True)
+    developer_assessment = models.TextField(blank=True, default="")
+
+    # Sub-task yönetimi (PLAN.md §7)
+    parent_card = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="sub_tasks"
+    )
+    is_sub_task = models.BooleanField(default=False)
+
+    # Atama ve Sprint (PLAN.md §6.5 & §8)
+    assignee = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_cards"
+    )
+    sprint = models.ForeignKey(
+        Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name="cards"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -189,6 +323,84 @@ class KanbanCard(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def difficulty_color(self):
+        if self.difficulty_level:
+            return DIFFICULTY_COLORS.get(self.difficulty_level, "#6b7280")
+        return "#9ca3af"
+
+    @property
+    def difficulty_label(self):
+        if self.difficulty_level:
+            return DIFFICULTY_LABELS.get(self.difficulty_level, str(self.difficulty_level))
+        return "Belirlenmedi"
+
+    @property
+    def has_sub_tasks(self):
+        return self.sub_tasks.exists()
+
+
+class IssueRequest(models.Model):
+    TYPE_DIFFICULTY = "difficulty_change"
+    TYPE_SPLIT = "split"
+    TYPE_REASSIGN = "reassign"
+
+    TYPE_CHOICES = [
+        (TYPE_DIFFICULTY, "Zorluk Değişikliği"),
+        (TYPE_SPLIT, "İş Bölme (Sub-task)"),
+        (TYPE_REASSIGN, "Yeniden Atama"),
+    ]
+
+    REASON_TOO_HARD = "too_hard"
+    REASON_TOO_EASY = "too_easy"
+
+    REASON_CHOICES = [
+        (REASON_TOO_HARD, "Çok Zor Geldi"),
+        (REASON_TOO_EASY, "Çok Kolay Geldi"),
+    ]
+
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Bekliyor"),
+        (STATUS_APPROVED, "Onaylandı"),
+        (STATUS_REJECTED, "Reddedildi"),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="issue_requests")
+    card = models.ForeignKey(KanbanCard, on_delete=models.CASCADE, related_name="requests")
+    type = models.CharField(max_length=30, choices=TYPE_CHOICES, default=TYPE_DIFFICULTY)
+    reason = models.CharField(max_length=30, blank=True, choices=REASON_CHOICES)
+    requested_difficulty = models.IntegerField(null=True, blank=True, choices=FIBONACCI_DIFFICULTIES)
+    description = models.TextField(blank=True, default="")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    requested_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="submitted_requests")
+    assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="handled_requests")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.card.title} - {self.get_type_display()} ({self.get_status_display()})"
+
+
+class ProjectMember(models.Model):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="project_members")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="project_memberships")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["project", "user"], name="unique_project_user_member"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} @ {self.project.key}"
 
 
 class StatusMapping(models.Model):

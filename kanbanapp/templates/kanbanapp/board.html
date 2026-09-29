@@ -5,6 +5,9 @@
   <div>
     <a href="{% url 'projects' %}" class="back-link">← {{ project.key }}</a>
     <h1>{{ project.name }}</h1>
+    {% if active_sprint %}
+    <span class="muted">Aktif Sprint: <strong>{{ active_sprint.name }}</strong> (Toplam Zorluk: {{ active_sprint.total_difficulty }}) — <a href="{% url 'sprint_board' project.id active_sprint.id %}">Sprint Panosu →</a></span>
+    {% endif %}
   </div>
   <div class="head-actions">
     {% if can_edit_cards %}
@@ -13,11 +16,18 @@
     {% if can_manage_project %}
     <a href="{% url 'kanban_column_create' project.id %}" class="btn-ghost">Kolon Ekle</a>
     {% endif %}
+    <a href="{% url 'sprints' project.id %}" class="btn-ghost">Sprintler</a>
+    {% if can_manage_project %}
+    <a href="{% url 'issue_requests' project.id %}" class="btn-ghost">
+      Talepler {% if pending_requests_count > 0 %}<span class="badge-count">{{ pending_requests_count }}</span>{% endif %}
+    </a>
+    {% endif %}
     {% if project.jira_connection %}
     <a href="{% url 'refresh_project' project.id %}" class="btn-ghost">Jira Yenile</a>
     {% endif %}
   </div>
 </div>
+
 <div class="board">
   {% for column in columns %}
   <div class="board-column">
@@ -38,20 +48,67 @@
     <div class="board-column-body">
       {% for card in column.cards.all %}
       <div class="card">
-        <div class="card-title">{{ card.title }}</div>
-        {% if card.jira_key %}<div class="card-key">{{ card.jira_key }}</div>{% endif %}
-        {% if card.description %}<div class="card-desc">{{ card.description }}</div>{% endif %}
-        <div class="card-actions">
-          {% if can_edit_cards %}
-          <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost">Düzenle</a>
+        <div class="card-header">
+          <div class="card-title">{{ card.title }}</div>
+          {% if card.difficulty_level %}
+          <span class="diff-badge" style="background-color: {{ card.difficulty_color }};" title="{{ card.difficulty_label }}">
+            {{ card.difficulty_level }}
+          </span>
           {% endif %}
-          {% if can_manage_project %}
-          <form method="post" action="{% url 'kanban_card_delete' project.id card.id %}" class="inline-delete"
-                onclick="return confirm('Bu kartı silmek istediğinizden emin misiniz?');">
+        </div>
+
+        <div class="card-meta-row">
+          {% if card.jira_key %}<span class="card-key">{{ card.jira_key }}</span>{% endif %}
+          {% if card.assignee %}
+          <span class="assignee-badge">👤 {{ card.assignee.username }}</span>
+          {% elif can_edit_cards and role_level == 3 %}
+          <form method="post" action="{% url 'kanban_card_assign' project.id card.id %}" style="display:inline;">
             {% csrf_token %}
-            <button type="submit" class="btn-danger">Sil</button>
+            <button type="submit" class="btn-ghost" style="padding:2px 6px; font-size:0.7rem;">Üstüme Al</button>
+          </form>
+          {% else %}
+          <span class="muted" style="font-size:0.72rem;">Atanmadı</span>
+          {% endif %}
+          {% if card.has_sub_tasks %}
+          <span class="subtask-badge">{{ card.sub_tasks.count }} Alt Görev</span>
+          {% endif %}
+          {% if card.sprint %}
+          <span class="badge" style="font-size:0.7rem;">🏃 {{ card.sprint.name }}</span>
+          {% endif %}
+        </div>
+
+        {% if card.description %}<div class="card-desc">{{ card.description|truncatechars:120 }}</div>{% endif %}
+
+        <div class="card-footer">
+          {% if can_edit_cards %}
+          <!-- Move card to another column form -->
+          <form method="post" action="{% url 'kanban_card_move' project.id card.id %}" class="card-move-form">
+            {% csrf_token %}
+            <select name="column_id" class="card-move-select" onchange="this.form.submit()">
+              <option disabled selected>Durum Taşı...</option>
+              {% for col in columns %}
+                {% if col.id != column.id %}
+                <option value="{{ col.id }}">→ {{ col.name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
           </form>
           {% endif %}
+
+          <div class="card-actions">
+            {% if can_edit_cards %}
+            <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost">Düzenle</a>
+            <a href="{% url 'card_request_create' project.id card.id %}" class="btn-ghost" title="Zorluk veya atama değişikliği talep et">Talep Aç</a>
+            {% endif %}
+            {% if can_manage_project %}
+            <a href="{% url 'card_split' project.id card.id %}" class="btn-ghost" title="Alt görevlere böl">Böl</a>
+            <form method="post" action="{% url 'kanban_card_delete' project.id card.id %}" class="inline-delete"
+                  onclick="return confirm('Bu kartı silmek istediğinizden emin misiniz?');">
+              {% csrf_token %}
+              <button type="submit" class="btn-danger">Sil</button>
+            </form>
+            {% endif %}
+          </div>
         </div>
       </div>
       {% empty %}

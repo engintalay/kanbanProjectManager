@@ -244,3 +244,119 @@ class BugFixesAndPermissionsTests(TestCase):
         )
         self.assertEqual(card_resp.status_code, 403)
 
+
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class SprintAndCardWorkflowTests(TestCase):
+    def setUp(self):
+        self.admin_role = Role.objects.create(name="Admin", slug="admin", level=Role.LEVEL_ADMIN)
+        self.pm_role = Role.objects.create(name="Proje Yöneticisi", slug="pm", level=Role.LEVEL_PROJECT_MANAGER)
+        self.prog_role = Role.objects.create(name="Proje Programcısı", slug="prog", level=Role.LEVEL_PROGRAMMER)
+
+        self.pm = User.objects.create_user(username="pm_lead", password="p", email="pm@e.com", role=self.pm_role)
+        self.project = Project.objects.create(key="SPR", name="Sprint Project", created_by=self.pm)
+        self.prog = User.objects.create_user(username="prog_dev", password="p", email="dev@e.com", role=self.prog_role, project=self.project)
+
+        self.col_todo = KanbanColumn.objects.create(project=self.project, name="To Do", status_type="custom", position=0)
+        self.col_done = KanbanColumn.objects.create(project=self.project, name="Done", status_type="custom", position=1)
+
+        self.client = Client()
+
+    def test_sprint_crud_and_capacity(self):
+        self.client.force_login(self.pm)
+        create_resp = self.client.post(
+            reverse("sprint_create", kwargs={"project_id": self.project.id}),
+            {"name": "Sprint 1", "duration": "2_hafta", "status": "planning"},
+        )
+        self.assertEqual(create_resp.status_code, 302)
+        from .models import Sprint
+        sprint = Sprint.objects.get(name="Sprint 1")
+        self.assertEqual(sprint.duration, "2_hafta")
+
+        # Add cards to sprint
+        card1 = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Task 1", difficulty_level=8, sprint=sprint)
+        card2 = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Task 2", difficulty_level=13, sprint=sprint)
+
+        self.assertEqual(sprint.total_difficulty, 21)
+        self.assertEqual(sprint.default_capacity, 40)
+        self.assertTrue(sprint.is_under_capacity)  # 21/40 = 52% < 75%
+
+        # Sprint board view
+        board_resp = self.client.get(reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(board_resp.status_code, 200)
+        self.assertIn(b"Sprint 1", board_resp.content)
+        self.assertIn(b"Task 1", board_resp.content)
+
+    def test_card_move_between_columns(self):
+        card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Movable Task")
+        self.client.force_login(self.prog)
+        move_resp = self.client.post(
+            reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": card.id}),
+            {"column_id": self.col_done.id},
+        )
+        self.assertEqual(move_resp.status_code, 302)
+        card.refresh_from_db()
+        self.assertEqual(card.column_id, self.col_done.id)
+
+    def test_programmer_self_assign_and_cannot_unassign(self):
+        card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Unassigned Task")
+        self.client.force_login(self.prog)
+
+        # Self-assign
+        resp = self.client.post(reverse("kanban_card_assign", kwargs={"project_id": self.project.id, "card_id": card.id}))
+        self.assertEqual(resp.status_code, 302)
+        card.refresh_from_db()
+        self.assertEqual(card.assignee, self.prog)
+
+        # Programmer cannot unassign
+        resp2 = self.client.post(reverse("kanban_card_assign", kwargs={"project_id": self.project.id, "card_id": card.id}))
+        card.refresh_from_db()
+        self.assertEqual(card.assignee, self.prog)  # still assigned
+
+    def test_issue_request_and_pm_approval(self):
+        from .models import IssueRequest
+        card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Hard Task", difficulty_level=8, assignee=self.prog)
+        self.client.force_login(self.prog)
+
+        # Request difficulty change to 55 (PLAN.md §7: programmer only option)
+        req_resp = self.client.post(
+            reverse("card_request_create", kwargs={"project_id": self.project.id, "card_id": card.id}),
+            {"type": IssueRequest.TYPE_DIFFICULTY, "reason": "too_hard", "requested_difficulty": 55, "description": "Too hard"},
+        )
+        self.assertEqual(req_resp.status_code, 302)
+        req_obj = IssueRequest.objects.get(card=card)
+        self.assertEqual(req_obj.requested_difficulty, 55)
+        self.assertEqual(req_obj.status, IssueRequest.STATUS_PENDING)
+
+        # PM approves request
+        self.client.force_login(self.pm)
+        action_resp = self.client.post(
+            reverse("issue_request_action", kwargs={"project_id": self.project.id, "request_id": req_obj.id, "action": "approve"})
+        )
+        self.assertEqual(action_resp.status_code, 302)
+        req_obj.refresh_from_db()
+        self.assertEqual(req_obj.status, IssueRequest.STATUS_APPROVED)
+
+        card.refresh_from_db()
+        self.assertEqual(card.difficulty_level, 55)
+        self.assertEqual(card.requested_difficulty_level, 55)
+
+    def test_card_split_into_subtasks(self):
+        card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Big Feature", difficulty_level=34)
+        self.client.force_login(self.pm)
+
+        split_resp = self.client.post(
+            reverse("card_split", kwargs={"project_id": self.project.id, "card_id": card.id}),
+            {"title": "Subtask 1 - Frontend", "difficulty_level": 5, "description": "UI work"},
+        )
+        self.assertEqual(split_resp.status_code, 302)
+
+        card.refresh_from_db()
+        # PLAN.md §7: "Ana işin zorluk seviyesi bölünürken 0'a düşürülür."
+        self.assertEqual(card.difficulty_level, 0)
+        self.assertEqual(card.sub_tasks.count(), 1)
+        sub = card.sub_tasks.first()
+        self.assertEqual(sub.title, "Subtask 1 - Frontend")
+        self.assertEqual(sub.difficulty_level, 5)
+        self.assertTrue(sub.is_sub_task)
+
+

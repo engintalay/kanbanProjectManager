@@ -1,0 +1,39 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{% if mode == 'create' %}Yeni Sprint{% else %}Sprint Düzenle{% endif %} — {{ project.key }}{% endblock %}
+{% block content %}
+<div class="auth-card" style="max-width: 600px;">
+  <a href="{% url 'sprints' project.id %}" class="back-link">← Sprintlere Dön</a>
+  <h1>{% if mode == 'create' %}Yeni Sprint Oluştur{% else %}Sprint Düzenle{% endif %}</h1>
+  <p class="hint">{{ project.name }} projesi için sprint ayarlarını belirleyin.</p>
+
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <label>
+      Sprint Adı:
+      {{ form.name }}
+    </label>
+    <label>
+      Başlangıç Tarihi:
+      {{ form.start_date }}
+    </label>
+    <label>
+      Sprint Süresi:
+      {{ form.duration }}
+    </label>
+    <label>
+      Durum:
+      {{ form.status }}
+    </label>
+    <label>
+      Ekip Üyeleri:
+      {{ form.team_members }}
+      <span class="form-text">Birden fazla seçmek için Ctrl (veya Cmd) tuşuna basılı tutun.</span>
+    </label>
+
+    <div style="display:flex; gap:10px; margin-top:14px;">
+      <button type="submit" class="btn-primary">Kaydet</button>
+      <a href="{% url 'sprints' project.id %}" class="btn-ghost">İptal</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,58 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{{ project.key }} — Sprintler{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'board' project.id %}" class="back-link">← {{ project.name }} Panosu</a>
+    <h1>{{ project.name }} &mdash; Sprintler</h1>
+  </div>
+  {% if can_manage_project %}
+  <div class="head-actions">
+    <a href="{% url 'sprint_create' project.id %}" class="btn-primary">Yeni Sprint Oluştur</a>
+  </div>
+  {% endif %}
+</div>
+
+{% for sprint in sprints %}
+<div class="capacity-card">
+  <div class="capacity-info">
+    <div>
+      <a href="{% url 'sprint_board' project.id sprint.id %}" style="font-size:1.15rem; font-weight:700;">{{ sprint.name }}</a>
+      <span class="badge" style="margin-left: 8px;">{{ sprint.get_status_display }}</span>
+      <span class="muted" style="margin-left: 8px;">Süre: {{ sprint.get_duration_display }}</span>
+      {% if sprint.start_date %}<span class="muted" style="margin-left: 8px;">Başlangıç: {{ sprint.start_date|date:"d M Y" }}</span>{% endif %}
+    </div>
+    <div>
+      <span>Zorluk Seviyesi: <strong>{{ sprint.total_difficulty }}</strong> / Kapasite: <strong>{{ sprint.default_capacity }}</strong> (%{{ sprint.capacity_percentage }})</span>
+      {% if can_manage_project %}
+      <a href="{% url 'sprint_edit' project.id sprint.id %}" class="btn-ghost" style="margin-left:12px;">Düzenle</a>
+      <a href="{% url 'sprint_delete' project.id sprint.id %}" class="btn-danger" style="margin-left:4px;">Sil</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="progress-container">
+    <div class="progress-bar {% if sprint.is_over_capacity %}progress-danger{% elif sprint.is_under_capacity %}progress-warn{% else %}progress-ok{% endif %}"
+         style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+    </div>
+  </div>
+
+  {% if sprint.is_over_capacity %}
+  <div class="alert-box alert-danger" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
+    ⚠️ <strong>Aşım Uyarısı:</strong> Bu sprint, geçmiş sprint ortalama kapasitesini (%{{ sprint.capacity_percentage }}) aşmıştır.
+  </div>
+  {% elif sprint.is_under_capacity %}
+  <div class="alert-box alert-warn" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
+    ℹ️ <strong>Boş Sprint Uyarısı:</strong> Bu sprint kapasitenin %75'inin altında kalmıştır. Yeni kartlar ekleyebilirsiniz.
+  </div>
+  {% endif %}
+
+  <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+    <span class="muted" style="font-size:0.85rem;">{{ sprint.cards.count }} kart planlandı</span>
+    <a href="{% url 'sprint_board' project.id sprint.id %}" class="btn-ghost">Sprint Panosunu Görüntüle →</a>
+  </div>
+</div>
+{% empty %}
+<p class="empty">Henüz sprint tanımlanmamış. {% if can_manage_project %}<a href="{% url 'sprint_create' project.id %}">Yeni bir sprint oluşturun.</a>{% endif %}</p>
+{% endfor %}
+{% endblock %}

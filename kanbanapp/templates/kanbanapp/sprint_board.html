@@ -1,0 +1,141 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{{ sprint.name }} — Sprint Panosu{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'sprints' project.id %}" class="back-link">← {{ project.name }} Sprintleri</a>
+    <h1>{{ sprint.name }} &mdash; Sprint Panosu</h1>
+    <span class="muted">Durum: <strong>{{ sprint.get_status_display }}</strong> | Süre: {{ sprint.get_duration_display }} {% if sprint.start_date %}| Başlangıç: {{ sprint.start_date|date:"d M Y" }}{% endif %}</span>
+  </div>
+  <div class="head-actions">
+    {% if can_edit_cards %}
+    <a href="{% url 'kanban_card_create' project.id %}" class="btn-primary">Yeni Kart Ekle</a>
+    {% endif %}
+    {% if can_manage_project %}
+    <a href="{% url 'sprint_edit' project.id sprint.id %}" class="btn-ghost">Sprinti Düzenle</a>
+    {% endif %}
+    <a href="{% url 'board' project.id %}" class="btn-ghost">Genel Pano</a>
+  </div>
+</div>
+
+<!-- Sprint Capacity Meter (PLAN.md §6.6) -->
+<div class="capacity-card">
+  <div class="capacity-info">
+    <span>Sprint Toplam Zorluk Seviyesi: <strong>{{ sprint.total_difficulty }}</strong> / Hedeflenen Kapasite: <strong>{{ sprint.default_capacity }}</strong> (%{{ sprint.capacity_percentage }})</span>
+    <span class="badge {% if sprint.is_over_capacity %}badge-warn{% elif sprint.is_under_capacity %}badge-warn{% else %}badge-ok{% endif %}">
+      {% if sprint.is_over_capacity %}Kapasite Aşımı{% elif sprint.is_under_capacity %}Düşük Kapasite (<%75){% else %}Normal Seviye{% endif %}
+    </span>
+  </div>
+  <div class="progress-container">
+    <div class="progress-bar {% if sprint.is_over_capacity %}progress-danger{% elif sprint.is_under_capacity %}progress-warn{% else %}progress-ok{% endif %}"
+         style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+    </div>
+  </div>
+  {% if sprint.is_over_capacity %}
+  <div class="alert-box alert-danger" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
+    ⚠️ <strong>Aşım Uyarısı:</strong> Bu sprint, geçmiş sprint ortalama kapasitesini (%{{ sprint.capacity_percentage }}) aşmıştır.
+  </div>
+  {% elif sprint.is_under_capacity %}
+  <div class="alert-box alert-warn" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
+    ℹ️ <strong>Boş Sprint Uyarısı:</strong> Bu sprint kapasitenin %75'inin altında kalmıştır.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Blocked Cards Warnings (PLAN.md §6.5) -->
+{% if blocked_cards %}
+<div class="alert-box alert-danger" style="margin-bottom:20px;">
+  <strong>⛔ Bağımlılık & Bloklu İş Uyarısı:</strong>
+  <ul style="margin:6px 0 0 20px; padding:0; font-size:0.9rem;">
+    {% for b in blocked_cards %}
+    <li>
+      <strong>{{ b.card.jira_key }} - {{ b.card.title }}</strong> işi tamamlanmamış bağımlılıklara sahiptir:
+      <code>{{ b.blocked_by|join:", " }}</code>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<!-- Sprint Columns & Cards -->
+<div class="board">
+  {% for column in columns %}
+  <div class="board-column">
+    <div class="board-column-header">
+      <span class="col-name">{{ column.name }}</span>
+      <span class="badge">
+        {% with s_cards=column.cards.all %}
+          {{ sprint.cards.all|length }} kart
+        {% endwith %}
+      </span>
+      {% if column.status_mappings.exists %}
+      <span class="status-map-status">↔ {{ column.status_mappings.first.jira_status.name|default:"(mape edilmemiş)" }}</span>
+      {% endif %}
+    </div>
+    <div class="board-column-body">
+      {% for card in column.cards.all %}
+        {% if card.sprint_id == sprint.id %}
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">{{ card.title }}</div>
+            {% if card.difficulty_level %}
+            <span class="diff-badge" style="background-color: {{ card.difficulty_color }};" title="{{ card.difficulty_label }}">
+              {{ card.difficulty_level }}
+            </span>
+            {% endif %}
+          </div>
+
+          <div class="card-meta-row">
+            {% if card.jira_key %}<span class="card-key">{{ card.jira_key }}</span>{% endif %}
+            {% if card.assignee %}
+            <span class="assignee-badge">👤 {{ card.assignee.username }}</span>
+            {% elif can_edit_cards and role_level == 3 %}
+            <form method="post" action="{% url 'kanban_card_assign' project.id card.id %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn-ghost" style="padding:2px 6px; font-size:0.7rem;">Üstüme Al</button>
+            </form>
+            {% else %}
+            <span class="muted" style="font-size:0.72rem;">Atanmadı</span>
+            {% endif %}
+            {% if card.has_sub_tasks %}
+            <span class="subtask-badge">{{ card.sub_tasks.count }} Alt Görev</span>
+            {% endif %}
+          </div>
+
+          {% if card.description %}<div class="card-desc">{{ card.description|truncatechars:120 }}</div>{% endif %}
+
+          <div class="card-footer">
+            {% if can_edit_cards %}
+            <form method="post" action="{% url 'kanban_card_move' project.id card.id %}" class="card-move-form">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'sprint_board' project.id sprint.id %}">
+              <select name="column_id" class="card-move-select" onchange="this.form.submit()">
+                <option disabled selected>Durum Taşı...</option>
+                {% for col in columns %}
+                  {% if col.id != column.id %}
+                  <option value="{{ col.id }}">→ {{ col.name }}</option>
+                  {% endif %}
+                {% endfor %}
+              </select>
+            </form>
+            {% endif %}
+
+            <div class="card-actions">
+              {% if can_edit_cards %}
+              <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost">Düzenle</a>
+              <a href="{% url 'card_request_create' project.id card.id %}" class="btn-ghost">Talep Aç</a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      {% empty %}
+      <p class="empty">Bu kolonda kart yok.</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% empty %}
+  <p class="empty">Kolon bulunamadı.</p>
+  {% endfor %}
+</div>
+{% endblock %}
