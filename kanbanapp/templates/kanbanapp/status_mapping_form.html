@@ -29,9 +29,14 @@
     {% for error in field.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
     {% endfor %}
     {% for error in form.non_field_errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
     <div class="form-actions">
       <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Kaydet{% endif %}</button>
-      <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>
+      {% if next_url %}
+      <a href="{{ next_url }}" class="btn-secondary">İptal</a>
+      {% else %}
+      <a href="{% url 'project_status_mappings' project.id %}" class="btn-secondary">İptal</a>
+      {% endif %}
     </div>
   </form>
   <p class="form-text">

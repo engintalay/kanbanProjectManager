@@ -484,6 +484,11 @@ class StatusMapping(models.Model):
         verbose_name="Jira'ya Statü Aktar",
         help_text="Kart bu kolona taşındığında Jira'da ilgili statüye geçiş yapılır. Kapatılırsa bu kolon için Jira statüsü aktarılmaz.",
     )
+    is_primary = models.BooleanField(
+        default=True,
+        verbose_name="Birincil Geçiş Statüsü",
+        help_text="Kart bu kolona taşındığında Jira'da geçilecek birincil durum.",
+    )
     position = models.IntegerField(default=0)
 
     class Meta:
@@ -491,7 +496,7 @@ class StatusMapping(models.Model):
         verbose_name = "Durum Eşlemesi"
         verbose_name_plural = "Durum Eşlemeleri"
         constraints = [
-            models.UniqueConstraint(fields=["app_status"], name="unique_app_status"),
+            models.UniqueConstraint(fields=["app_status", "jira_status"], name="unique_app_jira_status"),
         ]
 
     def __str__(self):

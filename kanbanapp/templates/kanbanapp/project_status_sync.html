@@ -1,0 +1,302 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Jira Statü Eşleme & Aktarma — {{ project.key }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'board' project.id %}" class="back-link">← {{ project.name }} Panosu</a>
+    <h1>Jira Statü Eşleme & Aktarma</h1>
+    <span class="muted" style="font-size: 0.88rem;">
+      Proje: <strong>{{ project.name }} ({{ project.key }})</strong>
+      {% if project.jira_connection %}
+      — Jira: <strong>{{ project.jira_connection.name }}</strong> ({{ project.jira_connection.host }})
+      {% endif %}
+    </span>
+  </div>
+  <div class="head-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <a href="{% url 'board' project.id %}" class="btn-ghost">📋 Panoya Dön</a>
+    {% if project.jira_connection and can_manage_project %}
+    <form method="post" style="display: inline;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="auto_map">
+      <button type="submit" class="btn-ghost" title="İsim benzerliğine göre otomatik durum eşlemesi yapar">⚡ Otomatik Eşle</button>
+    </form>
+    <form method="post" style="display: inline;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="pull_jira_statuses">
+      <button type="submit" class="btn-ghost" title="Jira sunucusundaki tüm statüleri çeker ve günceller">🔄 Jira'dan Statüleri Çek</button>
+    </form>
+    <form method="post" style="display: inline;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="toggle_project_sync">
+      <button type="submit" class="btn-ghost" style="{% if project.sync_jira_status %}border-color: #22c55e; color: #22c55e;{% else %}border-color: #f59e0b; color: #f59e0b;{% endif %}" title="Proje genelinde Jira durum aktarımını açar/kapatır">
+        {% if project.sync_jira_status %}⏸️ Statü Aktarımını Kapat{% else %}▶️ Statü Aktarımını Aç{% endif %}
+      </button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Sync Status & Stats Card -->
+<div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; margin-bottom: 22px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 14px;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      {% if project.sync_jira_status %}
+      <span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid #22c55e; font-size: 0.85rem; padding: 4px 10px;">
+        ● Jira Statü Aktarımı: AKTİF
+      </span>
+      {% else %}
+      <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 0.85rem; padding: 4px 10px;">
+        ○ Jira Statü Aktarımı: DEVRE DIŞI
+      </span>
+      {% endif %}
+      {% if not project.jira_connection %}
+      <span class="badge badge-warn" style="font-size: 0.85rem; padding: 4px 10px;">Jira Bağlantısı Yok</span>
+      {% endif %}
+    </div>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.85rem;">
+      <span style="background: var(--bg); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);">
+        <strong>{{ total_columns }}</strong> Uygulama Durumu
+      </span>
+      <span style="background: var(--bg); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);">
+        <strong>{{ total_mappings }}</strong> Aktif Eşleme
+      </span>
+      <span style="background: var(--bg); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);">
+        <strong>{{ total_jira_statuses }}</strong> Jira Statüsü
+      </span>
+      <span style="background: var(--bg); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);">
+        <strong>{{ unmapped_jira_count }}</strong> Eşlenmemiş Jira Statüsü
+      </span>
+    </div>
+  </div>
+
+  <p style="margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.5;">
+    💡 <strong>Detaylı Statü Yönetimi:</strong> Uygulama içinde Jira'dakinden daha detaylı statüler tutabilirsiniz. Bir uygulama durumuna birden fazla Jira statüsü eşlenebilir veya birden fazla uygulama durumu tek bir Jira statüsüne bağlanabilir. Kart bir duruma taşındığında Jira'da <strong>[Birincil]</strong> olarak işaretlenen statüye geçiş yapılır. "Jira Aktarımı Kapalı" seçilen durumlarda Jira geçişi yapılmaz.
+  </p>
+</div>
+
+<!-- Layout: Two main sections -->
+<div style="display: grid; grid-template-columns: 1fr; gap: 24px;">
+
+  <!-- Section 1: Application Columns & Mappings -->
+  <div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+      <h2 style="margin: 0; font-size: 1.25rem;">📋 Uygulama Durumları & Jira Eşlemeleri</h2>
+      {% if can_manage_project %}
+      <a href="{% url 'kanban_column_create' project.id %}" class="btn-ghost" style="font-size: 0.82rem;">+ Yeni Kolon Ekle</a>
+      {% endif %}
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      {% for item in columns_data %}
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.1rem; font-weight: 600; color: var(--text);">{{ item.column.name }}</span>
+            <span class="badge" style="font-size: 0.72rem;">Sıra: {{ item.column.position }}</span>
+            <span class="badge" style="font-size: 0.72rem; {% if item.column.status_type == 'jira' %}background: rgba(99, 102, 241, 0.15); color: #818cf8;{% else %}background: rgba(148, 163, 184, 0.15); color: #94a3b8;{% endif %}">
+              {{ item.column.get_status_type_display }}
+            </span>
+            <span class="badge" style="font-size: 0.72rem;">{{ item.column.cards.count }} kart</span>
+          </div>
+          {% if can_manage_project %}
+          <div style="display: flex; gap: 6px;">
+            <a href="{% url 'kanban_column_edit' project.id item.column.id %}" class="btn-ghost" style="font-size: 0.78rem; padding: 3px 8px;">Kolonu Düzenle</a>
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Mappings list -->
+        <div style="margin-bottom: 14px;">
+          <div style="font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;">Bağlı Jira Statüleri:</div>
+          {% if item.mappings %}
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            {% for m in item.mappings %}
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px;">
+              <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <span style="font-weight: 600; color: #f8fafc; font-size: 0.92rem;">
+                  ↔ {{ m.jira_status.name|default:"(Tanımsız Jira Statüsü)" }}
+                </span>
+                {% if m.jira_status.jira_id %}
+                <span class="muted" style="font-size: 0.75rem;">(ID: {{ m.jira_status.jira_id }})</span>
+                {% endif %}
+
+                <!-- Primary Badge / Action -->
+                {% if m.is_primary %}
+                <span class="badge" style="background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid #22c55e; font-size: 0.72rem;" title="Kart bu kolona taşındığında Jira bu statüye güncellenir">
+                  ★ Birincil Hedef
+                </span>
+                {% elif can_manage_project %}
+                <form method="post" style="display: inline;">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="set_primary">
+                  <input type="hidden" name="mapping_id" value="{{ m.id }}">
+                  <button type="submit" class="btn-ghost" style="font-size: 0.72rem; padding: 2px 7px;" title="Bu Jira statüsünü birincil hedef yap">Birincil Yap</button>
+                </form>
+                {% endif %}
+
+                <!-- Transfer Badge / Action -->
+                {% if m.transfer_to_jira %}
+                <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.5); font-size: 0.72rem;">
+                  Jira Aktarımı: Açık
+                </span>
+                {% else %}
+                <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid #f59e0b; font-size: 0.72rem;" title="Kart bu kolona taşındığında Jira statüsü aktarılmaz">
+                  Jira Aktarımı: KAPALI
+                </span>
+                {% endif %}
+              </div>
+
+              {% if can_manage_project %}
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <form method="post" style="display: inline;">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="toggle_transfer">
+                  <input type="hidden" name="mapping_id" value="{{ m.id }}">
+                  <button type="submit" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px;" title="Jira'ya statü geçişi aktarımını açar veya kapatır">
+                    {% if m.transfer_to_jira %}Aktarımı Kapat{% else %}Aktarımı Aç{% endif %}
+                  </button>
+                </form>
+                <a href="{% url 'status_mapping_edit' project.id m.id %}?next={% url 'project_status_mappings' project.id %}" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px;">Düzenle</a>
+                <form method="post" style="display: inline;" onsubmit="return confirm('Bu statü eşlemesini silmek istediğinizden emin misiniz?');">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete_mapping">
+                  <input type="hidden" name="mapping_id" value="{{ m.id }}">
+                  <button type="submit" class="btn-danger" style="font-size: 0.75rem; padding: 3px 8px;">Kaldır</button>
+                </form>
+              </div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed var(--border); border-radius: 8px; padding: 12px; font-size: 0.85rem; color: var(--muted);">
+            Henüz Jira statüsü eşlenmemiş (Bu durum uygulama içi bağımsız bir statü olarak çalışır).
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Inline Add Mapping Form -->
+        {% if can_manage_project %}
+        {% if item.available_jira_statuses %}
+        <form method="post" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add_mapping">
+          <input type="hidden" name="column_id" value="{{ item.column.id }}">
+
+          <span style="font-size: 0.82rem; font-weight: 500; color: var(--text);">+ Jira Statüsü Ekle:</span>
+
+          <select name="jira_status_id" required style="padding: 5px 10px; font-size: 0.85rem; min-width: 200px;">
+            <option value="">-- Jira Statüsü Seçin --</option>
+            {% for js in item.available_jira_statuses %}
+            <option value="{{ js.id }}">{{ js.name }}</option>
+            {% endfor %}
+          </select>
+
+          <label style="display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text); margin: 0; cursor: pointer;">
+            <input type="checkbox" name="transfer_to_jira" value="1" checked style="margin: 0;">
+            Jira'ya Aktar
+          </label>
+
+          <label style="display: inline-flex; flex-direction: row; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text); margin: 0; cursor: pointer;">
+            <input type="checkbox" name="is_primary" value="1" {% if not item.has_primary %}checked{% endif %} style="margin: 0;">
+            Birincil Hedef Yap
+          </label>
+
+          <button type="submit" class="btn-primary" style="font-size: 0.8rem; padding: 5px 12px;">Eşle</button>
+        </form>
+        {% elif total_jira_statuses == 0 %}
+        <div style="font-size: 0.82rem; color: var(--muted);">
+          Sistemde Jira statüsü bulunmuyor. Sayfa başındaki <strong>"Jira'dan Statüleri Çek"</strong> butonunu kullanarak Jira'daki statüleri getirebilirsiniz.
+        </div>
+        {% else %}
+        <div style="font-size: 0.82rem; color: var(--muted);">
+          Tüm mevcut Jira statüleri bu duruma eşlenmiş.
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+      {% empty %}
+      <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; text-align: center; color: var(--muted);">
+        Bu projede henüz bir Kanban kolonu bulunmuyor.
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Section 2: Jira Status Pool -->
+  <div style="margin-top: 10px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+      <h2 style="margin: 0; font-size: 1.25rem;">🌐 Jira Sunucusu Statü Havuzu</h2>
+      {% if project.jira_connection and can_manage_project %}
+      <form method="post" style="display: inline;">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="pull_jira_statuses">
+        <button type="submit" class="btn-ghost" style="font-size: 0.82rem;">🔄 Statüleri Yeniden Çek</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto;">
+      {% if jira_statuses_data %}
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.03);">
+            <th style="padding: 10px 16px;">Jira Statü Adı</th>
+            <th style="padding: 10px 16px;">Jira ID / Anahtar</th>
+            <th style="padding: 10px 16px;">Kategori</th>
+            <th style="padding: 10px 16px;">Eşleştiği Uygulama Durumları</th>
+            <th style="padding: 10px 16px;">Durum</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for js_row in jira_statuses_data %}
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <td style="padding: 10px 16px; font-weight: 600; color: var(--text);">
+              {{ js_row.status.name }}
+            </td>
+            <td style="padding: 10px 16px; color: var(--muted); font-size: 0.82rem;">
+              {{ js_row.status.jira_id|default:"-" }} / {{ js_row.status.jira_status_key }}
+            </td>
+            <td style="padding: 10px 16px;">
+              {% if js_row.status.color.colorName %}
+              <span class="badge" style="font-size: 0.72rem;">{{ js_row.status.color.colorName }}</span>
+              {% elif js_row.status.color.key %}
+              <span class="badge" style="font-size: 0.72rem;">{{ js_row.status.color.key }}</span>
+              {% else %}
+              <span class="muted">-</span>
+              {% endif %}
+            </td>
+            <td style="padding: 10px 16px;">
+              {% if js_row.mapped_columns %}
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                {% for col in js_row.mapped_columns %}
+                <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4); font-size: 0.75rem;">
+                  {{ col.name }}
+                </span>
+                {% endfor %}
+              </div>
+              {% else %}
+              <span class="muted" style="font-size: 0.8rem;">Eşleme yok</span>
+              {% endif %}
+            </td>
+            <td style="padding: 10px 16px;">
+              {% if js_row.is_mapped %}
+              <span class="badge badge-ok" style="font-size: 0.72rem;">Eşlenmiş</span>
+              {% else %}
+              <span class="badge badge-warn" style="font-size: 0.72rem;">Eşlenmemiş</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div style="padding: 24px; text-align: center; color: var(--muted);">
+        Henüz Jira statüleri sisteme çekilmemiş. Yukarıdaki <strong>"Jira'dan Statüleri Çek"</strong> butonuna tıklayarak Jira'daki statüleri getirebilirsiniz.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

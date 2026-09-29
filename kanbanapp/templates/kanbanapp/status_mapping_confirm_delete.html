@@ -14,9 +14,14 @@
   <p class="message message-warn">Bu işlem geri alınamaz.</p>
   <form method="post" class="auth-form">
     {% csrf_token %}
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
     <div class="form-actions">
       <button type="submit" class="btn-danger">SİL</button>
-      <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>
+      {% if next_url %}
+      <a href="{{ next_url }}" class="btn-secondary">İptal</a>
+      {% else %}
+      <a href="{% url 'project_status_mappings' project.id %}" class="btn-secondary">İptal</a>
+      {% endif %}
     </div>
   </form>
 </div>

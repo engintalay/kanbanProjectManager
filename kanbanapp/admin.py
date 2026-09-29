@@ -115,8 +115,8 @@ class KanbanCardAdmin(admin.ModelAdmin):
 
 @admin.register(StatusMapping)
 class StatusMappingAdmin(admin.ModelAdmin):
-    list_display = ("app_status", "jira_status", "transfer_to_jira", "project", "position")
-    list_filter = ("project", "transfer_to_jira")
+    list_display = ("app_status", "jira_status", "is_primary", "transfer_to_jira", "project", "position")
+    list_filter = ("project", "is_primary", "transfer_to_jira")
 
 
 @admin.register(Sprint)

@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import (
@@ -447,7 +448,7 @@ def project_jira_sync_statuses(request, project_id):
         service.close()
 
     next_url = request.GET.get("next") or request.POST.get("next")
-    return redirect(next_url or "board", project_id=project.id)
+    return redirect(next_url or "project_status_mappings", project_id=project.id)
 
 
 @login_required
@@ -495,13 +496,22 @@ def refresh_project(request, project_id):
                         if project.sync_jira_status:
                             status_key = issue.get("status_key")
                             if status_key:
-                                mapping = StatusMapping.objects.filter(
-                                    project=project, jira_status__name__iexact=status_key
-                                ).first() or StatusMapping.objects.filter(
-                                    project=project, jira_status__jira_status_key__iexact=status_key
-                                ).first()
-                                if mapping and mapping.app_status and mapping.transfer_to_jira:
-                                    card.column = mapping.app_status
+                                mappings = StatusMapping.objects.filter(
+                                    project=project, jira_status__isnull=False
+                                ).filter(
+                                    Q(jira_status__name__iexact=status_key)
+                                    | Q(jira_status__jira_status_key__iexact=status_key)
+                                )
+                                # If card is already in one of the columns mapped to this Jira status, keep it!
+                                already_in_mapped_column = mappings.filter(app_status=card.column).exists()
+                                if not already_in_mapped_column:
+                                    primary_mapping = (
+                                        mappings.filter(transfer_to_jira=True)
+                                        .order_by("-is_primary", "position", "id")
+                                        .first()
+                                    ) or mappings.order_by("-is_primary", "position", "id").first()
+                                    if primary_mapping and primary_mapping.app_status:
+                                        card.column = primary_mapping.app_status
                         card.save()
                 log.pulled_count = len(count)
                 log.status = "success"
@@ -526,7 +536,7 @@ def board_view(request, project_id):
     if not _can_view_project(request.user, project):
         return _forbidden(request)
 
-    columns = KanbanColumn.objects.filter(project=project).order_by("position", "id")
+    columns = KanbanColumn.objects.filter(project=project).prefetch_related("status_mappings__jira_status").order_by("position", "id")
     status_mappings = StatusMapping.objects.filter(project=project).order_by("position", "id")
     sprints = Sprint.objects.filter(project=project)
     active_sprint = sprints.filter(status=Sprint.STATUS_ACTIVE).first()
@@ -561,26 +571,31 @@ def status_mapping_create_view(request, project_id, column_id):
     if not _can_manage_project(request.user, project):
         return _forbidden(request)
 
+    next_url = request.POST.get("next") or request.GET.get("next")
     if request.method == "POST":
         form = StatusMappingForm(request.POST)
         if form.is_valid():
             mapping = form.save(commit=False)
             mapping.project = project
             mapping.app_status = column
-            if StatusMapping.objects.filter(project=project, app_status=column).exclude(pk=mapping.pk).exists():
-                form.add_error(None, "Bu durum için zaten bir eşleme var.")
+            if mapping.jira_status and StatusMapping.objects.filter(project=project, app_status=column, jira_status=mapping.jira_status).exclude(pk=mapping.pk).exists():
+                form.add_error("jira_status", "Bu kolon ve Jira statüsü için zaten bir eşleme tanımlanmış.")
             else:
+                existing = StatusMapping.objects.filter(project=project, app_status=column).exclude(pk=mapping.pk)
+                if mapping.is_primary:
+                    existing.update(is_primary=False)
+                elif not existing.exists():
+                    mapping.is_primary = True
                 mapping.save()
-            if form.is_valid():
                 messages.success(request, "Durum eşlemesi kaydedildi.")
-                return redirect("board", project_id=project.id)
+                return redirect(next_url or "board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
         form = StatusMappingForm()
     return render(
         request,
         "kanbanapp/status_mapping_form.html",
-        {"form": form, "project": project, "mode": "create", "column": column},
+        {"form": form, "project": project, "mode": "create", "column": column, "next_url": next_url},
     )
 
 
@@ -591,12 +606,19 @@ def status_mapping_edit_view(request, project_id, mapping_id):
     if not _can_manage_project(request.user, project):
         return _forbidden(request)
 
+    next_url = request.POST.get("next") or request.GET.get("next")
     if request.method == "POST":
         form = StatusMappingForm(request.POST, instance=mapping)
         if form.is_valid():
-            form.save()
-            messages.success(request, "Durum eşlemesi güncellendi.")
-            return redirect("board", project_id=project.id)
+            mapping = form.save(commit=False)
+            if mapping.jira_status and StatusMapping.objects.filter(project=project, app_status=mapping.app_status, jira_status=mapping.jira_status).exclude(pk=mapping.pk).exists():
+                form.add_error("jira_status", "Bu kolon ve Jira statüsü için zaten bir eşleme tanımlanmış.")
+            else:
+                if mapping.is_primary:
+                    StatusMapping.objects.filter(project=project, app_status=mapping.app_status).exclude(pk=mapping.pk).update(is_primary=False)
+                mapping.save()
+                messages.success(request, "Durum eşlemesi güncellendi.")
+                return redirect(next_url or "board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
         form = StatusMappingForm(instance=mapping)
@@ -609,6 +631,7 @@ def status_mapping_edit_view(request, project_id, mapping_id):
             "mode": "edit",
             "mapping": mapping,
             "column": mapping.app_status,
+            "next_url": next_url,
         },
     )
 
@@ -620,14 +643,242 @@ def status_mapping_delete_view(request, project_id, mapping_id):
     if not _can_manage_project(request.user, project):
         return _forbidden(request)
 
+    next_url = request.POST.get("next") or request.GET.get("next")
     if request.method == "POST":
+        col = mapping.app_status
+        was_primary = mapping.is_primary
         mapping.delete()
+        if was_primary:
+            first_remain = StatusMapping.objects.filter(project=project, app_status=col).first()
+            if first_remain:
+                first_remain.is_primary = True
+                first_remain.save(update_fields=["is_primary"])
         messages.success(request, "Durum eşlemesi silindi.")
-        return redirect("board", project_id=project.id)
+        return redirect(next_url or "board", project_id=project.id)
     return render(
         request,
         "kanbanapp/status_mapping_confirm_delete.html",
-        {"mapping": mapping, "project": project},
+        {"mapping": mapping, "project": project, "next_url": next_url},
+    )
+
+
+@login_required
+def project_status_mappings_view(request, project_id):
+    """Dedicated management and sync screen for a project's Jira status mappings.
+
+    Supports:
+    - Pulling / syncing Jira statuses from the connected Jira server
+    - Mapping multiple Jira statuses to an application status (KanbanColumn)
+    - Toggling Jira status transfer per mapping
+    - Setting primary target Jira status for card moves
+    - Auto-matching columns to Jira statuses by name / synonym similarity
+    - Toggling project-wide Jira status sync
+    """
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_view_project(request.user, project):
+        return _forbidden(request)
+
+    can_manage = _can_manage_project(request.user, project)
+
+    if request.method == "POST":
+        if not can_manage:
+            return _forbidden(request)
+
+        action = request.POST.get("action")
+
+        # 1. Pull statuses from Jira
+        if action == "pull_jira_statuses":
+            if not project.jira_connection:
+                messages.error(request, "Bu projeye atanmış bir Jira bağlantısı bulunmuyor.")
+            else:
+                service = JiraService()
+                try:
+                    count = service.sync_statuses(project.jira_connection)
+                    messages.success(request, f"Jira'dan {count} adet statü başarıyla çekildi ve güncellendi.")
+                except Exception as exc:  # noqa: BLE001
+                    messages.error(request, f"Jira statüleri çekilirken hata oluştu: {exc}")
+                finally:
+                    service.close()
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 2. Toggle project-wide Jira status sync
+        elif action == "toggle_project_sync":
+            project.sync_jira_status = not project.sync_jira_status
+            project.save(update_fields=["sync_jira_status"])
+            status_text = "aktif edildi" if project.sync_jira_status else "devre dışı bırakıldı (kapatıldı)"
+            messages.success(request, f"Proje genelinde Jira statü aktarımı {status_text}.")
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 3. Add mapping
+        elif action == "add_mapping":
+            column_id = request.POST.get("column_id")
+            jira_status_id = request.POST.get("jira_status_id")
+            transfer_to_jira = request.POST.get("transfer_to_jira") == "1"
+            is_primary = request.POST.get("is_primary") == "1"
+
+            column = get_object_or_404(KanbanColumn, id=column_id, project=project)
+            jira_status = get_object_or_404(JiraStatus, id=jira_status_id) if jira_status_id else None
+
+            if not jira_status:
+                messages.error(request, "Lütfen geçerli bir Jira statüsü seçin.")
+                return redirect("project_status_mappings", project_id=project.id)
+
+            if StatusMapping.objects.filter(project=project, app_status=column, jira_status=jira_status).exists():
+                messages.warning(request, f"'{column.name}' durumu ile '{jira_status.name}' Jira statüsü zaten eşlenmiş.")
+                return redirect("project_status_mappings", project_id=project.id)
+
+            existing_mappings = StatusMapping.objects.filter(project=project, app_status=column)
+            if not existing_mappings.exists():
+                is_primary = True
+            elif is_primary:
+                existing_mappings.update(is_primary=False)
+
+            StatusMapping.objects.create(
+                project=project,
+                app_status=column,
+                jira_status=jira_status,
+                transfer_to_jira=transfer_to_jira,
+                is_primary=is_primary,
+                position=existing_mappings.count(),
+            )
+            messages.success(request, f"'{column.name}' durumu '{jira_status.name}' Jira statüsü ile eşlendi.")
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 4. Delete mapping
+        elif action == "delete_mapping":
+            mapping_id = request.POST.get("mapping_id")
+            mapping = get_object_or_404(StatusMapping, id=mapping_id, project=project)
+            col = mapping.app_status
+            was_primary = mapping.is_primary
+            mapping_title = str(mapping)
+            mapping.delete()
+
+            if was_primary:
+                next_primary = StatusMapping.objects.filter(project=project, app_status=col).first()
+                if next_primary:
+                    next_primary.is_primary = True
+                    next_primary.save(update_fields=["is_primary"])
+
+            messages.success(request, f"'{mapping_title}' eşlemesi silindi.")
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 5. Toggle transfer_to_jira
+        elif action == "toggle_transfer":
+            mapping_id = request.POST.get("mapping_id")
+            mapping = get_object_or_404(StatusMapping, id=mapping_id, project=project)
+            mapping.transfer_to_jira = not mapping.transfer_to_jira
+            mapping.save(update_fields=["transfer_to_jira"])
+            status_text = "açıldı" if mapping.transfer_to_jira else "kapatıldı"
+            messages.success(request, f"'{mapping}' için Jira aktarımı {status_text}.")
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 6. Set primary
+        elif action == "set_primary":
+            mapping_id = request.POST.get("mapping_id")
+            mapping = get_object_or_404(StatusMapping, id=mapping_id, project=project)
+            StatusMapping.objects.filter(project=project, app_status=mapping.app_status).exclude(id=mapping.id).update(is_primary=False)
+            mapping.is_primary = True
+            mapping.save(update_fields=["is_primary"])
+            messages.success(request, f"'{mapping.jira_status.name if mapping.jira_status else ''}', '{mapping.app_status.name}' için birincil Jira statüsü yapıldı.")
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 7. Auto-map
+        elif action == "auto_map":
+            synced_count = 0
+            all_jira_statuses = list(JiraStatus.objects.all())
+            columns = KanbanColumn.objects.filter(project=project)
+
+            synonyms = {
+                "to do": ["to do", "yapılacak", "open", "açık", "backlog", "yeni"],
+                "yapılacak": ["to do", "yapılacak", "open", "açık", "backlog", "yeni"],
+                "in progress": ["in progress", "devam ediyor", "geliştiriliyor", "işlemde", "çalışılıyor"],
+                "devam ediyor": ["in progress", "devam ediyor", "geliştiriliyor", "işlemde", "çalışılıyor"],
+                "geliştiriliyor": ["in progress", "devam ediyor", "geliştiriliyor", "işlemde", "çalışılıyor"],
+                "code review": ["code review", "review", "inceleme", "kod inceleme", "peer review"],
+                "inceleme": ["code review", "review", "inceleme", "kod inceleme", "peer review"],
+                "test": ["test", "testing", "qa", "test ediliyor", "kalite kontrol"],
+                "tamamlandı": ["done", "tamamlandı", "bitti", "closed", "kapalı", "resolved"],
+                "done": ["done", "tamamlandı", "bitti", "closed", "kapalı", "resolved"],
+            }
+
+            for col in columns:
+                col_name_lower = col.name.strip().lower()
+                target_js = None
+
+                for js in all_jira_statuses:
+                    if js.name.strip().lower() == col_name_lower:
+                        target_js = js
+                        break
+
+                if not target_js:
+                    accepted_terms = synonyms.get(col_name_lower, [])
+                    for js in all_jira_statuses:
+                        js_name_lower = js.name.strip().lower()
+                        if js_name_lower in accepted_terms or any(term in js_name_lower for term in accepted_terms):
+                            target_js = js
+                            break
+
+                if target_js:
+                    if not StatusMapping.objects.filter(project=project, app_status=col, jira_status=target_js).exists():
+                        is_first = not StatusMapping.objects.filter(project=project, app_status=col).exists()
+                        StatusMapping.objects.create(
+                            project=project,
+                            app_status=col,
+                            jira_status=target_js,
+                            transfer_to_jira=True,
+                            is_primary=is_first,
+                        )
+                        synced_count += 1
+
+            if synced_count > 0:
+                messages.success(request, f"{synced_count} adet yeni durum eşlemesi otomatik olarak oluşturuldu.")
+            else:
+                messages.info(request, "Eşleşen yeni bir Jira statüsü bulunamadı veya tüm durumlar zaten eşlenmiş.")
+            return redirect("project_status_mappings", project_id=project.id)
+
+    # GET
+    columns = (
+        KanbanColumn.objects.filter(project=project)
+        .prefetch_related("status_mappings__jira_status")
+        .order_by("position", "id")
+    )
+    all_jira_statuses = list(JiraStatus.objects.all().order_by("name"))
+    mappings = list(StatusMapping.objects.filter(project=project).select_related("app_status", "jira_status"))
+
+    columns_data = []
+    for col in columns:
+        col_mappings = [m for m in mappings if m.app_status_id == col.id]
+        col_mapped_js_ids = {m.jira_status_id for m in col_mappings if m.jira_status_id}
+        available_js = [js for js in all_jira_statuses if js.id not in col_mapped_js_ids]
+        columns_data.append({
+            "column": col,
+            "mappings": col_mappings,
+            "available_jira_statuses": available_js,
+            "has_primary": any(m.is_primary for m in col_mappings),
+        })
+
+    jira_statuses_data = []
+    for js in all_jira_statuses:
+        mapped_cols = [m.app_status for m in mappings if m.jira_status_id == js.id]
+        jira_statuses_data.append({
+            "status": js,
+            "mapped_columns": mapped_cols,
+            "is_mapped": len(mapped_cols) > 0,
+        })
+
+    return render(
+        request,
+        "kanbanapp/project_status_sync.html",
+        {
+            "project": project,
+            "can_manage_project": can_manage,
+            "columns_data": columns_data,
+            "jira_statuses_data": jira_statuses_data,
+            "total_columns": columns.count(),
+            "total_mappings": len(mappings),
+            "total_jira_statuses": len(all_jira_statuses),
+            "unmapped_jira_count": len([j for j in jira_statuses_data if not j["is_mapped"]]),
+        },
     )
 
 
@@ -824,13 +1075,19 @@ def kanban_card_import_jira_view(request, project_id):
         if not target_column and sync_status and project.sync_jira_status:
             status_key = issue_data.get("status_key")
             if status_key:
-                mapping = StatusMapping.objects.filter(
-                    project=project, jira_status__name__iexact=status_key
-                ).first() or StatusMapping.objects.filter(
-                    project=project, jira_status__jira_status_key__iexact=status_key
-                ).first()
-                if mapping and mapping.app_status and mapping.transfer_to_jira:
-                    target_column = mapping.app_status
+                mappings = StatusMapping.objects.filter(
+                    project=project, jira_status__isnull=False
+                ).filter(
+                    Q(jira_status__name__iexact=status_key)
+                    | Q(jira_status__jira_status_key__iexact=status_key)
+                )
+                primary_mapping = (
+                    mappings.filter(transfer_to_jira=True)
+                    .order_by("-is_primary", "position", "id")
+                    .first()
+                ) or mappings.order_by("-is_primary", "position", "id").first()
+                if primary_mapping and primary_mapping.app_status:
+                    target_column = primary_mapping.app_status
         if not target_column:
             target_column = columns.first()
 
@@ -953,13 +1210,21 @@ def kanban_card_jira_refresh_view(request, project_id, card_id):
         if project.sync_jira_status:
             status_key = issue_data.get("status_key")
             if status_key:
-                mapping = StatusMapping.objects.filter(
-                    project=project, jira_status__name__iexact=status_key
-                ).first() or StatusMapping.objects.filter(
-                    project=project, jira_status__jira_status_key__iexact=status_key
-                ).first()
-                if mapping and mapping.app_status and mapping.transfer_to_jira:
-                    card.column = mapping.app_status
+                mappings = StatusMapping.objects.filter(
+                    project=project, jira_status__isnull=False
+                ).filter(
+                    Q(jira_status__name__iexact=status_key)
+                    | Q(jira_status__jira_status_key__iexact=status_key)
+                )
+                already_in_mapped_column = mappings.filter(app_status=card.column).exists()
+                if not already_in_mapped_column:
+                    primary_mapping = (
+                        mappings.filter(transfer_to_jira=True)
+                        .order_by("-is_primary", "position", "id")
+                        .first()
+                    ) or mappings.order_by("-is_primary", "position", "id").first()
+                    if primary_mapping and primary_mapping.app_status:
+                        card.column = primary_mapping.app_status
 
         card.save()
         messages.success(request, f"'{card.jira_key}' detayları Jira'dan güncellendi (Durum: {status_key or 'Belirtilmedi'}).")
@@ -1029,7 +1294,11 @@ def kanban_card_move_view(request, project_id, card_id):
             or request.POST.get("sync_jira") == "0"
         )
         if card.jira_key and project.jira_connection:
-            mapping = StatusMapping.objects.filter(project=project, app_status=target_column).first()
+            mapping = (
+                StatusMapping.objects.filter(project=project, app_status=target_column, jira_status__isnull=False)
+                .order_by("-is_primary", "position", "id")
+                .first()
+            )
             if mapping and mapping.jira_status:
                 if not skip_jira and mapping.transfer_to_jira:
                     service = JiraService()

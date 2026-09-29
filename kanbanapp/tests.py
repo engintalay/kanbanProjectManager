@@ -1078,6 +1078,191 @@ class JiraStatusSyncOptionTests(TestCase):
         self.assertEqual(self.card.column_id, self.col_todo.id)
 
 
+class MultiStatusMappingAndScreenTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_superuser(username="pm_tester", password="password123")
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.conn = JiraConnection.objects.create(
+            name="Test Jira", host="https://jira.example.local", username="admin", password="enc_password"
+        )
+        self.project = Project.objects.create(
+            key="MULT", name="Multi Status Project", created_by=self.user,
+            jira_connection=self.conn, sync_jira_status=True,
+        )
+        self.col_todo = KanbanColumn.objects.create(project=self.project, name="Yapılacak", position=0)
+        self.col_dev = KanbanColumn.objects.create(project=self.project, name="Geliştirme", position=1)
+        self.col_review = KanbanColumn.objects.create(project=self.project, name="Kod İnceleme", position=2)
+
+        self.js_todo = JiraStatus.objects.create(jira_status_key="to_do", name="To Do")
+        self.js_in_prog = JiraStatus.objects.create(jira_status_key="in_progress", name="In Progress")
+        self.js_review = JiraStatus.objects.create(jira_status_key="review", name="In Review")
+
+        self.card = KanbanCard.objects.create(
+            project=self.project, column=self.col_todo, title="Multi Card", jira_key="MULT-1"
+        )
+
+    def test_multiple_jira_statuses_for_single_app_status_picks_primary_on_move(self):
+        # Column 'Geliştirme' has 2 Jira statuses mapped: 'In Progress' (primary) and 'In Review'
+        m1 = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_in_prog,
+            is_primary=True, transfer_to_jira=True
+        )
+        m2 = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_review,
+            is_primary=False, transfer_to_jira=True
+        )
+
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.transition_issue") as mock_trans:
+            resp = self.client.post(
+                reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+                {"column_id": self.col_dev.id},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            mock_trans.assert_called_once_with(self.project, "MULT-1", "In Progress")
+
+    def test_fine_grained_app_statuses_preserves_card_column_on_jira_refresh(self):
+        # Two app columns mapped to the same Jira status ('In Progress')
+        m_dev = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_in_prog,
+            is_primary=True, transfer_to_jira=True
+        )
+        m_rev = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_review, jira_status=self.js_in_prog,
+            is_primary=False, transfer_to_jira=True
+        )
+        self.card.column = self.col_review
+        self.card.save()
+
+        mock_issues = [{
+            "id": "2001",
+            "key": "MULT-1",
+            "summary": "Multi Card Updated",
+            "description": "Desc",
+            "status_id": "10",
+            "status_key": "In Progress",
+            "assignee": None,
+            "reporter": None,
+            "created": "",
+            "updated": "",
+            "sprint": None,
+            "epic_key": None,
+        }]
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_issues), \
+             patch("kanbanapp.views.JiraService.sync_statuses", return_value=1):
+            resp = self.client.post(reverse("refresh_project", kwargs={"project_id": self.project.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+
+        self.card.refresh_from_db()
+        self.assertEqual(self.card.column_id, self.col_review.id)
+
+    def test_project_status_mappings_screen_get(self):
+        resp = self.client.get(reverse("project_status_mappings", kwargs={"project_id": self.project.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Jira Statü Eşleme")
+        self.assertContains(resp, "Yapılacak")
+        self.assertContains(resp, "Geliştirme")
+        self.assertContains(resp, "Kod İnceleme")
+
+    def test_project_status_mappings_add_mapping(self):
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {
+                "action": "add_mapping",
+                "column_id": self.col_todo.id,
+                "jira_status_id": self.js_todo.id,
+                "transfer_to_jira": "1",
+                "is_primary": "1",
+            },
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        mapping = StatusMapping.objects.filter(project=self.project, app_status=self.col_todo, jira_status=self.js_todo).first()
+        self.assertIsNotNone(mapping)
+        self.assertTrue(mapping.is_primary)
+        self.assertTrue(mapping.transfer_to_jira)
+
+    def test_project_status_mappings_set_primary(self):
+        m1 = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_in_prog,
+            is_primary=True, transfer_to_jira=True
+        )
+        m2 = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_review,
+            is_primary=False, transfer_to_jira=True
+        )
+
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "set_primary", "mapping_id": m2.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        m1.refresh_from_db()
+        m2.refresh_from_db()
+        self.assertFalse(m1.is_primary)
+        self.assertTrue(m2.is_primary)
+
+    def test_project_status_mappings_toggle_transfer(self):
+        m = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_in_prog,
+            is_primary=True, transfer_to_jira=True
+        )
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "toggle_transfer", "mapping_id": m.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        m.refresh_from_db()
+        self.assertFalse(m.transfer_to_jira)
+
+    def test_project_status_mappings_delete_mapping_primary_fallback(self):
+        m1 = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_in_prog,
+            is_primary=True, transfer_to_jira=True
+        )
+        m2 = StatusMapping.objects.create(
+            project=self.project, app_status=self.col_dev, jira_status=self.js_review,
+            is_primary=False, transfer_to_jira=True
+        )
+
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "delete_mapping", "mapping_id": m1.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(StatusMapping.objects.filter(id=m1.id).exists())
+        m2.refresh_from_db()
+        self.assertTrue(m2.is_primary)
+
+    def test_project_status_mappings_auto_map(self):
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "auto_map"},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        mapped = StatusMapping.objects.filter(project=self.project, app_status=self.col_todo, jira_status=self.js_todo).exists()
+        self.assertTrue(mapped)
+
+    def test_project_status_mappings_toggle_project_sync(self):
+        self.assertTrue(self.project.sync_jira_status)
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "toggle_project_sync"},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.project.refresh_from_db()
+        self.assertFalse(self.project.sync_jira_status)
+
+
+
 
 
 

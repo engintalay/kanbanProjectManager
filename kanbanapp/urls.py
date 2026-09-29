@@ -18,6 +18,7 @@ urlpatterns = [
     path("jira/<int:connection_id>/delete/", views.jira_connection_delete, name="jira_connection_delete"),
     path("jira/<int:connection_id>/test/", views.jira_test_connection, name="jira_test_connection"),
     path("jira/<int:connection_id>/sync-statuses/", views.jira_sync_statuses, name="jira_sync_statuses"),
+    path("projects/<int:project_id>/statuses/", views.project_status_mappings_view, name="project_status_mappings"),
     path("projects/<int:project_id>/sync-statuses/", views.project_jira_sync_statuses, name="project_jira_sync_statuses"),
     path("projects/<int:project_id>/refresh/", views.refresh_project, name="refresh_project"),
     path("projects/<int:project_id>/board/", views.board_view, name="board"),

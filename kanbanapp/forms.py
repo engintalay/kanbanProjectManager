@@ -321,15 +321,17 @@ class StatusMappingForm(forms.ModelForm):
 
     class Meta:
         model = StatusMapping
-        fields = ["jira_status", "transfer_to_jira", "position"]
+        fields = ["jira_status", "transfer_to_jira", "is_primary", "position"]
         labels = {
             "jira_status": "Jira Statüsü",
             "transfer_to_jira": "Jira Statüsünü Aktar (Statü Geçişi Yap)",
+            "is_primary": "Birincil Hedef (Bu kolona taşındığında Jira'da bu statüye geçilir)",
             "position": "Sıra",
         }
         widgets = {
             "jira_status": forms.Select(attrs={"class": "form-control"}),
             "transfer_to_jira": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "is_primary": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "position": forms.NumberInput(attrs={"class": "form-control"}),
         }
 
@@ -338,3 +340,4 @@ class StatusMappingForm(forms.ModelForm):
         self.fields["jira_status"].required = False
         self.fields["jira_status"].empty_label = "--- Jira Statüsü Seçin (Opsiyonel) ---"
         self.fields["transfer_to_jira"].help_text = "İşaret kaldırıldığında ('Jira statüsünü aktarma'), kart bu kolona taşındığında Jira'da durum güncellenmez."
+        self.fields["is_primary"].help_text = "Bir kolona birden fazla Jira statüsü eşlendiğinde, kart kolona taşındığında Jira'da geçilecek birincil hedefi belirler."

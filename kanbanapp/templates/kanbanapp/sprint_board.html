@@ -69,14 +69,17 @@
         {% endwith %}
       </span>
       {% if column.status_mappings.exists %}
-      {% with m=column.status_mappings.first %}
-      <span class="status-map-status">
-        ↔ {{ m.jira_status.name|default:"(mape edilmemiş)" }}
-        {% if not m.transfer_to_jira or not project.sync_jira_status %}
-        <span class="badge badge-warn" style="font-size: 0.65rem; padding: 1px 4px; margin-left: 4px;" title="Bu durum için Jira statü aktarımı kapatılmıştır">Aktarma Kapalı</span>
-        {% endif %}
-      </span>
-      {% endwith %}
+      <div class="status-map-status-list" style="display: flex; flex-direction: column; gap: 2px; margin-top: 3px;">
+        {% for m in column.status_mappings.all %}
+        <span class="status-map-status" style="font-size: 0.72rem;" title="{% if m.is_primary %}Birincil Jira Geçiş Statüsü{% else %}İkincil Jira Statüsü{% endif %}">
+          ↔ {{ m.jira_status.name|default:"(mape edilmemiş)" }}
+          {% if m.is_primary %}<span class="badge" style="font-size: 0.6rem; padding: 1px 3px; background: rgba(34, 197, 94, 0.2); color: #22c55e;">1.</span>{% endif %}
+          {% if not m.transfer_to_jira or not project.sync_jira_status %}
+          <span class="badge badge-warn" style="font-size: 0.6rem; padding: 1px 3px;" title="Bu durum için Jira statü aktarımı kapatılmıştır">Aktarma Kapalı</span>
+          {% endif %}
+        </span>
+        {% endfor %}
+      </div>
       {% endif %}
     </div>
     <div class="board-column-body">

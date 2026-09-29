@@ -25,7 +25,8 @@
       <a href="{% url 'board' project.id %}" class="btn-primary" title="Kanban Panosunu Aç">📋 Pano</a>
       <a href="{% url 'sprints' project.id %}" class="btn-ghost" title="Sprintleri Görüntüle">🏃 Sprintler</a>
       {% if project.jira_connection %}
-      <a href="{% url 'refresh_project' project.id %}" class="btn-ghost" title="Jira'dan en güncel işleri ve statüleri çek">🔄 Jira</a>
+      <a href="{% url 'refresh_project' project.id %}" class="btn-ghost" title="Jira'dan en güncel işleri çek">🔄 Jira</a>
+      <a href="{% url 'project_status_mappings' project.id %}" class="btn-ghost" title="Jira statülerini aktar ve eşle">🔄 Statüler</a>
       {% else %}
       {% if is_admin or project.created_by_id == user.id or role_level == 2 %}
       <a href="{% url 'project_edit' project.id %}" class="btn-ghost" style="color: #f59e0b;" title="Bu projeye Jira bağlantısı tanımlayın">🔗 Jira Bağla</a>
