@@ -359,4 +359,19 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertEqual(sub.difficulty_level, 5)
         self.assertTrue(sub.is_sub_task)
 
+    def test_reports_view_and_csv_export(self):
+        self.client.force_login(self.pm)
+        KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Card 1", difficulty_level=5, initial_difficulty_level=3)
+        report_resp = self.client.get(reverse("project_reports", kwargs={"project_id": self.project.id}))
+        self.assertEqual(report_resp.status_code, 200)
+        self.assertIn(b"Raporlar", report_resp.content)
+        self.assertIn(b"Zorluk De\xc4\x9fi\xc5\x9fim & De\xc4\x9ferlendirme", report_resp.content)
+
+        # CSV Export test
+        csv_resp = self.client.get(reverse("export_cards_csv", kwargs={"project_id": self.project.id}))
+        self.assertEqual(csv_resp.status_code, 200)
+        self.assertEqual(csv_resp["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn(b"Card 1", csv_resp.content)
+        self.assertIn(b"SPR_cards.csv", csv_resp["Content-Disposition"].encode())
+
 

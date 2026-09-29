@@ -1,0 +1,166 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{{ project.key }} — Raporlar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'board' project.id %}" class="back-link">← {{ project.name }} Panosu</a>
+    <h1>Raporlar &mdash; {{ project.name }}</h1>
+    <p class="muted">Proje durumu, sprint zorluk hızları ve zorluk sapma analizleri.</p>
+  </div>
+  <div class="head-actions">
+    <a href="{% url 'export_cards_csv' project.id %}" class="btn-primary">📥 CSV Olarak İndir</a>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; margin-bottom:30px;">
+  <!-- Status Distribution Chart -->
+  <div class="capacity-card" style="margin:0;">
+    <h3>Durum Dağılımı (Kolonlar)</h3>
+    <canvas id="statusChart" height="220"></canvas>
+  </div>
+
+  <!-- Sprint Difficulty History Chart -->
+  <div class="capacity-card" style="margin:0;">
+    <h3>Sprint Zorluk Seviyeleri</h3>
+    <canvas id="sprintChart" height="220"></canvas>
+  </div>
+</div>
+
+{% if can_view_drift %}
+<!-- Difficulty Drift Analysis (PLAN.md §7: Admin ve Proje Yöneticisi görebilir) -->
+<div class="capacity-card">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <div>
+      <h3 style="margin:0;">Zorluk Değişim & Değerlendirme Raporu</h3>
+      <span class="muted" style="font-size:0.85rem;">Atanan başlangıç zorluğu ve programcı talepleri karşılaştırması (Yönetici Paneli)</span>
+    </div>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Kart</th>
+        <th>Atanan Programcı</th>
+        <th>Kolon</th>
+        <th>İlk Atanan Zorluk</th>
+        <th>Talep Edilen Zorluk</th>
+        <th>Mevcut Zorluk</th>
+        <th>Sapma</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for card in drift_cards %}
+      <tr>
+        <td>
+          <strong>{{ card.title }}</strong>
+          {% if card.jira_key %}<br><span class="card-key">{{ card.jira_key }}</span>{% endif %}
+        </td>
+        <td>{{ card.assignee.username|default:"-" }}</td>
+        <td><span class="badge">{{ card.column.name }}</span></td>
+        <td>
+          {% if card.initial_difficulty_level %}
+          <span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.initial_difficulty_level }}</span>
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if card.requested_difficulty_level %}
+          <span class="diff-badge" style="background:#4f46e5;">{{ card.requested_difficulty_level }}</span>
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if card.difficulty_level %}
+          <span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.difficulty_level }}</span>
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if card.initial_difficulty_level and card.difficulty_level %}
+            {% if card.difficulty_level > card.initial_difficulty_level %}
+              <span style="color:#ef4444; font-weight:700;">+{{ card.difficulty_level|add:"-"|add:card.initial_difficulty_level }} (Zorlaştı)</span>
+            {% elif card.difficulty_level < card.initial_difficulty_level %}
+              <span style="color:#22c55e; font-weight:700;">Kolaylaştı</span>
+            {% else %}
+              <span class="muted">Değişmedi</span>
+            {% endif %}
+          {% else %}
+            <span class="muted">-</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="7" class="empty" style="text-align:center; padding:20px;">Henüz zorluk talebi veya sapma kaydı bulunmuyor.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Chart.js via CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Convert status data to arrays safely
+  const rawStatus = [
+    {% for s in status_data %}
+      { name: "{{ s.name|escapejs }}", count: {{ s.count }} },
+    {% endfor %}
+  ];
+
+  const ctxStatus = document.getElementById('statusChart').getContext('2d');
+  new Chart(ctxStatus, {
+    type: 'doughnut',
+    data: {
+      labels: rawStatus.map(s => s.name),
+      datasets: [{
+        data: rawStatus.map(s => s.count),
+        backgroundColor: ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
+        borderWidth: 1,
+        borderColor: '#334155'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
+      }
+    }
+  });
+
+  // 2. Sprint Velocity Chart
+  const rawSprints = [
+    {% for s in sprint_data %}
+      { name: "{{ s.name|escapejs }}", diff: {{ s.total_difficulty }}, cap: {{ s.default_capacity }} },
+    {% endfor %}
+  ];
+
+  const ctxSprint = document.getElementById('sprintChart').getContext('2d');
+  new Chart(ctxSprint, {
+    type: 'bar',
+    data: {
+      labels: rawSprints.map(s => s.name),
+      datasets: [
+        {
+          label: 'Toplam Zorluk',
+          data: rawSprints.map(s => s.diff),
+          backgroundColor: '#6366f1'
+        },
+        {
+          label: 'Kapasite',
+          data: rawSprints.map(s => s.cap),
+          backgroundColor: 'rgba(148, 163, 184, 0.4)'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
+      }
+    }
+  });
+</script>
+{% endblock %}

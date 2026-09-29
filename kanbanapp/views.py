@@ -162,10 +162,40 @@ def _can_edit_cards(user, project):
 
 @login_required
 def dashboard_view(request):
-    """Home / dashboard showing projects the user may access."""
-    projects = _get_visible_projects(request.user)
-    roles = Role.objects.all()
-    return render(request, "kanbanapp/dashboard.html", {"projects": projects, "roles": roles})
+    """Personalized role-based dashboard (PLAN.md §8)."""
+    user = request.user
+    level = _role_level(user)
+    projects = _get_visible_projects(user)
+
+    my_cards = []
+    available_cards = []
+    pending_requests = []
+    active_sprints = []
+
+    if level == 3:
+        # Programmer: My assigned cards + available unassigned cards (PLAN.md §8)
+        my_cards = KanbanCard.objects.filter(assignee=user).select_related("project", "column", "sprint")
+        available_cards = KanbanCard.objects.filter(
+            project__in=projects, assignee__isnull=True
+        ).select_related("project", "column")[:15]
+        active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE)
+    else:
+        # Admin / PM: Active sprints, pending requests, all visible projects
+        active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE)
+        pending_requests = IssueRequest.objects.filter(project__in=projects, status=IssueRequest.STATUS_PENDING)[:10]
+
+    return render(
+        request,
+        "kanbanapp/dashboard.html",
+        {
+            "projects": projects,
+            "my_cards": my_cards,
+            "available_cards": available_cards,
+            "active_sprints": active_sprints,
+            "pending_requests": pending_requests,
+            "role_level": level,
+        },
+    )
 
 
 @login_required
@@ -889,3 +919,87 @@ def sprint_board_view(request, project_id, sprint_id):
             "can_edit_cards": _can_edit_cards(request.user, project),
         },
     )
+
+
+@login_required
+def report_view(request, project_id):
+    """Reports & metrics view with Chart.js and difficulty tracking (PLAN.md §4 & §7)."""
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_view_project(request.user, project):
+        return _forbidden(request)
+
+    from django.db.models import Q
+
+    cards = project.cards.all()
+    columns = project.columns.all().order_by("position")
+    sprints = project.sprints.all().order_by("-created_at")
+
+    status_data = []
+    for col in columns:
+        status_data.append({
+            "name": col.name,
+            "count": cards.filter(column=col).count(),
+        })
+
+    sprint_data = []
+    for s in sprints:
+        sprint_data.append({
+            "name": s.name,
+            "total_difficulty": s.total_difficulty,
+            "default_capacity": s.default_capacity,
+        })
+
+    can_view_drift = _can_manage_project(request.user, project)
+    drift_cards = []
+    if can_view_drift:
+        drift_cards = cards.filter(
+            Q(requested_difficulty_level__isnull=False) | Q(initial_difficulty_level__isnull=False)
+        ).select_related("assignee", "column")
+
+    return render(
+        request,
+        "kanbanapp/reports.html",
+        {
+            "project": project,
+            "status_data": status_data,
+            "sprint_data": sprint_data,
+            "drift_cards": drift_cards,
+            "can_view_drift": can_view_drift,
+            "total_cards": cards.count(),
+            "can_manage_project": _can_manage_project(request.user, project),
+        },
+    )
+
+
+@login_required
+def export_cards_csv(request, project_id):
+    """CSV export of cards (PLAN.md §10 Faz 4)."""
+    import csv
+    from django.http import HttpResponse
+
+    project = get_object_or_404(Project, id=project_id)
+    if not _can_view_project(request.user, project):
+        return _forbidden(request)
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{project.key}_cards.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "ID", "Jira Key", "Başlık", "Kolon", "Zorluk", "Atanan", "Sprint", "Oluşturulma"
+    ])
+
+    for card in project.cards.all().select_related("column", "assignee", "sprint"):
+        writer.writerow([
+            card.id,
+            card.jira_key or "",
+            card.title,
+            card.column.name,
+            card.difficulty_level or "",
+            card.assignee.username if card.assignee else "",
+            card.sprint.name if card.sprint else "",
+            card.created_at.strftime("%Y-%m-%d %H:%M"),
+        ])
+
+    return response
+

@@ -2,21 +2,135 @@
 {% block title %}Dashboard - Kanban Manager{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Dashboard</h1>
+  <h1>Dashboard &mdash; Hoş Geldiniz, {{ user.get_full_name|default:user.username }}</h1>
+  <p class="muted">Rolünüz: <strong>{{ user.role.name|default:"Admin" }}</strong></p>
 </div>
+
+{% if role_level == 3 %}
+  <!-- PROGRAMMER DASHBOARD (PLAN.md §8) -->
+  <div style="margin-bottom: 30px;">
+    <h2>Bana Atanan Görevler ({{ my_cards|length }})</h2>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:16px;">
+      {% for card in my_cards %}
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">{{ card.title }}</div>
+          {% if card.difficulty_level %}
+          <span class="diff-badge" style="background-color: {{ card.difficulty_color }};">{{ card.difficulty_level }}</span>
+          {% endif %}
+        </div>
+        <div class="card-meta-row">
+          <span class="card-key">{{ card.project.key }}{% if card.jira_key %} / {{ card.jira_key }}{% endif %}</span>
+          <span class="badge">{{ card.column.name }}</span>
+          {% if card.sprint %}<span class="badge">🏃 {{ card.sprint.name }}</span>{% endif %}
+        </div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <a href="{% url 'board' card.project_id %}" class="btn-ghost">Panoda Gör</a>
+          <a href="{% url 'card_request_create' card.project_id card.id %}" class="btn-ghost">Talep Aç</a>
+        </div>
+      </div>
+      {% empty %}
+      <p class="empty">Şu an size atanmış bir görev bulunmuyor.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div style="margin-bottom: 30px;">
+    <h2>Üstüme Alabileceğim Görevler (Atanmamış)</h2>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:16px;">
+      {% for card in available_cards %}
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">{{ card.title }}</div>
+          {% if card.difficulty_level %}
+          <span class="diff-badge" style="background-color: {{ card.difficulty_color }};">{{ card.difficulty_level }}</span>
+          {% endif %}
+        </div>
+        <div class="card-meta-row">
+          <span class="card-key">{{ card.project.key }}{% if card.jira_key %} / {{ card.jira_key }}{% endif %}</span>
+          <span class="badge">{{ card.column.name }}</span>
+        </div>
+        <div style="margin-top:8px;">
+          <form method="post" action="{% url 'kanban_card_assign' card.project_id card.id %}">
+            {% csrf_token %}
+            <button type="submit" class="btn-primary" style="padding:4px 10px; font-size:0.8rem;">Görevi Üstüme Al</button>
+          </form>
+        </div>
+      </div>
+      {% empty %}
+      <p class="empty">Şu an alınabilecek atanmamış görev bulunmuyor.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+{% else %}
+  <!-- ADMIN / PM / REPORTER DASHBOARD -->
+  {% if pending_requests %}
+  <div class="alert-box alert-warn" style="margin-bottom: 24px;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <strong>⚠️ Bekleyen Geliştirici Talepleri ({{ pending_requests|length }})</strong>
+      <span class="muted" style="font-size:0.85rem;">İnceleme ve onay bekleyen talepler</span>
+    </div>
+    <ul style="margin:8px 0 0 20px; padding:0; font-size:0.9rem;">
+      {% for req in pending_requests %}
+      <li>
+        <strong>{{ req.project.key }}:</strong> {{ req.requested_by.username }} &mdash; <em>{{ req.card.title }}</em> için <strong>{{ req.get_type_display }}</strong> talebi açtı.
+        <a href="{% url 'issue_requests' req.project_id %}" style="margin-left:8px; font-weight:600;">İncele →</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if active_sprints %}
+  <div style="margin-bottom: 30px;">
+    <h2>Aktif Sprintler</h2>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
+      {% for sprint in active_sprints %}
+      <div class="capacity-card" style="margin:0;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <strong>{{ sprint.project.key }} &mdash; {{ sprint.name }}</strong>
+          <span class="badge badge-ok">Aktif</span>
+        </div>
+        <div style="font-size:0.85rem; margin-bottom:6px;">
+          Zorluk: <strong>{{ sprint.total_difficulty }}</strong> / Kapasite: <strong>{{ sprint.default_capacity }}</strong> (%{{ sprint.capacity_percentage }})
+        </div>
+        <div class="progress-container">
+          <div class="progress-bar {% if sprint.is_over_capacity %}progress-danger{% elif sprint.is_under_capacity %}progress-warn{% else %}progress-ok{% endif %}"
+               style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+          <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost">Sprint Panosu →</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+{% endif %}
+
+<h2>Projeler</h2>
 <div class="projects-grid">
   {% for project in projects %}
-  <a href="{% url 'board' project.id %}" class="project-card">
+  <div class="project-card">
     <div class="project-key">{{ project.key }}</div>
     <div class="project-name">{{ project.name }}</div>
     <div class="project-meta">
       <span>{{ project.cards.count }} kart</span>
       <span>{{ project.columns.count }} kolon</span>
+      {% if project.jira_connection %}<span class="badge badge-ok">Jira</span>{% endif %}
     </div>
-    {% if project.jira_connection %}<span class="badge badge-ok">Jira bağlı</span>{% else %}<span class="badge badge-warn">Jira yok</span>{% endif %}
-  </a>
+    <div style="display:flex; gap:6px; margin-top:12px;">
+      <a href="{% url 'board' project.id %}" class="btn-primary" style="padding:6px 12px; font-size:0.8rem;">Pano</a>
+      <a href="{% url 'sprints' project.id %}" class="btn-ghost" style="padding:6px 10px; font-size:0.8rem;">Sprintler</a>
+      <a href="{% url 'project_reports' project.id %}" class="btn-ghost" style="padding:6px 10px; font-size:0.8rem;">Rapor</a>
+    </div>
+  </div>
   {% empty %}
-  <p class="empty">Henüz proje yok. Admin panelinden veya Proje yöneticisi olarak yeni proje ekleyin.</p>
+  <p class="empty">Henüz erişebileceğiniz bir proje bulunmuyor.</p>
   {% endfor %}
 </div>
 {% endblock %}
+
