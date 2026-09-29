@@ -128,16 +128,21 @@ Kullanıcı kaydı **sadece Admin** tarafından yapılabilir. Yetki seviyesi, `R
 
 ## Veritabanı Şeması (Faz 1)
 
-`kanbanapp/migrations/0001_initial.py`:
+`kanbanapp/models.py`:
 
-- **Role** — id, name, slug, level, description
-- **User** (`AbstractUser`) — role, project, email, `parent_link`
+- **Role** — id, name, slug, level (1-5), description
+- **User** (`AbstractUser`) — role, project, email, parent_link
 - **Project** — name, key, description, jira_connection, created_by
-- **JiraConnection** — name, host, username, password (şifreli), is_default
+- **ProjectMember** — project, user, created_at
+- **JiraConnection** — name, host, username, password (EncryptedCharField), is_default, created_by
 - **JiraStatus** — jira_status_key, name, color, jira_id
 - **JiraCustomStatus** — project, name, color, position, parent_status
-- **KanbanColumn** — status_type, project, name, color, position
-- **KanbanCard** — project, column, title, description, jira_issue_id, jira_key, is_extra, position
+- **KanbanColumn** — status_type (jira/custom), project, name, color, position
+- **KanbanCard** — project, column, title, description, difficulty_level (Fibonacci 1-89), initial_difficulty_level, requested_difficulty_level, developer_assessment, parent_card (sub-task), is_sub_task, assignee, sprint, jira_issue_id, jira_key, is_extra, position
+- **StatusMapping** — project, app_status, jira_status, position (Kanban kolonu ↔ Jira durumu eşlemesi)
+- **Sprint** — project, name, start_date, duration, team_members, status, total_difficulty, default_capacity
+- **IssueRequest** — project, card, type (difficulty_change/split/reassign), reason, requested_difficulty, description, status (pending/approved/rejected), requested_by, assigned_to
+- **JiraIssue** — project, jira_id, jira_key, summary, description, status_id, status_key, assignee, reporter, created, updated, sprint, epic_key, blocks, blocked_by (READ snapshot)
 - **RefreshLog** — project, jira_connection, status, pulled_count, error, timestamp
 
 ## Yönetici Paneli
@@ -148,11 +153,11 @@ Django admin hazır gelir (`/admin/`). `seed_initial` komutu, ilk çalışmada 5
 
 Detaylı yol haritası için **[PLAN.md](PLAN.md)**'ye bakın.
 
-- **Faz 1 — Temel** ✅ Bu commit: Django iskelet, Docker kurulumu, migration, auth (login/admin-only), 5 rol + permission.
-- **Faz 2 — Proje & Jira** — Proje CRUD, Jira bağlantısı (admin + yönetici), credential şifreleme, Jira READ-ONLY çekme + yenile butonu.
-- **Faz 3 — Kanban Core** — Durum (Jira türevi + custom), kolon, kart CRUD.
-- **Faz 4 — Raporlama** — Filtreli raporlar, CSV export, Chart.js.
-- **Faz 5 — Polishing** — Hata yönetimi, loglar, dokümantasyon.
+- **Faz 1 — Temel** ✅ Django iskelet, Docker kurulumu, migration, auth (login/admin-only), 5 hiyerarşik rol + permission.
+- **Faz 2 — Proje & Jira Entegrasyonu** ✅ Proje CRUD, Jira bağlantı yönetimi (admin + PM), Fernet şifreleme, Jira issue çekme & durum eşleme, READ-WRITE durum geçişleri.
+- **Faz 3 — Kanban Core & Sprint Yönetimi** ✅ Kolon ve kart CRUD, Fibonacci zorluk derecelendirmesi (1-89), kart durum taşıma, iş bölme (sub-task), sprint kapasite takibi (%75 altı ve aşım uyarıları), bağımlılık ve bloklu iş uyarıları, geliştirici değişiklik talepleri (issue_requests).
+- **Faz 4 — Raporlama & Dashboard** ✅ Kişiselleştirilmiş rol bazlı dashboard (programcı için atanmış/alınabilir işler, yönetici için talep/sprint izleme), Chart.js durum dağılımı ve sprint zorluk grafikleri, CSV dışa aktarım, zorluk sapma analiz raporu.
+- **Faz 5 — Polishing & Testler** ✅ Kapsamlı hata düzeltmeleri, 23 birim testi ile tam doğrulama.
 
 ## Güvenlik Notu
 
