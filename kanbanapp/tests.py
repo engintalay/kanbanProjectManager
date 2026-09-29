@@ -40,17 +40,20 @@ class KanbanBoardTests(TestCase):
         self.assertEqual(col_resp.status_code, 302)
         col = KanbanColumn.objects.get(name="Backlog")
 
+        JiraIssue.objects.create(project=self.project, jira_id="10001", jira_key="BRD-1", summary="Task One")
         self.client.post(
             reverse("kanban_card_create", kwargs={"project_id": self.project.id}),
-            {"column": col.id, "title": "Task One", "description": "desc", "is_extra": True},
+            {"column": col.id, "jira_key": "BRD-1"},
         )
         self.assertEqual(KanbanCard.objects.count(), 1)
+        self.assertEqual(KanbanCard.objects.first().jira_key, "BRD-1")
+        self.assertEqual(KanbanCard.objects.first().title, "Task One")
 
         self.client.post(
             reverse("kanban_card_edit", kwargs={"project_id": self.project.id, "card_id": 1}),
-            {"column": col.id, "title": "Task One Edited", "description": "d", "is_extra": True},
+            {"column": col.id, "jira_key": "BRD-1", "difficulty_level": 3},
         )
-        self.assertEqual(KanbanCard.objects.first().title, "Task One Edited")
+        self.assertEqual(KanbanCard.objects.first().difficulty_level, 3)
 
         self.client.post(
             reverse("kanban_card_delete", kwargs={"project_id": self.project.id, "card_id": 1}),
@@ -225,12 +228,13 @@ class BugFixesAndPermissionsTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"Yeni Kart Ekle", resp.content)
 
+        JiraIssue.objects.create(project=self.project, jira_id="99001", jira_key="PRJ-1", summary="Prog Task")
         card_resp = self.client.post(
             reverse("kanban_card_create", kwargs={"project_id": self.project.id}),
-            {"column": self.col.id, "title": "Prog Task", "description": "desc", "is_extra": True},
+            {"column": self.col.id, "jira_key": "PRJ-1"},
         )
         self.assertEqual(card_resp.status_code, 302)
-        self.assertEqual(KanbanCard.objects.filter(title="Prog Task").count(), 1)
+        self.assertEqual(KanbanCard.objects.filter(jira_key="PRJ-1").count(), 1)
 
     def test_viewer_can_view_board_but_cannot_create_card(self):
         self.client.force_login(self.viewer)
@@ -773,6 +777,58 @@ class JiraImportAndSyncTests(TestCase):
         self.assertEqual(card.description, "Jira'da Güncellenmiş Açıklama")
         # Column should have updated to col_done via StatusMapping
         self.assertEqual(card.column_id, self.col_done.id)
+
+    def test_card_without_jira_key_rejected(self):
+        self.client.force_login(self.prog)
+        resp = self.client.post(
+            reverse("kanban_card_create", kwargs={"project_id": self.project.id}),
+            {"column": self.col_todo.id, "title": "Unlinked Task"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Jira")
+        self.assertEqual(KanbanCard.objects.filter(title="Unlinked Task").count(), 0)
+
+    def test_refresh_project_updates_existing_card_contents_from_jira(self):
+        from unittest.mock import patch
+
+        card = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="Eski Başlık",
+            description="Eski Açıklama",
+            jira_key="KONF-77",
+            jira_issue_id=777,
+        )
+
+        mock_pull = [
+            {
+                "id": "777",
+                "key": "KONF-77",
+                "summary": "Jira'da Değişen Başlık",
+                "description": "Jira'da Değişen Açıklama",
+                "status_key": "Yapılacak",
+                "status_id": 1,
+                "assignee": None,
+                "reporter": None,
+                "created": "",
+                "updated": "2026-09-29T11:00:00",
+                "sprint": None,
+                "epic_key": None,
+                "blocks": [],
+                "blocked_by": [],
+            }
+        ]
+
+        self.client.force_login(self.pm)
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_pull), \
+             patch("kanbanapp.views.JiraService.sync_statuses", return_value=1):
+            resp = self.client.post(reverse("refresh_project", kwargs={"project_id": self.project.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+
+        card.refresh_from_db()
+        self.assertEqual(card.title, "Jira'da Değişen Başlık")
+        self.assertEqual(card.description, "Jira'da Değişen Açıklama")
+
 
 
 

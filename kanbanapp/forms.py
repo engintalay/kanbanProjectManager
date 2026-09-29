@@ -109,14 +109,14 @@ class KanbanCardForm(forms.ModelForm):
         ]
         widgets = {
             "column": forms.Select(attrs={"class": "form-control"}),
-            "title": forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
-            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "title": forms.TextInput(attrs={"class": "form-control", "readonly": "readonly"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3, "readonly": "readonly"}),
             "difficulty_level": forms.Select(choices=ADMIN_PM_DIFFICULTIES, attrs={"class": "form-control"}),
             "assignee": forms.Select(attrs={"class": "form-control"}),
             "sprint": forms.Select(attrs={"class": "form-control"}),
-            "jira_key": forms.TextInput(attrs={"class": "form-control", "placeholder": "PROJ-123 (isteğe bağlı)"}),
+            "jira_key": forms.TextInput(attrs={"class": "form-control", "placeholder": "örn. KONF-42"}),
             "developer_assessment": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
-            "is_extra": forms.CheckboxInput(),
+            "is_extra": forms.HiddenInput(),
         }
 
     def __init__(self, *args, project=None, user=None, **kwargs):
@@ -125,20 +125,54 @@ class KanbanCardForm(forms.ModelForm):
         if proj:
             self.fields["column"].queryset = proj.columns.all().order_by("position", "name")
             self.fields["sprint"].queryset = proj.sprints.all().order_by("position", "-created_at")
-            # Assignees: members of this project or superusers
             from django.db.models import Q
             self.fields["assignee"].queryset = User.objects.filter(
                 Q(project=proj) | Q(created_projects=proj) | Q(is_superuser=True)
             ).distinct().order_by("username")
 
+        # Title and description are sourced and updated from Jira
+        self.fields["title"].required = False
+        self.fields["description"].required = False
+        self.fields["title"].widget.attrs["readonly"] = "readonly"
+        self.fields["description"].widget.attrs["readonly"] = "readonly"
+        self.fields["title"].help_text = "Başlık Jira'dan çekilmektedir."
+        self.fields["description"].help_text = "Açıklama Jira'dan çekilmektedir."
+
+        if "is_extra" in self.fields:
+            self.fields["is_extra"].initial = False
+            self.fields["is_extra"].required = False
+
+        if not getattr(self.instance, "is_sub_task", False):
+            self.fields["jira_key"].required = True
+            self.fields["jira_key"].help_text = "Kartın bağlı olduğu Jira iş anahtarı (zorunlu)."
+
+        if self.instance.pk and self.instance.jira_key:
+            self.fields["jira_key"].widget.attrs["readonly"] = "readonly"
+
         # Programmer restrictions (PLAN.md §8):
         if user and getattr(user, "role_level", 1) == 3:
-            # Programmer can't reassign already assigned card
             if self.instance.pk and self.instance.assignee and self.instance.assignee != user:
                 self.fields["assignee"].disabled = True
 
     def clean(self):
         cleaned_data = super().clean()
+        jira_key = cleaned_data.get("jira_key") or getattr(self.instance, "jira_key", "")
+        if not jira_key and not getattr(self.instance, "is_sub_task", False):
+            raise forms.ValidationError("Tüm kartlar Jira ile bağlı olmak zorundadır. Bir Jira iş anahtarı belirtilmelidir.")
+
+        # Ensure title and description are strictly sourced from Jira
+        proj = getattr(self.instance, "project", None)
+        if proj and jira_key:
+            issue = JiraIssue.objects.filter(project=proj, jira_key=jira_key).first()
+            if issue:
+                cleaned_data["title"] = issue.summary or cleaned_data.get("title") or jira_key
+                cleaned_data["description"] = issue.description or ""
+                self.instance.title = cleaned_data["title"]
+                self.instance.description = cleaned_data["description"]
+                self.instance.jira_key = jira_key
+                self.instance.jira_issue_id = int(issue.jira_id) if str(issue.jira_id).isdigit() else None
+                self.instance.is_extra = False
+
         diff = cleaned_data.get("difficulty_level")
         # Enforce initial_difficulty_level preservation
         if diff and not self.instance.initial_difficulty_level:
@@ -153,44 +187,51 @@ class KanbanCardForm(forms.ModelForm):
 
     def clean_jira_key(self):
         jira_key = self.cleaned_data.get("jira_key") or ""
-        if jira_key:
-            jira_key = jira_key.strip()
-            proj = getattr(self.instance, "project", None)
-            if proj:
-                issue = JiraIssue.objects.filter(project=proj, jira_key=jira_key).first()
-                if issue is None and proj.jira_connection:
-                    from .services import JiraService
+        if not jira_key:
+            if not getattr(self.instance, "is_sub_task", False):
+                raise forms.ValidationError("Jira iş anahtarı (jira_key) zorunludur. Jiraya bağlı olmayan kart oluşturulamaz.")
+            return ""
 
-                    service = JiraService()
-                    try:
-                        issue_data = service.get_project_issue(proj, jira_key)
-                        issue, _ = JiraIssue.objects.update_or_create(
-                            project=proj,
-                            jira_id=issue_data["id"],
-                            defaults={
-                                "jira_key": issue_data["key"],
-                                "summary": issue_data.get("summary", ""),
-                                "description": issue_data.get("description", ""),
-                                "status_id": issue_data.get("status_id"),
-                                "status_key": issue_data.get("status_key"),
-                                "assignee": issue_data.get("assignee"),
-                                "reporter": issue_data.get("reporter"),
-                                "created": issue_data.get("created", ""),
-                                "updated": issue_data.get("updated", ""),
-                                "sprint": issue_data.get("sprint"),
-                                "epic_key": issue_data.get("epic_key"),
-                                "blocks": issue_data.get("blocks", []),
-                                "blocked_by": issue_data.get("blocked_by", []),
-                            },
-                        )
-                    except Exception:
-                        pass
-                    finally:
-                        service.close()
+        jira_key = jira_key.strip()
+        proj = getattr(self.instance, "project", None)
+        if proj:
+            issue = JiraIssue.objects.filter(project=proj, jira_key=jira_key).first()
+            if issue is None and proj.jira_connection:
+                from .services import JiraService
 
-                if issue is None:
-                    raise forms.ValidationError("Bu projede böyle bir Jira issue yok.")
-                self.instance.jira_issue_id = int(issue.jira_id) if str(issue.jira_id).isdigit() else None
+                service = JiraService()
+                try:
+                    issue_data = service.get_project_issue(proj, jira_key)
+                    issue, _ = JiraIssue.objects.update_or_create(
+                        project=proj,
+                        jira_id=issue_data["id"],
+                        defaults={
+                            "jira_key": issue_data["key"],
+                            "summary": issue_data.get("summary", ""),
+                            "description": issue_data.get("description", ""),
+                            "status_id": issue_data.get("status_id"),
+                            "status_key": issue_data.get("status_key"),
+                            "assignee": issue_data.get("assignee"),
+                            "reporter": issue_data.get("reporter"),
+                            "created": issue_data.get("created", ""),
+                            "updated": issue_data.get("updated", ""),
+                            "sprint": issue_data.get("sprint"),
+                            "epic_key": issue_data.get("epic_key"),
+                            "blocks": issue_data.get("blocks", []),
+                            "blocked_by": issue_data.get("blocked_by", []),
+                        },
+                    )
+                except Exception:
+                    pass
+                finally:
+                    service.close()
+
+            if issue is None:
+                raise forms.ValidationError("Bu projede böyle bir Jira issue yok.")
+            self.instance.jira_issue_id = int(issue.jira_id) if str(issue.jira_id).isdigit() else None
+            self.instance.title = issue.summary or jira_key
+            self.instance.description = issue.description or ""
+            self.instance.is_extra = False
         return jira_key
 
 

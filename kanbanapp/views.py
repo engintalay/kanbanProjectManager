@@ -468,6 +468,22 @@ def refresh_project(request, project_id):
                              "blocked_by": issue.get("blocked_by", []),
                          },
                      )
+                    # Update contents and column of existing cards from Jira
+                    for card in project.cards.filter(jira_key=issue["key"]):
+                        card.title = issue["summary"] or card.title
+                        card.description = issue["description"] or ""
+                        if issue.get("id") and str(issue["id"]).isdigit():
+                            card.jira_issue_id = int(issue["id"])
+                        status_key = issue.get("status_key")
+                        if status_key:
+                            mapping = StatusMapping.objects.filter(
+                                project=project, jira_status__name__iexact=status_key
+                            ).first() or StatusMapping.objects.filter(
+                                project=project, jira_status__jira_status_key__iexact=status_key
+                            ).first()
+                            if mapping and mapping.app_status:
+                                card.column = mapping.app_status
+                        card.save()
                 log.pulled_count = len(count)
                 log.status = "success"
                 messages.success(request, f"{len(count)} issue başarıyla çekildi.")
@@ -1138,7 +1154,9 @@ def card_split_view(request, project_id, card_id):
             sub.column = card.column
             sub.parent_card = card
             sub.is_sub_task = True
-            sub.is_extra = card.is_extra
+            sub.is_extra = False
+            sub.jira_key = f"{card.jira_key}-sub{card.sub_tasks.count() + 1}" if card.jira_key else ""
+            sub.jira_issue_id = card.jira_issue_id
             sub.save()
 
             # Reduce parent card difficulty to 0 (PLAN.md §7)

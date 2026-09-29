@@ -11,10 +11,7 @@
   </div>
   <div class="head-actions">
     {% if can_edit_cards %}
-    <a href="{% url 'kanban_card_create' project.id %}" class="btn-primary">Yeni Kart Ekle</a>
-    {% if project.jira_connection %}
-    <a href="{% url 'kanban_card_import_jira' project.id %}" class="btn-primary" style="background:#0284c7;">Jira'dan İş Ekle</a>
-    {% endif %}
+    <a href="{% url 'kanban_card_import_jira' project.id %}" class="btn-primary">Yeni Kart Ekle (Jira)</a>
     {% endif %}
     {% if can_manage_project %}
     <a href="{% url 'kanban_column_create' project.id %}" class="btn-ghost">Kolon Ekle</a>
@@ -104,7 +101,7 @@
           <div class="card-actions">
             {% if can_edit_cards %}
             {% if card.jira_key and project.jira_connection %}
-            <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}" class="btn-ghost" title="Jira'dan en güncel detayları ve durumu çek">Jira'dan Çek</a>
+            <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">Jira'dan Güncelle</a>
             {% endif %}
             <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost">Düzenle</a>
             <a href="{% url 'card_request_create' project.id card.id %}" class="btn-ghost" title="Zorluk veya atama değişikliği talep et">Talep Aç</a>

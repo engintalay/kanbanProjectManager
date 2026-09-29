@@ -5,6 +5,11 @@
   <h1>{% if mode == "edit" %}Kartı Düzenle{% else %}Yeni Kart{% endif %}</h1>
 </div>
 <div class="auth-card">
+  {% if card.jira_key %}
+  <div style="background: rgba(2, 132, 199, 0.1); border-left: 4px solid #0284c7; padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; font-size: 0.85rem;">
+    <strong>Jira Entegrasyonu:</strong> Bu kart Jira'daki <strong>{{ card.jira_key }}</strong> işine bağlıdır. Başlık ve açıklama Jira kaynaklıdır; güncel içeriği çekmek için <strong>"Jira'dan Güncelle"</strong> butonunu kullanabilirsiniz.
+  </div>
+  {% endif %}
   <form method="post" class="auth-form">
     {% csrf_token %}
     {% for field in form %}
@@ -19,7 +24,7 @@
     <div class="form-actions">
       <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Oluştur{% endif %}</button>
       {% if mode == "edit" and card.jira_key and project.jira_connection %}
-      <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">Jira'dan Detayları Yenile</a>
+      <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">🔄 Jira'dan Güncelle</a>
       {% endif %}
       <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>
     </div>
