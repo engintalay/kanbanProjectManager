@@ -43,6 +43,22 @@ class Role(models.Model):
         return self.name
 
 
+def ensure_default_roles():
+    """Ensure default roles exist in the database."""
+    default_roles = [
+        ("Admin", "admin", Role.LEVEL_ADMIN, "Tam yetkili sistem yöneticisi"),
+        ("Proje Yöneticisi", "proje-yoneticisi", Role.LEVEL_PROJECT_MANAGER, "Proje ve sprint yönetimi"),
+        ("Proje Programcısı", "proje-programcisi", Role.LEVEL_PROGRAMMER, "Kart atama ve geliştirme"),
+        ("Raportör", "raportor", Role.LEVEL_REPORTER, "İzleme ve rapor oluşturma"),
+        ("İzleyici", "izleyici", Role.LEVEL_VIEWER, "Salt okunur izleme"),
+    ]
+    for name, slug, level, desc in default_roles:
+        Role.objects.get_or_create(
+            name=name,
+            defaults={"slug": slug, "level": level, "description": desc},
+        )
+
+
 class User(AbstractUser):
     # Required when extending the built-in auth.User model.
     parent_link = True

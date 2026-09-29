@@ -62,36 +62,60 @@ def is_admin(user):
 @user_passes_test(is_admin)
 def register_view(request):
     """Only admins can create new users."""
+    from django.contrib.auth import get_user_model
+    from .models import ensure_default_roles, Project, Role
+
+    User = get_user_model()
+
+    if Role.objects.count() == 0:
+        ensure_default_roles()
+
+    roles = Role.objects.all().order_by("level")
+    projects = Project.objects.all().order_by("name")
+
     if request.method == "POST":
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
-
-        username = request.POST.get("username")
-        email = request.POST.get("email")
-        password1 = request.POST.get("password1")
-        password2 = request.POST.get("password2")
+        username = request.POST.get("username", "").strip()
+        email = request.POST.get("email", "").strip()
+        first_name = request.POST.get("first_name", "").strip()
+        last_name = request.POST.get("last_name", "").strip()
+        password1 = request.POST.get("password1", "")
+        password2 = request.POST.get("password2", "")
         role_id = request.POST.get("role")
+        project_id = request.POST.get("project")
 
         if password1 != password2:
             messages.error(request, "Şifreler eşleşmiyor.")
         elif not username or not email or not password1:
-            messages.error(request, "Tüm alanları doldurun.")
+            messages.error(request, "Tüm zorunlu alanları (kullanıcı adı, email, şifre) doldurun.")
+        elif not role_id:
+            messages.error(request, "Lütfen bir rol seçin.")
+        elif User.objects.filter(username=username).exists():
+            messages.error(request, f"'{username}' kullanıcı adı zaten kullanılıyor.")
+        elif User.objects.filter(email=email).exists():
+            messages.error(request, f"'{email}' e-posta adresi zaten kullanılıyor.")
         else:
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password1,
-                first_name=request.POST.get("first_name", ""),
-                last_name=request.POST.get("last_name", ""),
-            )
-            if role_id:
+            try:
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=password1,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
                 user.role_id = role_id
-            user.save()
-            messages.success(request, f"{username} kullanıcısı oluşturuldu.")
-            return redirect("register")
+                if project_id:
+                    user.project_id = project_id
+                user.save()
+                messages.success(request, f"'{username}' kullanıcısı başarıyla oluşturuldu.")
+                return redirect("register")
+            except Exception as exc:  # noqa: BLE001
+                messages.error(request, f"Kullanıcı oluşturulurken bir hata oluştu: {exc}")
 
-    return render(request, "kanbanapp/register.html", {"error": None})
+    return render(
+        request,
+        "kanbanapp/register.html",
+        {"roles": roles, "projects": projects},
+    )
 
 
 def _role_level(user):

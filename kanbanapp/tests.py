@@ -476,5 +476,39 @@ class SprintAndCardWorkflowTests(TestCase):
             self.assertIn(b"Jira ba\xc4\x9flant\xc4\xb1 hatas\xc4\xb1", resp.content)
             self.assertIn("Sunucu bağlantısı koptu".encode("utf-8"), resp.content)
 
+    def test_register_view_roles_populated_and_user_created(self):
+        admin = User.objects.create_user(username="admin_user_reg", password="p", email="adm_reg@e.com", role=self.admin_role)
+        self.client.force_login(admin)
+
+        # 1. GET /register/ - check roles in context and rendered HTML
+        get_resp = self.client.get(reverse("register"))
+        self.assertEqual(get_resp.status_code, 200)
+        self.assertIn("roles", get_resp.context)
+        self.assertTrue(len(get_resp.context["roles"]) > 0)
+        self.assertIn(b"Proje Programc\xc4\xb1s\xc4\xb1", get_resp.content)
+
+        # 2. POST /register/ - create user with role
+        post_resp = self.client.post(
+            reverse("register"),
+            {
+                "username": "new_developer",
+                "email": "dev_new@example.com",
+                "first_name": "Ahmet",
+                "last_name": "Yılmaz",
+                "password1": "SecurePass123",
+                "password2": "SecurePass123",
+                "role": str(self.prog_role.id),
+            },
+            follow=True,
+        )
+        self.assertEqual(post_resp.status_code, 200)
+        created = User.objects.filter(username="new_developer").first()
+        self.assertIsNotNone(created)
+        self.assertEqual(created.email, "dev_new@example.com")
+        self.assertEqual(created.role_id, self.prog_role.id)
+        self.assertEqual(created.first_name, "Ahmet")
+        self.assertEqual(created.last_name, "Yılmaz")
+
+
 
 

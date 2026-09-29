@@ -3,27 +3,35 @@
 {% block content %}
 <div class="auth-card">
   <h1>Kullanıcı Kaydı</h1>
-  <p class="hint">(Sadece admin tarafından yapılır)</p>
+  <p class="hint">(Sadece sistem yöneticisi / admin tarafından yapılır)</p>
   {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
   <form method="post" class="auth-form">
     {% csrf_token %}
-    <label>Kullanıcı adı <input type="text" name="username" required></label>
-    <label>Email <input type="email" name="email" required></label>
+    <label>Kullanıcı adı <input type="text" name="username" required autofocus></label>
+    <label>E-posta <input type="email" name="email" required></label>
     <label>Ad <input type="text" name="first_name"></label>
     <label>Soyad <input type="text" name="last_name"></label>
     <label>Şifre <input type="password" name="password1" required></label>
     <label>Şifre (tekrar) <input type="password" name="password2" required></label>
     <label>Rol
-      <select name="role">
-        <option value="">Seçiniz</option>
+      <select name="role" required>
+        <option value="">-- Rol Seçiniz --</option>
         {% for role in roles %}
           <option value="{{ role.id }}">{{ role.name }} (Seviye {{ role.level }})</option>
         {% endfor %}
       </select>
     </label>
-    <button type="submit" class="btn-primary">Kaydet</button>
+    <label>Atanan Proje (Opsiyonel)
+      <select name="project">
+        <option value="">-- Genel / Tüm Projeler --</option>
+        {% for p in projects %}
+          <option value="{{ p.id }}">{{ p.key }} - {{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit" class="btn-primary">Kullanıcıyı Kaydet</button>
   </form>
-  <p class="auth-link"><a href="{% url 'login' %}">&larr; Geri</a></p>
+  <p class="auth-link"><a href="{% url 'dashboard' %}">&larr; Dashboard'a Dön</a></p>
 </div>
 {% endblock %}
 {% block scripts %}
