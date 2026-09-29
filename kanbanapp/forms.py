@@ -1,6 +1,6 @@
 from django import forms
 
-from .models import JiraConnection, JiraIssue, KanbanColumn, KanbanCard, Project
+from .models import JiraConnection, JiraIssue, JiraStatus, KanbanColumn, KanbanCard, Project, StatusMapping
 
 
 class ProjectForm(forms.ModelForm):
@@ -74,3 +74,15 @@ class KanbanCardForm(forms.ModelForm):
                 raise forms.ValidationError("Bu projede böyle bir Jira issue yok.")
             self.instance.jira_issue_id = issue.jira_id
         return jira_key
+
+
+class StatusMappingForm(forms.ModelForm):
+    """Maps a KanbanColumn (app status) to a Jira status (optional)."""
+
+    class Meta:
+        model = StatusMapping
+        fields = ["jira_status", "position"]
+        widgets = {
+            "jira_status": forms.Select(attrs={"class": "form-control"}),
+            "position": forms.NumberInput(attrs={"class": "form-control"}),
+        }

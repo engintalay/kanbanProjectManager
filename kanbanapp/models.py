@@ -191,6 +191,38 @@ class KanbanCard(models.Model):
         return self.title
 
 
+class StatusMapping(models.Model):
+    """Maps an application KanbanColumn (app status) to a Jira status.
+
+    Created by admin / project manager (PLAN.md §6). For 'jira'-type columns the
+    jira_status is expected; for 'custom' columns it is optional.
+    """
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="status_mappings"
+    )
+    app_status = models.ForeignKey(
+        KanbanColumn, on_delete=models.CASCADE, related_name="status_mappings"
+    )
+    jira_status = models.ForeignKey(
+        JiraStatus, on_delete=models.SET_NULL, related_name="app_mappings",
+        null=True, blank=True, default=None,
+    )
+    position = models.IntegerField(default=0)
+
+    class Meta:
+        ordering = ["position", "id"]
+        verbose_name = "Durum Eşlemesi"
+        verbose_name_plural = "Durum Eşlemeleri"
+        constraints = [
+            models.UniqueConstraint(fields=["app_status"], name="unique_app_status"),
+        ]
+
+    def __str__(self):
+        jira = self.jira_status.name if self.jira_status else "(mape edilmemiş)"
+        return f"{self.app_status.name} → {jira}"
+
+
 class JiraIssue(models.Model):
     """A Jira issue pulled into this application (READ-ONLY snapshot)."""
 

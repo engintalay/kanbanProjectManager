@@ -1,0 +1,21 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Durum Eşlemesi Sil — {{ mapping.app_status.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Durum Eşlemesini Sil</h1>
+</div>
+<div class="auth-card">
+  <p>Şu anda silinecek eşleme:</p>
+  <ul>
+    <li><strong>{{ mapping.app_status.name }}</strong>
+      <span class="muted">→ {{ mapping.jira_status.name|default:"(mape edilmemiş)" }}</span>
+    </li>
+  </ul>
+  <p class="message message-warn">Bu işlem geri alınamaz.</p>
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <button type="submit" class="btn-danger">SİL</button>
+    <a href="{% url 'board' project.id %}" class="btn-ghost">İptal</a>
+  </form>
+</div>
+{% endblock %}

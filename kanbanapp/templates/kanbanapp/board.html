@@ -9,8 +9,11 @@
   {% if can_manage_project %}
   <div class="head-actions">
     <a href="{% url 'kanban_card_create' project.id %}" class="btn-primary">Yeni Kart Ekle</a>
+    {% if can_manage_project %}
+    <span class="head-hint">Her kolon için Jira durumunu eşleyin.</span>
+    {% endif %}
   </div>
-  {% endif %}
+{% endif %}
 </div>
 <div class="board">
   {% for column in columns %}
@@ -18,6 +21,12 @@
     <div class="board-column-header">
       <a href="{% url 'kanban_column_edit' project.id column.id %}" class="col-name">{{ column.name }}</a>
       <span class="badge">{{ column.cards.count }} kart</span>
+      {% if can_manage_project %}
+      <a href="{% url 'status_mapping_create' project.id column.id %}" class="status-map-link">Durum Eşle</a>
+      {% endif %}
+      {% if column.status_mappings.exists %}
+      <span class="status-map-status">↔ {{ column.status_mappings.first.jira_status.name|default:"(mape edilmemiş)" }}</span>
+      {% endif %}
     </div>
     <div class="board-column-body">
       {% for card in column.cards.all %}

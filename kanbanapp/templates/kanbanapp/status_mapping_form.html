@@ -1,0 +1,27 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{% if mode == "edit" %}Durum Eşlemesini Düzenle{% else %}Durum Eşlemesi Oluştur{% endif %} — {{ project.key }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% if mode == "edit" %}Durum Eşlemesini Düzenle{% else %}Durum Eşlemesi Oluştur{% endif %}</h1>
+</div>
+<div class="auth-card">
+  <p>Uygulama durumu: <strong>{{ column.name }}</strong></p>
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    {% for field in form %}
+    <label>
+      {{ field.label }}
+      {{ field }}
+      {% if field.help_text %}<small class="form-text">{{ field.help_text }}</small>{% endif %}
+    </label>
+    {% for error in field.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+    {% endfor %}
+    {% for error in form.non_field_errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+    <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Kaydet{% endif %}</button>
+    <a href="{% url 'board' project.id %}" class="btn-ghost">İptal</a>
+  </form>
+  <p class="form-text">
+    "custom" durumlar için Jira eşleniği zorunlu değildir; bırakırsanız eşleme boş kalır.
+  </p>
+</div>
+{% endblock %}

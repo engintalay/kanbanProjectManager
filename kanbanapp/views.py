@@ -3,8 +3,8 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .forms import JiraConnectionForm, KanbanCardForm, KanbanColumnForm, ProjectForm
-from .models import JiraConnection, JiraIssue, JiraStatus, KanbanCard, KanbanColumn, Project, RefreshLog, Role
+from .forms import JiraConnectionForm, KanbanCardForm, KanbanColumnForm, ProjectForm, StatusMappingForm
+from .models import JiraConnection, JiraIssue, JiraStatus, KanbanCard, KanbanColumn, Project, RefreshLog, Role, StatusMapping
 from .services import JiraService
 
 
@@ -323,10 +323,93 @@ def board_view(request, project_id):
         return _forbidden(request)
 
     columns = KanbanColumn.objects.filter(project=project).order_by("position", "id")
+    status_mappings = StatusMapping.objects.filter(project=project).order_by("position", "id")
     return render(
         request,
         "kanbanapp/board.html",
-        {"project": project, "columns": columns, "can_manage_project": _can_manage_project(request.user, project)},
+        {
+            "project": project,
+            "columns": columns,
+            "status_mappings": status_mappings,
+            "can_manage_project": _can_manage_project(request.user, project),
+        },
+    )
+
+
+@login_required
+def status_mapping_create_view(request, project_id, column_id):
+    project = get_object_or_404(Project, id=project_id)
+    column = get_object_or_404(KanbanColumn, id=column_id, project=project)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = StatusMappingForm(request.POST)
+        if form.is_valid():
+            mapping = form.save(commit=False)
+            mapping.project = project
+            mapping.app_status = column
+            if StatusMapping.objects.filter(project=project, app_status=column).exclude(pk=mapping.pk).exists():
+                form.add_error(None, "Bu durum için zaten bir eşleme var.")
+            else:
+                mapping.save()
+            if form.is_valid():
+                messages.success(request, "Durum eşlemesi kaydedildi.")
+                return redirect("board", project_id=project.id)
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = StatusMappingForm()
+    return render(
+        request,
+        "kanbanapp/status_mapping_form.html",
+        {"form": form, "project": project, "mode": "create", "column": column},
+    )
+
+
+@login_required
+def status_mapping_edit_view(request, project_id, mapping_id):
+    project = get_object_or_404(Project, id=project_id)
+    mapping = get_object_or_404(StatusMapping, id=mapping_id, project=project)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = StatusMappingForm(request.POST, instance=mapping)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Durum eşlemesi güncellendi.")
+            return redirect("board", project_id=project.id)
+        messages.error(request, "Formdaki hataları düzeltin.")
+    else:
+        form = StatusMappingForm(instance=mapping)
+    return render(
+        request,
+        "kanbanapp/status_mapping_form.html",
+        {
+            "form": form,
+            "project": project,
+            "mode": "edit",
+            "mapping": mapping,
+            "column": mapping.app_status,
+        },
+    )
+
+
+@login_required
+def status_mapping_delete_view(request, project_id, mapping_id):
+    project = get_object_or_404(Project, id=project_id)
+    mapping = get_object_or_404(StatusMapping, id=mapping_id, project=project)
+    if not _can_manage_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        mapping.delete()
+        messages.success(request, "Durum eşlemesi silindi.")
+        return redirect("board", project_id=project.id)
+    return render(
+        request,
+        "kanbanapp/status_mapping_confirm_delete.html",
+        {"mapping": mapping, "project": project},
     )
 
 
