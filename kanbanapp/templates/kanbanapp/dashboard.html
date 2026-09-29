@@ -24,9 +24,9 @@
           <span class="badge">{{ card.column.name }}</span>
           {% if card.sprint %}<span class="badge">🏃 {{ card.sprint.name }}</span>{% endif %}
         </div>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <a href="{% url 'board' card.project_id %}" class="btn-ghost">Panoda Gör</a>
-          <a href="{% url 'card_request_create' card.project_id card.id %}" class="btn-ghost">Talep Aç</a>
+        <div class="card-actions" style="margin-top:auto; padding-top:8px;">
+          <a href="{% url 'board' card.project_id %}" class="btn-ghost" title="Panoda Gör">📋 Panoda Gör</a>
+          <a href="{% url 'card_request_create' card.project_id card.id %}" class="btn-ghost" title="Talep Aç">📝 Talep Aç</a>
         </div>
       </div>
       {% empty %}
@@ -50,10 +50,10 @@
           <span class="card-key">{{ card.project.key }}{% if card.jira_key %} / {{ card.jira_key }}{% endif %}</span>
           <span class="badge">{{ card.column.name }}</span>
         </div>
-        <div style="margin-top:8px;">
-          <form method="post" action="{% url 'kanban_card_assign' card.project_id card.id %}">
+        <div class="card-actions" style="margin-top:auto; padding-top:8px;">
+          <form method="post" action="{% url 'kanban_card_assign' card.project_id card.id %}" style="width:100%;">
             {% csrf_token %}
-            <button type="submit" class="btn-primary" style="padding:4px 10px; font-size:0.8rem;">Görevi Üstüme Al</button>
+            <button type="submit" class="btn-primary" style="width:100%; justify-content:center;">👤 Görevi Üstüme Al</button>
           </form>
         </div>
       </div>
@@ -122,10 +122,10 @@
       <span>{{ project.columns.count }} kolon</span>
       {% if project.jira_connection %}<span class="badge badge-ok">Jira</span>{% endif %}
     </div>
-    <div style="display:flex; gap:6px; margin-top:12px;">
-      <a href="{% url 'board' project.id %}" class="btn-primary" style="padding:6px 12px; font-size:0.8rem;">Pano</a>
-      <a href="{% url 'sprints' project.id %}" class="btn-ghost" style="padding:6px 10px; font-size:0.8rem;">Sprintler</a>
-      <a href="{% url 'project_reports' project.id %}" class="btn-ghost" style="padding:6px 10px; font-size:0.8rem;">Rapor</a>
+    <div class="project-actions">
+      <a href="{% url 'board' project.id %}" class="btn-primary" title="Kanban Panosu">📋 Pano</a>
+      <a href="{% url 'sprints' project.id %}" class="btn-ghost" title="Sprintler">🏃 Sprintler</a>
+      <a href="{% url 'project_reports' project.id %}" class="btn-ghost" title="Raporlar">📊 Rapor</a>
     </div>
   </div>
   {% empty %}

@@ -17,13 +17,12 @@
       <span>Oluşturan: {% if conn.created_by %}{{ conn.created_by.get_full_name|default:conn.created_by.username }}{% else %}-{% endif %}</span>
     </div>
     <div class="project-actions">
-      <a href="{% url 'jira_test_connection' conn.id %}" class="btn-ghost">Bağlantı Testi</a>
-      <a href="{% url 'jira_sync_statuses' conn.id %}" class="btn-ghost">Statüleri Çek</a>
-      <a href="{% url 'jira_connection_edit' conn.id %}" class="btn-ghost">Düzenle</a>
-      <form method="post" action="{% url 'jira_connection_delete' conn.id %}" class="inline-delete"
-            onclick="return confirm('Bu Jira bağlantısını silmek istediğinizden emin misiniz?');">
+      <a href="{% url 'jira_test_connection' conn.id %}" class="btn-ghost" title="Jira sunucu bağlantısını test et">⚡ Test Et</a>
+      <a href="{% url 'jira_sync_statuses' conn.id %}" class="btn-ghost" title="Jira'daki statüleri çek">🔄 Statüleri Çek</a>
+      <a href="{% url 'jira_connection_edit' conn.id %}" class="btn-ghost" title="Bağlantı bilgilerini düzenle">Düzenle</a>
+      <form method="post" action="{% url 'jira_connection_delete' conn.id %}" class="inline-delete">
         {% csrf_token %}
-        <button type="submit" class="btn-danger">Sil</button>
+        <button type="submit" class="btn-danger" title="Bağlantıyı sil" onclick="return confirm('Bu Jira bağlantısını silmek istediğinizden emin misiniz?');">Sil</button>
       </form>
     </div>
   </div>

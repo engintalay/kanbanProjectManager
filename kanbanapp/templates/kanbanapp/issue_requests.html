@@ -9,6 +9,7 @@
   </div>
 </div>
 
+<div class="table-responsive">
 <table class="data-table">
   <thead>
     <tr>
@@ -47,7 +48,7 @@
       </td>
       <td>
         {% if req.status == 'pending' %}
-        <div style="display:flex; gap:6px;">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <form method="post" action="{% url 'issue_request_action' project.id req.id 'approve' %}">
             {% csrf_token %}
             <button type="submit" class="btn-primary" style="padding:4px 8px; font-size:0.75rem;">Onayla</button>
@@ -69,4 +70,5 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

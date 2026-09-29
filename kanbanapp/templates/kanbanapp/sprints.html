@@ -22,11 +22,11 @@
       <span class="muted" style="margin-left: 8px;">Süre: {{ sprint.get_duration_display }}</span>
       {% if sprint.start_date %}<span class="muted" style="margin-left: 8px;">Başlangıç: {{ sprint.start_date|date:"d M Y" }}</span>{% endif %}
     </div>
-    <div>
+    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
       <span>Zorluk Seviyesi: <strong>{{ sprint.total_difficulty }}</strong> / Kapasite: <strong>{{ sprint.default_capacity }}</strong> (%{{ sprint.capacity_percentage }})</span>
       {% if can_manage_project %}
-      <a href="{% url 'sprint_edit' project.id sprint.id %}" class="btn-ghost" style="margin-left:12px;">Düzenle</a>
-      <a href="{% url 'sprint_delete' project.id sprint.id %}" class="btn-danger" style="margin-left:4px;">Sil</a>
+      <a href="{% url 'sprint_edit' project.id sprint.id %}" class="btn-ghost">Düzenle</a>
+      <a href="{% url 'sprint_delete' project.id sprint.id %}" class="btn-danger">Sil</a>
       {% endif %}
     </div>
   </div>
@@ -47,7 +47,7 @@
   </div>
   {% endif %}
 
-  <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+  <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
     <span class="muted" style="font-size:0.85rem;">{{ sprint.cards.count }} kart planlandı</span>
     <a href="{% url 'sprint_board' project.id sprint.id %}" class="btn-ghost">Sprint Panosunu Görüntüle →</a>
   </div>

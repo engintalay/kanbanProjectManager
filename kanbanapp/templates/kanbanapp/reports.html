@@ -12,7 +12,7 @@
   </div>
 </div>
 
-<div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px; margin-bottom:30px;">
+<div class="reports-charts-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:24px; margin-bottom:30px;">
   <!-- Status Distribution Chart -->
   <div class="capacity-card" style="margin:0;">
     <h3>Durum Dağılımı (Kolonlar)</h3>
@@ -29,13 +29,14 @@
 {% if can_view_drift %}
 <!-- Difficulty Drift Analysis (PLAN.md §7: Admin ve Proje Yöneticisi görebilir) -->
 <div class="capacity-card">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
     <div>
       <h3 style="margin:0;">Zorluk Değişim & Değerlendirme Raporu</h3>
       <span class="muted" style="font-size:0.85rem;">Atanan başlangıç zorluğu ve programcı talepleri karşılaştırması (Yönetici Paneli)</span>
     </div>
   </div>
 
+  <div class="table-responsive">
   <table class="data-table">
     <thead>
       <tr>
@@ -93,6 +94,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endif %}
 

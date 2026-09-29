@@ -9,7 +9,7 @@
   </div>
 </div>
 
-<div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px;">
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:24px;">
   <!-- Sub-task addition form -->
   <div class="auth-card" style="margin:0; max-width:none;">
     <h2>Yeni Alt Görev Ekle</h2>
@@ -31,9 +31,9 @@
         Açıklama:
         {{ form.description }}
       </label>
-      <div style="display:flex; gap:10px; margin-top:14px;">
+      <div class="form-actions" style="margin-top:16px;">
         <button type="submit" class="btn-primary">Alt Görev Ekle</button>
-        <a href="{% url 'board' project.id %}" class="btn-ghost">Tamamla & Panoya Dön</a>
+        <a href="{% url 'board' project.id %}" class="btn-secondary">Tamamla & Panoya Dön</a>
       </div>
     </form>
   </div>

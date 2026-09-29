@@ -15,23 +15,27 @@
     <div class="project-meta">
       <span>{{ project.cards.count }} kart</span>
       <span>{{ project.columns.count }} kolon</span>
-      {% if project.jira_connection %}<span class="badge badge-ok">Jira bağlı</span>{% else %}<span class="badge badge-warn">Jira yok</span>{% endif %}
+      {% if project.jira_connection %}
+      <span class="badge badge-ok" title="{{ project.jira_connection.name }} ({{ project.jira_connection.host }})">Jira Bağlı</span>
+      {% else %}
+      <span class="badge badge-warn">Jira Yok</span>
+      {% endif %}
     </div>
     <div class="project-actions">
-      <a href="{% url 'board' project.id %}" class="btn-primary">Kanban Panosu</a>
+      <a href="{% url 'board' project.id %}" class="btn-primary" title="Kanban Panosunu Aç">📋 Pano</a>
+      <a href="{% url 'sprints' project.id %}" class="btn-ghost" title="Sprintleri Görüntüle">🏃 Sprintler</a>
       {% if project.jira_connection %}
-      <a href="{% url 'refresh_project' project.id %}" class="btn-ghost">Jira Yenile</a>
+      <a href="{% url 'refresh_project' project.id %}" class="btn-ghost" title="Jira'dan en güncel işleri ve statüleri çek">🔄 Jira</a>
       {% else %}
       {% if is_admin or project.created_by_id == user.id %}
-      <a href="{% url 'project_edit' project.id %}" class="btn-ghost" style="color: #f59e0b;" title="Bu projeye Jira bağlantısı tanımlayın">Jira Bağla</a>
+      <a href="{% url 'project_edit' project.id %}" class="btn-ghost" style="color: #f59e0b;" title="Bu projeye Jira bağlantısı tanımlayın">🔗 Jira Bağla</a>
       {% endif %}
       {% endif %}
       {% if is_admin or project.created_by_id == user.id %}
-      <a href="{% url 'project_edit' project.id %}" class="btn-ghost">Düzenle</a>
-      <form method="post" action="{% url 'project_delete' project.id %}" class="inline-delete"
-            onclick="return confirm('Bu projeyi silmek istediğinizden emin misiniz?');">
+      <a href="{% url 'project_edit' project.id %}" class="btn-ghost" title="Projeyi Düzenle">Düzenle</a>
+      <form method="post" action="{% url 'project_delete' project.id %}" class="inline-delete">
         {% csrf_token %}
-        <button type="submit" class="btn-danger">Sil</button>
+        <button type="submit" class="btn-danger" title="Projeyi Sil" onclick="return confirm('Bu projeyi silmek istediğinizden emin misiniz?');">Sil</button>
       </form>
       {% endif %}
     </div>
