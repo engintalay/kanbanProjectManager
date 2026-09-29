@@ -4,87 +4,252 @@
 <div class="page-head">
   <div>
     <a href="{% url 'board' project.id %}" class="back-link">← {{ project.name }} Panosu</a>
-    <h1>Jira'dan İş Ekle</h1>
-    <span class="muted">Jira üzerindeki görevi kart olarak panoya ekleyin; başlık, açıklama ve durum Jira'dan otomatik çekilir.</span>
+    <h1>Jira'dan İş Ekle (JQL Arama &amp; Seçim)</h1>
+    <span class="muted">Jira üzerinde JQL sorgusu ile açık işleri listeleyin ve panonuza kart olarak ekleyin.</span>
+  </div>
+  <div class="head-actions">
+    <a href="{% url 'board' project.id %}" class="btn-ghost">📋 Panoya Dön</a>
   </div>
 </div>
 
-<div class="auth-card" style="max-width: 600px;">
-  <form method="post" class="auth-form">
-    {% csrf_token %}
+<!-- 1. JQL Search Form -->
+<div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 22px;">
+  <form method="get" action="{% url 'kanban_card_import_jira' project.id %}" id="jql-search-form">
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <label style="font-weight: 600; color: var(--text); font-size: 0.95rem;">
+        🔍 Jira JQL Sorgusu
+      </label>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <input
+          type="text"
+          name="jql"
+          id="jql-input"
+          value="{{ current_jql }}"
+          class="form-control"
+          placeholder='örn: project = "{{ project.key }}" AND assignee = currentUser()'
+          style="flex: 1; min-width: 320px; font-family: monospace; font-size: 0.92rem; padding: 10px 14px;"
+          autofocus
+        >
+        <button type="submit" class="btn-primary" style="padding: 10px 20px; font-size: 0.92rem;">
+          🔍 Jira'da Sorgula
+        </button>
+      </div>
 
-    {% if unimported_issues %}
-    <label>
-      Daha Önce Çekilmiş İşlerden Seçin
-      <select id="issue-select" class="form-control" onchange="if(this.value){ document.getElementById('jira-key-input').value = this.value; }">
-        <option value="">-- Listeden seçmek için tıklayın --</option>
-        {% for issue in unimported_issues %}
-        <option value="{{ issue.jira_key }}">{{ issue.jira_key }} — {{ issue.summary|truncatechars:60 }} ({{ issue.status_key|default:"-" }})</option>
-        {% endfor %}
-      </select>
-      <small class="form-text">Daha önce "Jira Yenile" ile çekilmiş işlerden birini seçebilir veya aşağıya doğrudan anahtar yazabilirsiniz.</small>
-    </label>
-    {% endif %}
-
-    <label>
-      Jira İş Anahtarı (Issue Key) <span style="color:#ef4444;">*</span>
-      <input type="text" name="jira_key" id="jira-key-input" class="form-control" placeholder="örn. EVDBS-101 veya KONF-42" required autofocus>
-      <small class="form-text">Detayları Jira REST API üzerinden anlık olarak çekilir.</small>
-    </label>
-
-    <label>
-      Pano Kolonu (Durum)
-      <select name="column_id" class="form-control">
-        <option value="">Otomatik (Jira Durum Eşlemesine Göre)</option>
-        {% for col in columns %}
-        <option value="{{ col.id }}">{{ col.name }}</option>
-        {% endfor %}
-      </select>
-      <small class="form-text">Boş bırakırsanız, Jira'daki statüye denk gelen kolon otomatik seçilir.</small>
-    </label>
-
-    <label>
-      Zorluk Derecesi (Fibonacci)
-      <select name="difficulty_level" class="form-control">
-        <option value="">--- Belirlenmedi ---</option>
-        {% for val, label in fibonacci_choices %}
-        <option value="{{ val }}">{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-
-    <label>
-      Atanacak Geliştirici
-      <select name="assignee_id" class="form-control">
-        <option value="">Otomatik / Atanmamış (Jira ile eşleşirse atanır)</option>
-        {% for m in members %}
-        <option value="{{ m.id }}">{{ m.get_full_name|default:m.username }} ({{ m.username }})</option>
-        {% endfor %}
-      </select>
-    </label>
-
-    <label>
-      Sprint
-      <select name="sprint_id" class="form-control">
-        <option value="">Otomatik (Jira Sprinti ile eşleşirse eklenir)</option>
-        {% for sp in sprints %}
-        <option value="{{ sp.id }}">{{ sp.name }} ({{ sp.get_status_display }})</option>
-        {% endfor %}
-      </select>
-    </label>
-
-    <label style="display: flex; align-items: center; gap: 8px; margin: 12px 0 6px 0; cursor: pointer;">
-      <input type="checkbox" name="sync_jira_status" value="1" {% if project.sync_jira_status %}checked{% endif %} style="width: auto; margin: 0;">
-      <span style="font-weight: 500;">Jira Statüsünü Aktar (Durum Eşlemesine Göre Kolona Yerleştir)</span>
-    </label>
-    <small class="form-text" style="display: block; margin-bottom: 12px;">
-      İşaret kaldırıldığında ('Jira statüsünü aktarma'), Jira'daki durum dikkate alınmaz; kart seçilen kolona (seçilmediyse ilk kolona) eklenir.
-    </small>
-
-    <div class="form-actions">
-      <button type="submit" class="btn-primary" style="background:#0284c7;">Jira'dan Çek ve Ekle</button>
-      <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>
+      <!-- Quick JQL Shortcuts -->
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
+        <span style="font-size: 0.8rem; color: var(--muted);">Hızlı Filtreler:</span>
+        <button type="button" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px;" onclick="setJql('project = &quot;{{ project.key }}&quot;')">
+          Tüm Açık İşler
+        </button>
+        <button type="button" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px;" onclick="setJql('project = &quot;{{ project.key }}&quot; AND assignee = currentUser()')">
+          Bana Atananlar
+        </button>
+        <button type="button" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px;" onclick="setJql('project = &quot;{{ project.key }}&quot; AND assignee is EMPTY')">
+          Atanmamış İşler
+        </button>
+        <button type="button" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px;" onclick="setJql('project = &quot;{{ project.key }}&quot; ORDER BY updated DESC')">
+          Son Güncellenenler
+        </button>
+      </div>
     </div>
   </form>
+
+  <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.82rem; color: var(--muted); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+    <div>
+      🛡️ <strong>Otomatik Filtreleme:</strong> Kapalı veya çözülmüş işler (<em>Resolved</em>, <em>Closed</em>, <em>Done</em> vb.) hiçbir zaman listelenmez.
+      Panoda zaten mevcut olan işler de (<strong>{{ existing_cards_count }}</strong> kart) sonuçlardan temizlenir.
+    </div>
+    {% if search_error %}
+    <span class="badge badge-warn" style="font-size: 0.75rem;">Canlı Jira uyarısı: {{ search_error|truncatechars:60 }}</span>
+    {% endif %}
+  </div>
 </div>
+
+<!-- 2. Import & Configuration Form -->
+<form method="post" action="{% url 'kanban_card_import_jira' project.id %}" id="import-form">
+  {% csrf_token %}
+  <input type="hidden" name="jql" value="{{ current_jql }}">
+  <input type="hidden" name="jira_key" id="single-jira-key" value="">
+
+  <!-- Common Card Attributes Panel -->
+  <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 22px;">
+    <h3 style="margin: 0 0 12px 0; font-size: 1rem; color: var(--text);">⚙️ Kart Ekleme Ayarları</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 12px;">
+      <label style="margin: 0;">
+        <span style="font-weight: 500; font-size: 0.85rem; color: var(--text); margin-bottom: 4px; display: block;">Pano Kolonu (Durum)</span>
+        <select name="column_id" class="form-control" style="width: 100%;">
+          <option value="">Otomatik (Jira Durum Eşlemesine Göre)</option>
+          {% for col in columns %}
+          <option value="{{ col.id }}">{{ col.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label style="margin: 0;">
+        <span style="font-weight: 500; font-size: 0.85rem; color: var(--text); margin-bottom: 4px; display: block;">Zorluk Derecesi (Fibonacci)</span>
+        <select name="difficulty_level" class="form-control" style="width: 100%;">
+          <option value="">--- Belirlenmedi ---</option>
+          {% for val, label in fibonacci_choices %}
+          <option value="{{ val }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label style="margin: 0;">
+        <span style="font-weight: 500; font-size: 0.85rem; color: var(--text); margin-bottom: 4px; display: block;">Atanacak Geliştirici</span>
+        <select name="assignee_id" class="form-control" style="width: 100%;">
+          <option value="">Otomatik / Atanmamış (Jira ile eşleşirse)</option>
+          {% for m in members %}
+          <option value="{{ m.id }}">{{ m.get_full_name|default:m.username }} ({{ m.username }})</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label style="margin: 0;">
+        <span style="font-weight: 500; font-size: 0.85rem; color: var(--text); margin-bottom: 4px; display: block;">Sprint</span>
+        <select name="sprint_id" class="form-control" style="width: 100%;">
+          <option value="">Otomatik (Jira Sprinti ile eşleşirse)</option>
+          {% for sp in sprints %}
+          <option value="{{ sp.id }}">{{ sp.name }} ({{ sp.get_status_display }})</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+
+    <label style="display: inline-flex; flex-direction: row; align-items: center; gap: 8px; margin: 0; cursor: pointer;">
+      <input type="checkbox" name="sync_jira_status" value="1" {% if project.sync_jira_status %}checked{% endif %} style="width: auto; margin: 0;">
+      <span style="font-size: 0.85rem; color: var(--text);">Jira Statüsünü Aktar (Durum eşlemesine göre kartı ilgili kolona yerleştir)</span>
+    </label>
+  </div>
+
+  <!-- Results List -->
+  <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+      <div>
+        <h2 style="margin: 0; font-size: 1.15rem; color: var(--text);">
+          📋 Eklenebilir Açık İşler (<span id="issue-count">{{ issues|length }}</span>)
+        </h2>
+        <span style="font-size: 0.8rem; color: var(--muted);">İşleri tek tek "Panoya Ekle" butonuyla veya kutucukları seçip toplu olarak ekleyebilirsiniz.</span>
+      </div>
+      <div>
+        <button type="submit" class="btn-primary" id="btn-batch-add" style="padding: 8px 16px; font-size: 0.88rem;">
+          ➕ Seçilenleri Panoya Ekle
+        </button>
+      </div>
+    </div>
+
+    {% if issues %}
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.03);">
+            <th style="padding: 10px 14px; width: 40px; text-align: center;">
+              <input type="checkbox" id="select-all" onclick="toggleSelectAll(this)" style="cursor: pointer;">
+            </th>
+            <th style="padding: 10px 14px; width: 130px;">Anahtar (Key)</th>
+            <th style="padding: 10px 14px;">Özet (Summary)</th>
+            <th style="padding: 10px 14px; width: 130px;">Jira Statüsü</th>
+            <th style="padding: 10px 14px; width: 140px;">Atanan</th>
+            <th style="padding: 10px 14px; width: 120px;">Sprint</th>
+            <th style="padding: 10px 14px; width: 120px; text-align: right;">İşlem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for issue in issues %}
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+            <td style="padding: 12px 14px; text-align: center;">
+              <input type="checkbox" name="selected_keys" value="{{ issue.key }}" class="issue-checkbox" style="cursor: pointer;">
+            </td>
+            <td style="padding: 12px 14px;">
+              <span class="badge" style="font-weight: 700; font-family: monospace; font-size: 0.82rem; background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.35);">
+                {{ issue.key }}
+              </span>
+            </td>
+            <td style="padding: 12px 14px;">
+              <div style="font-weight: 600; color: var(--text); margin-bottom: 2px;">{{ issue.summary }}</div>
+              {% if issue.description %}
+              <div style="font-size: 0.78rem; color: var(--muted); max-height: 2.4em; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
+                {{ issue.description|truncatechars:140 }}
+              </div>
+              {% endif %}
+            </td>
+            <td style="padding: 12px 14px;">
+              <span class="badge" style="font-size: 0.76rem; background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3);">
+                {{ issue.status_key|default:"Açık" }}
+              </span>
+            </td>
+            <td style="padding: 12px 14px; font-size: 0.82rem; color: var(--text);">
+              {% if issue.assignee %}
+              <span>👤 {{ issue.assignee }}</span>
+              {% else %}
+              <span class="muted">Atanmamış</span>
+              {% endif %}
+            </td>
+            <td style="padding: 12px 14px; font-size: 0.8rem; color: var(--muted);">
+              {{ issue.sprint|default:"-" }}
+            </td>
+            <td style="padding: 12px 14px; text-align: right;">
+              <button
+                type="button"
+                class="btn-primary"
+                style="font-size: 0.78rem; padding: 4px 10px; white-space: nowrap;"
+                onclick="addSingle('{{ issue.key }}')"
+                title="'{{ issue.key }}' işini panoya ekle"
+              >
+                + Ekle
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 36px 20px; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px;">
+      <div style="font-size: 2rem; margin-bottom: 8px;">🔍</div>
+      <h3 style="margin: 0 0 6px 0; color: var(--text); font-size: 1.05rem;">Eklenebilecek Açık İş Bulunamadı</h3>
+      <p style="margin: 0; font-size: 0.85rem; max-width: 500px; margin: 0 auto; line-height: 1.5;">
+        Belirtilen JQL kriterlerine uyan açık iş bulunamadı. Kapalı işler (<em>Resolved</em>, <em>Closed</em>, <em>Done</em>) ve zaten panoda bulunan kartlar burada listelenmez.
+      </p>
+      <div style="margin-top: 14px;">
+        <button type="button" class="btn-ghost" onclick="setJql('project = &quot;{{ project.key }}&quot;')">
+          Tüm Açık İşleri Sorgula
+        </button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</form>
+
+<!-- 3. Direct Key Fallback Card -->
+<div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-top: 22px;">
+  <details>
+    <summary style="cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--muted);">
+      ▶ Doğrudan İş Anahtarı ile Ekle (Örn: {{ project.key }}-101)
+    </summary>
+    <form method="post" action="{% url 'kanban_card_import_jira' project.id %}" style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+      {% csrf_token %}
+      <input type="text" name="jira_key" class="form-control" placeholder="örn. {{ project.key }}-101" style="min-width: 220px; padding: 8px 12px;" required>
+      <button type="submit" class="btn-primary" style="padding: 8px 16px; font-size: 0.85rem;">Doğrudan Çek ve Ekle</button>
+      <small class="muted">Anahtarı girilen iş kapalı/çözülmüş durumdaysa sistem tarafından otomatik olarak engellenir.</small>
+    </form>
+  </details>
+</div>
+
+<script>
+  function setJql(query) {
+    document.getElementById('jql-input').value = query;
+    document.getElementById('jql-search-form').submit();
+  }
+
+  function toggleSelectAll(master) {
+    const checkboxes = document.querySelectorAll('.issue-checkbox');
+    checkboxes.forEach(cb => cb.checked = master.checked);
+  }
+
+  function addSingle(key) {
+    document.getElementById('single-jira-key').value = key;
+    document.getElementById('import-form').submit();
+  }
+</script>
 {% endblock %}

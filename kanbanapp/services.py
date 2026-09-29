@@ -219,6 +219,23 @@ def parse_jira_issue(issue):
             except (ValueError, TypeError):
                 status_id = None
 
+    status_category_key = None
+    if status:
+        sc = getattr(status, "statusCategory", None)
+        if isinstance(sc, dict):
+            status_category_key = sc.get("key")
+        elif sc:
+            status_category_key = getattr(sc, "key", None)
+
+    resolution_obj = getattr(fields, "resolution", None) if fields else None
+    resolution_name = getattr(resolution_obj, "name", str(resolution_obj)) if resolution_obj else None
+
+    issuetype_obj = getattr(fields, "issuetype", None) if fields else None
+    issuetype_name = getattr(issuetype_obj, "name", str(issuetype_obj)) if issuetype_obj else None
+
+    priority_obj = getattr(fields, "priority", None) if fields else None
+    priority_name = getattr(priority_obj, "name", str(priority_obj)) if priority_obj else None
+
     issue_id = str(getattr(issue, "id", ""))
     issue_key = getattr(issue, "key", "")
 
@@ -229,6 +246,10 @@ def parse_jira_issue(issue):
         "description": getattr(fields, "description", "") or "",
         "status_key": getattr(status, "name", None) if status else None,
         "status_id": status_id,
+        "status_category": status_category_key,
+        "resolution": resolution_name,
+        "issue_type": issuetype_name,
+        "priority": priority_name,
         "assignee": getattr(assignee, "displayName", str(assignee)) if assignee else None,
         "reporter": getattr(reporter, "displayName", str(reporter)) if reporter else None,
         "created": str(getattr(fields, "created", "")) if fields else "",

@@ -1,3 +1,6 @@
+import logging
+import re
+
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -32,7 +35,100 @@ from .models import (
 )
 from .services import JiraService
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
+
+CLOSED_STATUS_NAMES = {
+    "resolved",
+    "closed",
+    "done",
+    "kapatıldı",
+    "çözüldü",
+    "tamamlandı",
+    "iptal",
+    "cancelled",
+    "rejected",
+    "bitti",
+}
+
+
+def is_issue_closed(issue_dict: dict) -> bool:
+    """Return True if a Jira issue is resolved or closed."""
+    # 1. statusCategory in Jira (e.g. 'done')
+    cat = (issue_dict.get("status_category") or "").strip().lower()
+    if cat in ("done", "closed"):
+        return True
+
+    # 2. resolution set
+    if issue_dict.get("resolution"):
+        return True
+
+    # 3. status name matching closed statuses
+    status_name = (issue_dict.get("status_key") or "").strip().lower()
+    if status_name in CLOSED_STATUS_NAMES:
+        return True
+
+    return False
+
+
+def build_open_issues_jql(base_jql: str, project_key: str = "") -> str:
+    """Construct a JQL query string ensuring resolved and closed issues are excluded."""
+    jql = (base_jql or "").strip()
+    if not jql and project_key:
+        jql = f'project = "{project_key}"'
+
+    order_by_clause = ""
+    match = re.search(r"\bORDER\s+BY\b", jql, flags=re.IGNORECASE)
+    if match:
+        order_by_clause = jql[match.start():].strip()
+        jql = jql[:match.start()].strip()
+
+    # If user provided a standalone issue key (e.g. 'KONF-102')
+    if jql and re.match(r"^[A-Za-z0-9_]+-[0-9]+$", jql):
+        jql = f'issueKey = "{jql}"'
+    elif jql and re.match(r"^[A-Za-z0-9_]+$", jql) and not any(k in jql.lower() for k in ["=", "in", "~", "is"]):
+        jql = f'project = "{jql}"'
+
+    closed_filter = (
+        "statusCategory != Done "
+        "AND status not in ('Resolved', 'Closed', 'Done', 'Kapatıldı', 'Çözüldü', 'Tamamlandı') "
+        "AND resolution is EMPTY"
+    )
+
+    combined = f"({jql}) AND {closed_filter}" if jql else closed_filter
+
+    if order_by_clause:
+        return f"{combined} {order_by_clause}"
+    return f"{combined} ORDER BY updated DESC"
+
+
+def build_fallback_open_issues_jql(base_jql: str, project_key: str = "") -> str:
+    """Fallback JQL without statusCategory in case Jira server doesn't support statusCategory."""
+    jql = (base_jql or "").strip()
+    if not jql and project_key:
+        jql = f'project = "{project_key}"'
+
+    order_by_clause = ""
+    match = re.search(r"\bORDER\s+BY\b", jql, flags=re.IGNORECASE)
+    if match:
+        order_by_clause = jql[match.start():].strip()
+        jql = jql[:match.start()].strip()
+
+    if jql and re.match(r"^[A-Za-z0-9_]+-[0-9]+$", jql):
+        jql = f'issueKey = "{jql}"'
+    elif jql and re.match(r"^[A-Za-z0-9_]+$", jql) and not any(k in jql.lower() for k in ["=", "in", "~", "is"]):
+        jql = f'project = "{jql}"'
+
+    closed_filter = (
+        "status not in ('Resolved', 'Closed', 'Done', 'Kapatıldı', 'Çözüldü', 'Tamamlandı') "
+        "AND resolution is EMPTY"
+    )
+
+    combined = f"({jql}) AND {closed_filter}" if jql else closed_filter
+
+    if order_by_clause:
+        return f"{combined} {order_by_clause}"
+    return f"{combined} ORDER BY updated DESC"
 
 
 
@@ -971,13 +1067,23 @@ def kanban_card_create_view(request, project_id):
 
 @login_required
 def kanban_card_import_jira_view(request, project_id):
-    """Import an issue directly from Jira into the project's Kanban board."""
+    """Import issue(s) directly from Jira into the project's Kanban board.
+
+    Supports:
+    - Searching open Jira issues using custom or default JQL queries.
+    - Strictly filtering out closed / resolved issues (resolved, closed, done).
+    - Automatically cleaning out issues that are already added as cards to the project.
+    - Listing filtered issues and manually adding single or multiple issues to the board.
+    """
     project = get_object_or_404(Project, id=project_id)
     if not _can_edit_cards(request.user, project):
         return _forbidden(request)
 
     if not project.jira_connection:
-        messages.error(request, "Bu projede tanımlı bir Jira bağlantısı bulunmuyor. Önce projeyi bir Jira bağlantısıyla ilişkilendirin.")
+        messages.error(
+            request,
+            "Bu projede tanımlı bir Jira bağlantısı bulunmuyor. Önce projeyi bir Jira bağlantısıyla ilişkilendirin."
+        )
         return redirect("board", project_id=project.id)
 
     columns = project.columns.all().order_by("position", "name")
@@ -986,169 +1092,237 @@ def kanban_card_import_jira_view(request, project_id):
         return redirect("board", project_id=project.id)
 
     sprints = project.sprints.all().order_by("position", "-created_at")
-    from django.db.models import Q
     members = User.objects.filter(
         Q(project=project) | Q(created_projects=project) | Q(is_superuser=True)
     ).distinct().order_by("username")
 
-    existing_keys = KanbanCard.objects.filter(project=project, jira_key__isnull=False).values_list("jira_key", flat=True)
-    unimported_issues = JiraIssue.objects.filter(project=project).exclude(jira_key__in=existing_keys).order_by("-updated", "jira_key")[:100]
+    existing_keys = set(
+        KanbanCard.objects.filter(project=project, jira_key__isnull=False).values_list("jira_key", flat=True)
+    )
 
-    if request.method == "POST":
-        jira_key = request.POST.get("jira_key", "").strip()
-        if not jira_key:
-            messages.error(request, "Lütfen bir Jira issue anahtarı (örn: EVDBS-101) girin veya listeden seçin.")
-            return render(
-                request,
-                "kanbanapp/kanban_card_import_jira.html",
-                {
-                    "project": project,
-                    "columns": columns,
-                    "sprints": sprints,
-                    "members": members,
-                    "unimported_issues": unimported_issues,
-                    "fibonacci_choices": FIBONACCI_DIFFICULTIES,
-                },
-            )
+    default_jql = f'project = "{project.key}"' if project.key else ""
+    user_jql = request.GET.get("jql", "").strip() or request.POST.get("jql", "").strip()
+    search_jql = user_jql if user_jql else default_jql
+    action = request.POST.get("action", "")
+
+    # Handle POST for adding card(s)
+    if request.method == "POST" and action != "search":
+        keys_to_import = []
+        selected = request.POST.getlist("selected_keys")
+        if selected:
+            keys_to_import.extend([k.strip() for k in selected if k.strip()])
+        direct_key = request.POST.get("jira_key", "").strip()
+        if direct_key and direct_key not in keys_to_import:
+            keys_to_import.append(direct_key)
+
+        if not keys_to_import:
+            messages.error(request, "Lütfen panoya eklenecek en az bir Jira işi seçin veya anahtarını girin.")
+            return redirect(f"{request.path}?jql={search_jql}")
 
         column_id = request.POST.get("column_id")
         difficulty_level = request.POST.get("difficulty_level")
         assignee_id = request.POST.get("assignee_id")
         sprint_id = request.POST.get("sprint_id")
+        sync_status = request.POST.get("sync_jira_status") != "0"
+
+        target_column_override = columns.filter(id=column_id).first() if column_id else None
+        target_sprint_override = sprints.filter(id=sprint_id).first() if sprint_id else None
+        target_assignee_override = members.filter(id=assignee_id).first() if assignee_id else None
+        diff_override = None
+        if difficulty_level:
+            try:
+                diff_override = int(difficulty_level)
+            except (ValueError, TypeError):
+                diff_override = None
 
         service = JiraService()
-        issue_data = None
+        imported_count = 0
+        updated_count = 0
+
         try:
-            issue_data = service.get_project_issue(project, jira_key)
-        except Exception as exc:
-            logger.warning("Jira canlı çekim yapılamadı (%s): %s", jira_key, exc)
-            local = JiraIssue.objects.filter(project=project, jira_key=jira_key).first()
-            if local:
-                issue_data = {
-                    "id": local.jira_id,
-                    "key": local.jira_key,
-                    "summary": local.summary,
-                    "description": local.description,
-                    "status_key": local.status_key,
-                    "status_id": local.status_id,
-                    "assignee": local.assignee,
-                    "reporter": local.reporter,
-                    "created": local.created,
-                    "updated": local.updated,
-                    "sprint": local.sprint,
-                    "epic_key": local.epic_key,
-                    "blocks": local.blocks,
-                    "blocked_by": local.blocked_by,
-                }
-            else:
-                messages.error(request, f"'{jira_key}' Jira'dan çekilemedi: {exc}")
-                return redirect("kanban_card_import_jira", project_id=project.id)
+            for issue_key in keys_to_import:
+                issue_data = None
+                try:
+                    issue_data = service.get_project_issue(project, issue_key)
+                except Exception as exc:
+                    logger.warning("Jira canlı çekim yapılamadı (%s): %s", issue_key, exc)
+                    local = JiraIssue.objects.filter(project=project, jira_key=issue_key).first()
+                    if local:
+                        issue_data = {
+                            "id": local.jira_id,
+                            "key": local.jira_key,
+                            "summary": local.summary,
+                            "description": local.description,
+                            "status_key": local.status_key,
+                            "status_id": local.status_id,
+                            "assignee": local.assignee,
+                            "reporter": local.reporter,
+                            "created": local.created,
+                            "updated": local.updated,
+                            "sprint": local.sprint,
+                            "epic_key": local.epic_key,
+                            "blocks": local.blocks,
+                            "blocked_by": local.blocked_by,
+                        }
+                    else:
+                        messages.error(request, f"'{issue_key}' Jira'dan çekilemedi: {exc}")
+                        continue
+
+                # Strict filter: Closed/resolved issues must NEVER be imported
+                if is_issue_closed(issue_data):
+                    messages.error(
+                        request,
+                        f"'{issue_key}' işi kapalı veya çözülmüş durumda (Durum: {issue_data.get('status_key')}). Kapalı işler panoya eklenemez."
+                    )
+                    continue
+
+                JiraIssue.objects.update_or_create(
+                    project=project,
+                    jira_id=issue_data["id"],
+                    defaults={
+                        "jira_key": issue_data["key"],
+                        "summary": issue_data.get("summary", ""),
+                        "description": issue_data.get("description", ""),
+                        "status_id": issue_data.get("status_id"),
+                        "status_key": issue_data.get("status_key"),
+                        "assignee": issue_data.get("assignee"),
+                        "reporter": issue_data.get("reporter"),
+                        "created": issue_data.get("created", ""),
+                        "updated": issue_data.get("updated", ""),
+                        "sprint": issue_data.get("sprint"),
+                        "epic_key": issue_data.get("epic_key"),
+                        "blocks": issue_data.get("blocks", []),
+                        "blocked_by": issue_data.get("blocked_by", []),
+                    },
+                )
+
+                target_col = target_column_override
+                if not target_col and sync_status and project.sync_jira_status:
+                    status_key = issue_data.get("status_key")
+                    if status_key:
+                        mappings = StatusMapping.objects.filter(
+                            project=project, jira_status__isnull=False
+                        ).filter(
+                            Q(jira_status__name__iexact=status_key)
+                            | Q(jira_status__jira_status_key__iexact=status_key)
+                        )
+                        primary_m = (
+                            mappings.filter(transfer_to_jira=True)
+                            .order_by("-is_primary", "position", "id")
+                            .first()
+                        ) or mappings.order_by("-is_primary", "position", "id").first()
+                        if primary_m and primary_m.app_status:
+                            target_col = primary_m.app_status
+                if not target_col:
+                    target_col = columns.first()
+
+                target_sp = target_sprint_override
+                if not target_sp and issue_data.get("sprint"):
+                    target_sp = sprints.filter(name__iexact=issue_data["sprint"]).first()
+
+                target_ass = target_assignee_override
+                if not target_ass and issue_data.get("assignee"):
+                    raw_a = issue_data["assignee"].strip()
+                    target_ass = members.filter(
+                        Q(username__iexact=raw_a) | Q(first_name__icontains=raw_a) | Q(last_name__icontains=raw_a)
+                    ).first()
+
+                existing_card = KanbanCard.objects.filter(project=project, jira_key=issue_data["key"]).first()
+                if existing_card:
+                    existing_card.title = issue_data.get("summary") or existing_card.title
+                    existing_card.description = issue_data.get("description") or existing_card.description
+                    if issue_data.get("id") and str(issue_data["id"]).isdigit():
+                        existing_card.jira_issue_id = int(issue_data["id"])
+                    if target_col:
+                        existing_card.column = target_col
+                    if diff_override is not None:
+                        existing_card.difficulty_level = diff_override
+                    if target_sp:
+                        existing_card.sprint = target_sp
+                    if target_ass:
+                        existing_card.assignee = target_ass
+                    existing_card.save()
+                    updated_count += 1
+                else:
+                    KanbanCard.objects.create(
+                        project=project,
+                        column=target_col,
+                        title=issue_data.get("summary") or issue_data["key"],
+                        description=issue_data.get("description") or "",
+                        jira_key=issue_data["key"],
+                        jira_issue_id=int(issue_data["id"]) if issue_data.get("id") and str(issue_data["id"]).isdigit() else None,
+                        difficulty_level=diff_override,
+                        initial_difficulty_level=diff_override,
+                        assignee=target_ass,
+                        sprint=target_sp,
+                        is_extra=False,
+                    )
+                    imported_count += 1
         finally:
             service.close()
 
-        # Update or create JiraIssue snapshot
-        jira_issue, _ = JiraIssue.objects.update_or_create(
-            project=project,
-            jira_id=issue_data["id"],
-            defaults={
-                "jira_key": issue_data["key"],
-                "summary": issue_data.get("summary", ""),
-                "description": issue_data.get("description", ""),
-                "status_id": issue_data.get("status_id"),
-                "status_key": issue_data.get("status_key"),
-                "assignee": issue_data.get("assignee"),
-                "reporter": issue_data.get("reporter"),
-                "created": issue_data.get("created", ""),
-                "updated": issue_data.get("updated", ""),
-                "sprint": issue_data.get("sprint"),
-                "epic_key": issue_data.get("epic_key"),
-                "blocks": issue_data.get("blocks", []),
-                "blocked_by": issue_data.get("blocked_by", []),
-            },
-        )
-
-        # Target column
-        target_column = None
-        if column_id:
-            target_column = columns.filter(id=column_id).first()
-        sync_status = request.POST.get("sync_jira_status") != "0"
-        if not target_column and sync_status and project.sync_jira_status:
-            status_key = issue_data.get("status_key")
-            if status_key:
-                mappings = StatusMapping.objects.filter(
-                    project=project, jira_status__isnull=False
-                ).filter(
-                    Q(jira_status__name__iexact=status_key)
-                    | Q(jira_status__jira_status_key__iexact=status_key)
-                )
-                primary_mapping = (
-                    mappings.filter(transfer_to_jira=True)
-                    .order_by("-is_primary", "position", "id")
-                    .first()
-                ) or mappings.order_by("-is_primary", "position", "id").first()
-                if primary_mapping and primary_mapping.app_status:
-                    target_column = primary_mapping.app_status
-        if not target_column:
-            target_column = columns.first()
-
-        # Sprint
-        target_sprint = None
-        if sprint_id:
-            target_sprint = sprints.filter(id=sprint_id).first()
-        elif issue_data.get("sprint"):
-            target_sprint = sprints.filter(name__iexact=issue_data["sprint"]).first()
-
-        # Assignee
-        target_assignee = None
-        if assignee_id:
-            target_assignee = members.filter(id=assignee_id).first()
-        elif issue_data.get("assignee"):
-            raw_a = issue_data["assignee"].strip()
-            target_assignee = members.filter(
-                Q(username__iexact=raw_a) | Q(first_name__icontains=raw_a) | Q(last_name__icontains=raw_a)
-            ).first()
-
-        # Difficulty
-        diff = None
-        if difficulty_level:
-            try:
-                diff = int(difficulty_level)
-            except (ValueError, TypeError):
-                diff = None
-
-        card = KanbanCard.objects.filter(project=project, jira_key=issue_data["key"]).first()
-        if card:
-            card.title = issue_data.get("summary") or card.title
-            card.description = issue_data.get("description") or card.description
-            if issue_data.get("id") and str(issue_data["id"]).isdigit():
-                card.jira_issue_id = int(issue_data["id"])
-            if target_column:
-                card.column = target_column
-            if diff:
-                card.difficulty_level = diff
-            if target_sprint:
-                card.sprint = target_sprint
-            if target_assignee:
-                card.assignee = target_assignee
-            card.save()
-            messages.info(request, f"'{issue_data['key']}' işi zaten panoda mevcuttu. Detayları Jira'dan güncellendi.")
-        else:
-            card = KanbanCard.objects.create(
-                project=project,
-                column=target_column,
-                title=issue_data.get("summary") or issue_data["key"],
-                description=issue_data.get("description") or "",
-                jira_key=issue_data["key"],
-                jira_issue_id=int(issue_data["id"]) if issue_data.get("id") and str(issue_data["id"]).isdigit() else None,
-                difficulty_level=diff,
-                initial_difficulty_level=diff,
-                assignee=target_assignee,
-                sprint=target_sprint,
-                is_extra=False,
-            )
-            messages.success(request, f"'{issue_data['key']} - {card.title}' işi Jira'dan başarıyla panoya eklendi.")
+        if imported_count == 1 and updated_count == 0:
+            messages.success(request, f"'{keys_to_import[0]}' işi Jira'dan başarıyla panoya eklendi.")
+        elif imported_count > 1:
+            messages.success(request, f"{imported_count} adet Jira işi başarıyla panoya eklendi.")
+        if updated_count > 0:
+            messages.info(request, f"{updated_count} adet iş zaten panoda mevcuttu ve güncellendi.")
 
         return redirect("board", project_id=project.id)
+
+    # Search & Listing execution
+    raw_issues = []
+    search_error = ""
+
+    if project.jira_connection and project.jira_connection.is_valid:
+        service = JiraService()
+        try:
+            jql_query = build_open_issues_jql(search_jql, project.key)
+            try:
+                raw_issues = service.pull_project_issues(project, jql_query, max_results=100)
+            except Exception as exc:
+                err_str = str(exc).lower()
+                if any(x in err_str for x in ["connection", "timeout", "unreachable", "dns", "refused", "name or service not known"]):
+                    raise exc
+                logger.info("JQL statusCategory ile başarısız oldu, fallback deneniyor: %s", exc)
+                fallback_jql = build_fallback_open_issues_jql(search_jql, project.key)
+                raw_issues = service.pull_project_issues(project, fallback_jql, max_results=100)
+        except Exception as exc:
+            search_error = str(exc)
+            logger.warning("Jira JQL araması başarısız (%s): %s", search_jql, exc)
+            local_qs = JiraIssue.objects.filter(project=project)
+            raw_issues = [
+                {
+                    "id": str(i.jira_id),
+                    "key": i.jira_key,
+                    "summary": i.summary,
+                    "description": i.description,
+                    "status_key": i.status_key,
+                    "status_id": i.status_id,
+                    "assignee": i.assignee,
+                    "reporter": i.reporter,
+                    "created": i.created,
+                    "updated": i.updated,
+                    "sprint": i.sprint,
+                    "epic_key": i.epic_key,
+                    "blocks": i.blocks,
+                    "blocked_by": i.blocked_by,
+                }
+                for i in local_qs
+            ]
+        finally:
+            service.close()
+
+    # Filter out closed issues and already added cards
+    filtered_issues = []
+    for issue in raw_issues:
+        # 1. Closed issues MUST NEVER appear
+        if is_issue_closed(issue):
+            continue
+        # 2. Already added issues MUST BE CLEANED OUT
+        if issue.get("key") in existing_keys:
+            continue
+        filtered_issues.append(issue)
 
     return render(
         request,
@@ -1158,7 +1332,11 @@ def kanban_card_import_jira_view(request, project_id):
             "columns": columns,
             "sprints": sprints,
             "members": members,
-            "unimported_issues": unimported_issues,
+            "issues": filtered_issues,
+            "current_jql": search_jql,
+            "default_jql": default_jql,
+            "search_error": search_error,
+            "existing_cards_count": len(existing_keys),
             "fibonacci_choices": FIBONACCI_DIFFICULTIES,
         },
     )

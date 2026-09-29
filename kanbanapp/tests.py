@@ -684,9 +684,10 @@ class JiraImportAndSyncTests(TestCase):
         self.client.force_login(self.pm)
 
         # GET should render import form
-        get_resp = self.client.get(reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}))
-        self.assertEqual(get_resp.status_code, 200)
-        self.assertIn("Jira'dan İş Ekle".encode("utf-8"), get_resp.content)
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=[]):
+            get_resp = self.client.get(reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}))
+            self.assertEqual(get_resp.status_code, 200)
+            self.assertIn("Jira'dan İş Ekle".encode("utf-8"), get_resp.content)
 
         # POST with issue key
         with patch("kanbanapp.views.JiraService.get_project_issue", return_value=mock_issue):
@@ -1260,6 +1261,135 @@ class MultiStatusMappingAndScreenTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.project.refresh_from_db()
         self.assertFalse(self.project.sync_jira_status)
+
+
+class JqlCardImportTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_superuser(username="jql_admin", password="password123")
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.conn = JiraConnection.objects.create(
+            name="JQL Jira", host="https://jira.example.local", username="admin", password="enc_password"
+        )
+        self.project = Project.objects.create(
+            key="JQLP", name="JQL Project", created_by=self.user,
+            jira_connection=self.conn, sync_jira_status=True,
+        )
+        self.col_todo = KanbanColumn.objects.create(project=self.project, name="Yapılacak", position=0)
+        self.col_done = KanbanColumn.objects.create(project=self.project, name="Tamamlandı", position=1)
+
+    def test_jql_search_returns_open_issues(self):
+        mock_issues = [
+            {"id": "501", "key": "JQLP-1", "summary": "Open Bug 1", "status_key": "Open", "assignee": "alice", "description": ""},
+            {"id": "502", "key": "JQLP-2", "summary": "In Progress Feature", "status_key": "In Progress", "assignee": "bob", "description": ""},
+        ]
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_issues):
+            resp = self.client.get(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {"jql": 'project = "JQLP"'},
+            )
+            self.assertEqual(resp.status_code, 200)
+            issues_in_context = resp.context["issues"]
+            self.assertEqual(len(issues_in_context), 2)
+            self.assertEqual(issues_in_context[0]["key"], "JQLP-1")
+            self.assertEqual(issues_in_context[1]["key"], "JQLP-2")
+            self.assertContains(resp, "Open Bug 1")
+            self.assertContains(resp, "In Progress Feature")
+
+    def test_closed_and_resolved_issues_are_strictly_filtered_out(self):
+        mock_issues = [
+            {"id": "601", "key": "JQLP-10", "summary": "Open Issue", "status_key": "To Do", "description": ""},
+            {"id": "602", "key": "JQLP-11", "summary": "Resolved Issue", "status_key": "Resolved", "description": ""},
+            {"id": "603", "key": "JQLP-12", "summary": "Closed Issue", "status_key": "Closed", "description": ""},
+            {"id": "604", "key": "JQLP-13", "summary": "Done Status Issue", "status_key": "Done", "description": ""},
+            {"id": "605", "key": "JQLP-14", "summary": "Status Category Done", "status_key": "Custom Status", "status_category": "done", "description": ""},
+            {"id": "606", "key": "JQLP-15", "summary": "Resolution Set", "status_key": "Open", "resolution": "Fixed", "description": ""},
+            {"id": "607", "key": "JQLP-16", "summary": "Kapatıldı", "status_key": "Kapatıldı", "description": ""},
+            {"id": "608", "key": "JQLP-17", "summary": "Çözüldü", "status_key": "Çözüldü", "description": ""},
+        ]
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_issues):
+            resp = self.client.get(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {"jql": 'project = "JQLP"'},
+            )
+            self.assertEqual(resp.status_code, 200)
+            issues_in_context = resp.context["issues"]
+            # Only JQLP-10 is open! All other 7 closed/resolved issues MUST be excluded!
+            self.assertEqual(len(issues_in_context), 1)
+            self.assertEqual(issues_in_context[0]["key"], "JQLP-10")
+            self.assertContains(resp, "Open Issue")
+            self.assertNotContains(resp, "Resolved Issue")
+            self.assertNotContains(resp, "Closed Issue")
+            self.assertNotContains(resp, "Resolution Set")
+
+    def test_direct_import_of_closed_issue_is_rejected(self):
+        closed_issue = {
+            "id": "701",
+            "key": "JQLP-99",
+            "summary": "Should Not Import",
+            "status_key": "Closed",
+            "description": "",
+        }
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.get_project_issue", return_value=closed_issue):
+            resp = self.client.post(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {"jira_key": "JQLP-99"},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, "kapalı veya çözülmüş durumda")
+            # Card must NOT be created
+            self.assertFalse(KanbanCard.objects.filter(project=self.project, jira_key="JQLP-99").exists())
+
+    def test_already_imported_cards_are_cleaned_out_of_search_results(self):
+        # Already created on the board
+        KanbanCard.objects.create(
+            project=self.project, column=self.col_todo, title="Existing Card", jira_key="JQLP-EXIST"
+        )
+        mock_issues = [
+            {"id": "801", "key": "JQLP-EXIST", "summary": "Already Added Issue", "status_key": "Open", "description": ""},
+            {"id": "802", "key": "JQLP-NEW", "summary": "Brand New Issue", "status_key": "Open", "description": ""},
+        ]
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_issues):
+            resp = self.client.get(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {"jql": 'project = "JQLP"'},
+            )
+            self.assertEqual(resp.status_code, 200)
+            issues_in_context = resp.context["issues"]
+            # JQLP-EXIST must be cleaned out! Only JQLP-NEW is listed!
+            self.assertEqual(len(issues_in_context), 1)
+            self.assertEqual(issues_in_context[0]["key"], "JQLP-NEW")
+            self.assertContains(resp, "Brand New Issue")
+            self.assertNotContains(resp, "Already Added Issue")
+
+    def test_batch_manual_card_addition(self):
+        mock_issues_db = {
+            "JQLP-B1": {"id": "901", "key": "JQLP-B1", "summary": "Batch 1", "status_key": "To Do", "description": "Desc 1"},
+            "JQLP-B2": {"id": "902", "key": "JQLP-B2", "summary": "Batch 2", "status_key": "To Do", "description": "Desc 2"},
+        }
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.get_project_issue", side_effect=lambda proj, key: mock_issues_db[key]):
+            resp = self.client.post(
+                reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}),
+                {
+                    "selected_keys": ["JQLP-B1", "JQLP-B2"],
+                    "difficulty_level": "3",
+                    "column_id": self.col_todo.id,
+                },
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertContains(resp, "2 adet Jira işi başarıyla panoya eklendi")
+            self.assertTrue(KanbanCard.objects.filter(project=self.project, jira_key="JQLP-B1").exists())
+            self.assertTrue(KanbanCard.objects.filter(project=self.project, jira_key="JQLP-B2").exists())
+            c1 = KanbanCard.objects.get(project=self.project, jira_key="JQLP-B1")
+            self.assertEqual(c1.difficulty_level, 3)
+            self.assertEqual(c1.column_id, self.col_todo.id)
 
 
 
