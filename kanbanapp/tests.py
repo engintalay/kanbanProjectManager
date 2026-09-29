@@ -374,4 +374,14 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertIn(b"Card 1", csv_resp.content)
         self.assertIn(b"SPR_cards.csv", csv_resp["Content-Disposition"].encode())
 
+    def test_admin_and_app_static_files_served(self):
+        admin_css = self.client.get("/static/admin/css/base.css")
+        self.assertEqual(admin_css.status_code, 200)
+
+        app_css = self.client.get("/static/css/style.css")
+        self.assertEqual(app_css.status_code, 200)
+
+        admin_login = self.client.get("/admin/login/")
+        self.assertEqual(admin_login.status_code, 200)
+
 

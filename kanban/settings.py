@@ -131,9 +131,6 @@ os.environ["DJANGO_ENCRYPTION_KEY"] = ENCRYPTION_KEY
 # Static files
 # ---------------------------------------------------------------------------
 STATIC_URL = '/static/'
-STATICFILES_DIRS = [
-    BASE_DIR / 'kanbanapp' / 'static',
-]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
