@@ -492,15 +492,16 @@ def refresh_project(request, project_id):
                         card.description = issue["description"] or ""
                         if issue.get("id") and str(issue["id"]).isdigit():
                             card.jira_issue_id = int(issue["id"])
-                        status_key = issue.get("status_key")
-                        if status_key:
-                            mapping = StatusMapping.objects.filter(
-                                project=project, jira_status__name__iexact=status_key
-                            ).first() or StatusMapping.objects.filter(
-                                project=project, jira_status__jira_status_key__iexact=status_key
-                            ).first()
-                            if mapping and mapping.app_status:
-                                card.column = mapping.app_status
+                        if project.sync_jira_status:
+                            status_key = issue.get("status_key")
+                            if status_key:
+                                mapping = StatusMapping.objects.filter(
+                                    project=project, jira_status__name__iexact=status_key
+                                ).first() or StatusMapping.objects.filter(
+                                    project=project, jira_status__jira_status_key__iexact=status_key
+                                ).first()
+                                if mapping and mapping.app_status and mapping.transfer_to_jira:
+                                    card.column = mapping.app_status
                         card.save()
                 log.pulled_count = len(count)
                 log.status = "success"
@@ -819,7 +820,8 @@ def kanban_card_import_jira_view(request, project_id):
         target_column = None
         if column_id:
             target_column = columns.filter(id=column_id).first()
-        if not target_column:
+        sync_status = request.POST.get("sync_jira_status") != "0"
+        if not target_column and sync_status and project.sync_jira_status:
             status_key = issue_data.get("status_key")
             if status_key:
                 mapping = StatusMapping.objects.filter(
@@ -827,7 +829,7 @@ def kanban_card_import_jira_view(request, project_id):
                 ).first() or StatusMapping.objects.filter(
                     project=project, jira_status__jira_status_key__iexact=status_key
                 ).first()
-                if mapping and mapping.app_status:
+                if mapping and mapping.app_status and mapping.transfer_to_jira:
                     target_column = mapping.app_status
         if not target_column:
             target_column = columns.first()
@@ -948,15 +950,16 @@ def kanban_card_jira_refresh_view(request, project_id, card_id):
         if issue_data.get("id") and str(issue_data["id"]).isdigit():
             card.jira_issue_id = int(issue_data["id"])
 
-        status_key = issue_data.get("status_key")
-        if status_key:
-            mapping = StatusMapping.objects.filter(
-                project=project, jira_status__name__iexact=status_key
-            ).first() or StatusMapping.objects.filter(
-                project=project, jira_status__jira_status_key__iexact=status_key
-            ).first()
-            if mapping and mapping.app_status:
-                card.column = mapping.app_status
+        if project.sync_jira_status:
+            status_key = issue_data.get("status_key")
+            if status_key:
+                mapping = StatusMapping.objects.filter(
+                    project=project, jira_status__name__iexact=status_key
+                ).first() or StatusMapping.objects.filter(
+                    project=project, jira_status__jira_status_key__iexact=status_key
+                ).first()
+                if mapping and mapping.app_status and mapping.transfer_to_jira:
+                    card.column = mapping.app_status
 
         card.save()
         messages.success(request, f"'{card.jira_key}' detayları Jira'dan güncellendi (Durum: {status_key or 'Belirtilmedi'}).")
@@ -1020,17 +1023,25 @@ def kanban_card_move_view(request, project_id, card_id):
         card.save()
 
         # Jira Transition (READ-WRITE) if card is linked and mapping exists
+        skip_jira = (
+            not project.sync_jira_status
+            or request.POST.get("skip_jira_sync") == "1"
+            or request.POST.get("sync_jira") == "0"
+        )
         if card.jira_key and project.jira_connection:
             mapping = StatusMapping.objects.filter(project=project, app_status=target_column).first()
             if mapping and mapping.jira_status:
-                service = JiraService()
-                try:
-                    service.transition_issue(project, card.jira_key, mapping.jira_status.name)
-                    messages.success(request, f"Kart '{target_column.name}' durumuna taşındı ve Jira güncellendi ({mapping.jira_status.name}).")
-                except Exception as exc:  # noqa: BLE001
-                    messages.warning(request, f"Kart taşındı fakat Jira geçişi başarısız: {exc}")
-                finally:
-                    service.close()
+                if not skip_jira and mapping.transfer_to_jira:
+                    service = JiraService()
+                    try:
+                        service.transition_issue(project, card.jira_key, mapping.jira_status.name)
+                        messages.success(request, f"Kart '{target_column.name}' durumuna taşındı ve Jira güncellendi ({mapping.jira_status.name}).")
+                    except Exception as exc:  # noqa: BLE001
+                        messages.warning(request, f"Kart taşındı fakat Jira geçişi başarısız: {exc}")
+                    finally:
+                        service.close()
+                else:
+                    messages.info(request, f"Kart '{target_column.name}' durumuna taşındı (Jira statü aktarımı yapılmadı).")
             else:
                 messages.info(request, f"Kart '{target_column.name}' durumuna taşındı (Jira durum eşlemesi yok).")
         else:

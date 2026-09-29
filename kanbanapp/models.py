@@ -101,6 +101,11 @@ class Project(models.Model):
         "JiraConnection", on_delete=models.SET_NULL, related_name="projects",
         blank=True, null=True, default=None,
     )
+    sync_jira_status = models.BooleanField(
+        default=True,
+        verbose_name="Jira Statü Aktarımı",
+        help_text="Kart hareketlerinde Jira üzerindeki statünün de güncellenmesini sağlar. Kapatılırsa durum Jira'ya aktarılmaz.",
+    )
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, related_name="created_projects",
         blank=True, null=True, default=None,
@@ -473,6 +478,11 @@ class StatusMapping(models.Model):
     jira_status = models.ForeignKey(
         JiraStatus, on_delete=models.SET_NULL, related_name="app_mappings",
         null=True, blank=True, default=None,
+    )
+    transfer_to_jira = models.BooleanField(
+        default=True,
+        verbose_name="Jira'ya Statü Aktar",
+        help_text="Kart bu kolona taşındığında Jira'da ilgili statüye geçiş yapılır. Kapatılırsa bu kolon için Jira statüsü aktarılmaz.",
     )
     position = models.IntegerField(default=0)
 

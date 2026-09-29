@@ -73,6 +73,14 @@
       </select>
     </label>
 
+    <label style="display: flex; align-items: center; gap: 8px; margin: 12px 0 6px 0; cursor: pointer;">
+      <input type="checkbox" name="sync_jira_status" value="1" {% if project.sync_jira_status %}checked{% endif %} style="width: auto; margin: 0;">
+      <span style="font-weight: 500;">Jira Statüsünü Aktar (Durum Eşlemesine Göre Kolona Yerleştir)</span>
+    </label>
+    <small class="form-text" style="display: block; margin-bottom: 12px;">
+      İşaret kaldırıldığında ('Jira statüsünü aktarma'), Jira'daki durum dikkate alınmaz; kart seçilen kolona (seçilmediyse ilk kolona) eklenir.
+    </small>
+
     <div class="form-actions">
       <button type="submit" class="btn-primary" style="background:#0284c7;">Jira'dan Çek ve Ekle</button>
       <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>

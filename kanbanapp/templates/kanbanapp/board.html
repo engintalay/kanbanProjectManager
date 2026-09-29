@@ -7,6 +7,9 @@
     <h1>{{ project.name }}</h1>
     {% if project.jira_connection %}
     <span class="muted" style="font-size: 0.8rem;">Jira: <strong>{{ project.jira_connection.name }}</strong> ({{ project.jira_connection.host }})</span>
+    {% if not project.sync_jira_status %}
+    <span class="badge badge-warn" style="font-size: 0.72rem; margin-left: 6px;" title="Bu projede Jira statü aktarımı kapatılmıştır">Statü Aktarımı Kapalı</span>
+    {% endif %}
     {% else %}
     <span class="badge badge-warn" style="font-size: 0.75rem;">Jira Bağlantısı Yok</span>
     {% endif %}
@@ -75,7 +78,14 @@
       <a href="{% url 'status_mapping_create' project.id column.id %}" class="status-map-link">Durum Eşle</a>
       {% endif %}
       {% if column.status_mappings.exists %}
-      <span class="status-map-status">↔ {{ column.status_mappings.first.jira_status.name|default:"(mape edilmemiş)" }}</span>
+      {% with m=column.status_mappings.first %}
+      <span class="status-map-status">
+        ↔ {{ m.jira_status.name|default:"(mape edilmemiş)" }}
+        {% if not m.transfer_to_jira or not project.sync_jira_status %}
+        <span class="badge badge-warn" style="font-size: 0.65rem; padding: 1px 4px; margin-left: 4px;" title="Bu durum için Jira statü aktarımı kapatılmıştır">Aktarma Kapalı</span>
+        {% endif %}
+      </span>
+      {% endwith %}
       {% endif %}
     </div>
     <div class="board-column-body">

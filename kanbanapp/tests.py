@@ -4,7 +4,7 @@ from django.test.utils import override_settings
 from django.test.runner import TestCase
 from django.urls import reverse
 
-from .models import JiraIssue, JiraStatus, KanbanCard, KanbanColumn, Project, Role, StatusMapping
+from .models import JiraConnection, JiraIssue, JiraStatus, KanbanCard, KanbanColumn, Project, Role, StatusMapping
 
 User = get_user_model()
 
@@ -989,6 +989,94 @@ class ProjectAccessAndMemberTests(TestCase):
         pm = ProjectMember.objects.create(project=p, user=u2)
         u2.refresh_from_db()
         self.assertEqual(u2.project_id, p.id)
+
+
+class JiraStatusSyncOptionTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.admin = User.objects.create_superuser(username="admin_sync_opt", password="p")
+        self.conn = JiraConnection.objects.create(name="Sync Jira", host="https://jira.sync.local", username="u", password="p")
+        self.project = Project.objects.create(key="JSO", name="Sync Option Project", created_by=self.admin, jira_connection=self.conn, sync_jira_status=True)
+        self.col_todo = KanbanColumn.objects.create(project=self.project, name="To Do", position=0)
+        self.col_done = KanbanColumn.objects.create(project=self.project, name="Done", position=1)
+        self.js_done = JiraStatus.objects.create(name="Done", jira_status_key="DONE")
+        self.mapping_done = StatusMapping.objects.create(project=self.project, app_status=self.col_done, jira_status=self.js_done, transfer_to_jira=True)
+        self.card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Sync Task", jira_key="JSO-1")
+        self.client.force_login(self.admin)
+
+    def test_move_card_with_sync_enabled_calls_transition(self):
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.transition_issue") as mock_trans:
+            resp = self.client.post(
+                reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+                {"column_id": self.col_done.id},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            mock_trans.assert_called_once()
+            self.card.refresh_from_db()
+            self.assertEqual(self.card.column_id, self.col_done.id)
+
+    def test_move_card_with_project_sync_disabled_skips_transition(self):
+        self.project.sync_jira_status = False
+        self.project.save()
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.transition_issue") as mock_trans:
+            resp = self.client.post(
+                reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+                {"column_id": self.col_done.id},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            mock_trans.assert_not_called()
+            self.assertIn("Jira statü aktarımı yapılmadı", resp.content.decode("utf-8"))
+            self.card.refresh_from_db()
+            self.assertEqual(self.card.column_id, self.col_done.id)
+
+    def test_move_card_with_mapping_transfer_disabled_skips_transition(self):
+        self.mapping_done.transfer_to_jira = False
+        self.mapping_done.save()
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.transition_issue") as mock_trans:
+            resp = self.client.post(
+                reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+                {"column_id": self.col_done.id},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            mock_trans.assert_not_called()
+            self.card.refresh_from_db()
+            self.assertEqual(self.card.column_id, self.col_done.id)
+
+    def test_refresh_project_does_not_override_columns_when_sync_disabled(self):
+        self.project.sync_jira_status = False
+        self.project.save()
+        mock_issues = [{
+            "id": "1001",
+            "key": "JSO-1",
+            "summary": "Updated Title",
+            "description": "Updated Desc",
+            "status_id": "99",
+            "status_key": "Done",
+            "assignee": None,
+            "reporter": None,
+            "created": "",
+            "updated": "",
+            "sprint": None,
+            "epic_key": None,
+        }]
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_issues), \
+             patch("kanbanapp.views.JiraService.sync_statuses", return_value=1):
+            resp = self.client.post(reverse("refresh_project", kwargs={"project_id": self.project.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+
+        self.card.refresh_from_db()
+        # Title updated
+        self.assertEqual(self.card.title, "Updated Title")
+        # Column MUST stay as col_todo because sync_jira_status is False!
+        self.assertEqual(self.card.column_id, self.col_todo.id)
+
 
 
 

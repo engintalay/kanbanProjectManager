@@ -60,9 +60,9 @@ class ProjectMemberInline(admin.TabularInline):
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ("key", "name", "jira_connection", "created_by", "created_at")
+    list_display = ("key", "name", "jira_connection", "sync_jira_status", "created_by", "created_at")
     search_fields = ("key", "name")
-    list_filter = ("created_by",)
+    list_filter = ("created_by", "sync_jira_status")
     inlines = [ProjectMemberInline]
 
 
@@ -115,8 +115,8 @@ class KanbanCardAdmin(admin.ModelAdmin):
 
 @admin.register(StatusMapping)
 class StatusMappingAdmin(admin.ModelAdmin):
-    list_display = ("app_status", "jira_status", "project", "position")
-    list_filter = ("project",)
+    list_display = ("app_status", "jira_status", "transfer_to_jira", "project", "position")
+    list_filter = ("project", "transfer_to_jira")
 
 
 @admin.register(Sprint)

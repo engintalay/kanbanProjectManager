@@ -69,7 +69,14 @@
         {% endwith %}
       </span>
       {% if column.status_mappings.exists %}
-      <span class="status-map-status">↔ {{ column.status_mappings.first.jira_status.name|default:"(mape edilmemiş)" }}</span>
+      {% with m=column.status_mappings.first %}
+      <span class="status-map-status">
+        ↔ {{ m.jira_status.name|default:"(mape edilmemiş)" }}
+        {% if not m.transfer_to_jira or not project.sync_jira_status %}
+        <span class="badge badge-warn" style="font-size: 0.65rem; padding: 1px 4px; margin-left: 4px;" title="Bu durum için Jira statü aktarımı kapatılmıştır">Aktarma Kapalı</span>
+        {% endif %}
+      </span>
+      {% endwith %}
       {% endif %}
     </div>
     <div class="board-column-body">

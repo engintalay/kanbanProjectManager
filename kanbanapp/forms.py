@@ -18,18 +18,20 @@ from .models import (
 class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
-        fields = ["name", "key", "description", "jira_connection"]
+        fields = ["name", "key", "description", "jira_connection", "sync_jira_status"]
         labels = {
             "name": "Proje Adı",
             "key": "Proje Anahtarı (Key)",
             "description": "Açıklama",
             "jira_connection": "Jira Bağlantısı",
+            "sync_jira_status": "Jira Statüsünü Aktar (Statü Senkronizasyonu)",
         }
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
             "key": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "jira_connection": forms.Select(attrs={"class": "form-control"}),
+            "sync_jira_status": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -37,6 +39,7 @@ class ProjectForm(forms.ModelForm):
         self.fields["jira_connection"].required = False
         self.fields["jira_connection"].empty_label = "--- Jira Bağlantısı Seçin ---"
         self.fields["jira_connection"].help_text = "Projeye ait Jira sunucu bağlantısını seçin. Kartlar bu Jira üzerinden çekilecektir."
+        self.fields["sync_jira_status"].help_text = "İşaret kaldırıldığında ('Jira statüsünü aktarma'), pano üzerindeki kart hareketleri Jira'ya aktarılmaz ve Jira yenilemelerinde kartların kolonları değiştirilmez."
         # If new project and default connection exists, pre-select it
         if not self.instance.pk and not self.initial.get("jira_connection"):
             default_conn = JiraConnection.objects.filter(is_default=True).first() or JiraConnection.objects.first()
@@ -318,8 +321,20 @@ class StatusMappingForm(forms.ModelForm):
 
     class Meta:
         model = StatusMapping
-        fields = ["jira_status", "position"]
+        fields = ["jira_status", "transfer_to_jira", "position"]
+        labels = {
+            "jira_status": "Jira Statüsü",
+            "transfer_to_jira": "Jira Statüsünü Aktar (Statü Geçişi Yap)",
+            "position": "Sıra",
+        }
         widgets = {
             "jira_status": forms.Select(attrs={"class": "form-control"}),
+            "transfer_to_jira": forms.CheckboxInput(attrs={"class": "form-check-input"}),
             "position": forms.NumberInput(attrs={"class": "form-control"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["jira_status"].required = False
+        self.fields["jira_status"].empty_label = "--- Jira Statüsü Seçin (Opsiyonel) ---"
+        self.fields["transfer_to_jira"].help_text = "İşaret kaldırıldığında ('Jira statüsünü aktarma'), kart bu kolona taşındığında Jira'da durum güncellenmez."

@@ -8,9 +8,17 @@
   <form method="post" class="auth-form">
     {% csrf_token %}
     {% for field in form %}
-    <label>{{ field.label }}
+    <label>
+      {% if field.field.widget.input_type == "checkbox" %}
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+        {{ field }}
+        <span style="font-weight: 500;">{{ field.label }}</span>
+      </div>
+      {% else %}
+      {{ field.label }}
       {{ field }}
-      {% if field.help_text %}<small class="form-text">{{ field.help_text }}</small>{% endif %}
+      {% endif %}
+      {% if field.help_text %}<small class="form-text" style="margin-top: 4px; display: block;">{{ field.help_text }}</small>{% endif %}
       {% if field.name == 'jira_connection' %}
       <small class="form-text" style="margin-top: 4px; display: block;">
         Listede bağlantı yok mu? <a href="{% url 'jira_connection_create' %}?next={{ request.path }}">Yeni bir Jira Bağlantısı Tanımlayın →</a>
