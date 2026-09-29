@@ -1,38 +1,184 @@
 {% extends "kanbanapp/base.html" %}
-{% block title %}{% if mode == "edit" %}Kart Düzenle{% else %}Yeni Kart{% endif %} — {{ project.key }}{% endblock %}
+{% load jira_filters %}
+{% block title %}{% if mode == "edit" %}{{ card.jira_key|default:"Kart Düzenle" }} — {{ card.title }}{% else %}Yeni Kart — {{ project.key }}{% endif %}{% endblock %}
+
 {% block content %}
-<div class="page-head">
-  <h1>{% if mode == "edit" %}Kartı Düzenle{% else %}Yeni Kart{% endif %}</h1>
-</div>
-<div class="auth-card">
-  {% if card.jira_key %}
-  <div style="background: rgba(2, 132, 199, 0.1); border-left: 4px solid #0284c7; padding: 10px 14px; border-radius: 4px; margin-bottom: 16px; font-size: 0.85rem;">
-    <strong>Jira Entegrasyonu:</strong> Bu kart Jira'daki <strong>{{ card.jira_key }}</strong> işine bağlıdır. Başlık ve açıklama Jira kaynaklıdır; güncel içeriği çekmek için <strong>"Jira'dan Güncelle"</strong> butonunu kullanabilirsiniz.
-  </div>
-  {% endif %}
-  <form method="post" class="auth-form">
-    {% csrf_token %}
-    {% for field in form %}
-    <label>
-      {{ field.label }}
-      {{ field }}
-      {% if field.help_text %}<small class="form-text">{{ field.help_text }}</small>{% endif %}
-    </label>
-    {% for error in field.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
-    {% endfor %}
-    {% for error in form.non_field_errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
-    <div class="form-actions">
-      <button type="submit" class="btn-primary">{% if mode == "edit" %}Güncelle{% else %}Oluştur{% endif %}</button>
-      {% if mode == "edit" and card.jira_key and project.jira_connection %}
-      <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">🔄 Jira'dan Güncelle</a>
-      {% endif %}
-      <a href="{% url 'board' project.id %}" class="btn-secondary">İptal</a>
+<div class="card-edit-wrapper">
+  <!-- Page Header -->
+  <div class="page-head" style="margin-bottom: 20px;">
+    <div>
+      <a href="{% url 'board' project.id %}" class="back-link">← Panoya Dön</a>
+      <div style="display:flex; align-items:center; gap:12px; margin-top:6px; flex-wrap:wrap;">
+        {% if card.jira_key %}
+        <span class="card-key" style="font-size:0.95rem; padding:4px 10px; border-radius:6px;">{{ card.jira_key }}</span>
+        {% endif %}
+        <h1 style="margin:0; font-size:1.45rem;">{% if mode == "edit" %}{{ card.title|default:"Kartı Düzenle" }}{% else %}Yeni Kart Oluştur{% endif %}</h1>
+      </div>
     </div>
-    {% if mode != "edit" and project.jira_connection %}
-    <p class="form-text" style="margin-top: 15px; text-align: center;">
-      İş Jira'da kayıtlı mı? <a href="{% url 'kanban_card_import_jira' project.id %}">Jira'dan anlık çekerek eklemek için tıklayın →</a>
-    </p>
+    {% if mode == "edit" and card.jira_key and project.jira_connection %}
+    <div class="head-actions">
+      <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">
+        🔄 Jira'dan Güncelle
+      </a>
+    </div>
     {% endif %}
+  </div>
+
+  <form method="post" class="card-edit-form">
+    {% csrf_token %}
+    {% if form.is_extra %}{{ form.is_extra }}{% endif %}
+
+    {% for error in form.non_field_errors %}
+    <div class="alert-box alert-danger" style="margin-bottom: 20px;">{{ error }}</div>
+    {% endfor %}
+
+    <div class="card-edit-grid">
+      <!-- MAIN / CONTENT COLUMN (LEFT) -->
+      <div class="card-main-panel">
+        {% if card.jira_key %}
+        <div class="jira-info-banner">
+          <div class="jira-info-title">
+            <span>🔗 <strong>Jira Entegrasyonu</strong> ({{ card.jira_key }})</span>
+            {% if project.jira_connection %}
+            <span class="muted" style="font-size:0.78rem;">Sunucu: {{ project.jira_connection.host }}</span>
+            {% endif %}
+          </div>
+          <div class="jira-info-text">
+            Bu kartın başlık ve açıklama bilgisi doğrudan Jira üzerinden çekilmektedir. İçerik değişiklikleri Jira üzerinde yapılır; güncel verileri çekmek için <strong>"Jira'dan Güncelle"</strong> butonunu kullanabilirsiniz.
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Başlık (Title) - Readonly -->
+        <div class="form-group" style="margin-bottom: 22px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+            <label class="form-label" style="margin:0; font-weight:600; font-size:0.92rem;">
+              📌 Kart Başlığı (Summary)
+            </label>
+            <span class="badge" style="font-size:0.7rem; color:var(--muted); background:var(--bg);">
+              🔒 Jira Kaynaklı (Salt Okunur)
+            </span>
+          </div>
+          <div class="card-readonly-title">
+            {{ card.title|default:form.title.value|default:"(Başlık belirtilmemiş)" }}
+          </div>
+          {% for error in form.title.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <!-- Açıklama (Description) - Geniş & Jira Formatlı Gösterim -->
+        <div class="form-group" style="margin-bottom: 24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+            <label class="form-label" style="margin:0; font-weight:600; font-size:0.95rem; display:flex; align-items:center; gap:6px;">
+              📄 <span>Açıklama (Description)</span>
+            </label>
+            <span class="badge" style="font-size:0.72rem; background:rgba(2,132,199,0.15); color:#38bdf8; border:1px solid rgba(2,132,199,0.3);">
+              🔒 Jira Formatı (Salt Okunur)
+            </span>
+          </div>
+
+          <div class="jira-description-container">
+            {% if card.description %}
+              {{ card.description|render_jira_markup }}
+            {% elif form.description.value %}
+              {{ form.description.value|render_jira_markup }}
+            {% else %}
+              <div class="jira-description-empty">
+                <em>Jira üzerinde henüz bir açıklama girilmemiş.</em>
+              </div>
+            {% endif %}
+          </div>
+          {% for error in form.description.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <!-- Geliştirici Değerlendirmesi -->
+        {% if form.developer_assessment %}
+        <div class="form-group" style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border);">
+          <label class="form-label" for="{{ form.developer_assessment.id_for_label }}" style="font-weight:600; font-size:0.9rem; display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+            💻 <span>Geliştirici Değerlendirmesi / Dahili Notlar</span>
+          </label>
+          {{ form.developer_assessment }}
+          <small class="form-text">Takım içi teknik notlar veya değerlendirmeler için kullanılabilir.</small>
+          {% for error in form.developer_assessment.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- SIDEBAR / PROPERTIES COLUMN (RIGHT) -->
+      <div class="card-sidebar-panel">
+        <h3 style="font-size:1rem; margin-top:0; margin-bottom:16px; border-bottom:1px solid var(--border); padding-bottom:8px; display:flex; align-items:center; gap:6px;">
+          ⚙️ <span>Kart Özellikleri</span>
+        </h3>
+
+        <!-- Kolon / Durum -->
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.column.id_for_label }}" style="font-size:0.85rem; font-weight:600; display:block; margin-bottom:4px;">
+            Panodaki Kolon / Durum
+          </label>
+          {{ form.column }}
+          {% for error in form.column.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <!-- Zorluk Seviyesi -->
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.difficulty_level.id_for_label }}" style="font-size:0.85rem; font-weight:600; display:block; margin-bottom:4px;">
+            Zorluk Seviyesi (Fibonacci)
+          </label>
+          {{ form.difficulty_level }}
+          {% for error in form.difficulty_level.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <!-- Atanan Programcı -->
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.assignee.id_for_label }}" style="font-size:0.85rem; font-weight:600; display:block; margin-bottom:4px;">
+            Atanan Programcı
+          </label>
+          {{ form.assignee }}
+          {% for error in form.assignee.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <!-- Sprint -->
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label" for="{{ form.sprint.id_for_label }}" style="font-size:0.85rem; font-weight:600; display:block; margin-bottom:4px;">
+            Sprint
+          </label>
+          {{ form.sprint }}
+          {% for error in form.sprint.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+
+        <!-- Jira Key -->
+        {% if form.jira_key %}
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="form-label" for="{{ form.jira_key.id_for_label }}" style="font-size:0.85rem; font-weight:600; display:block; margin-bottom:4px;">
+            Jira İş Anahtarı
+          </label>
+          {{ form.jira_key }}
+          {% if form.jira_key.help_text %}<small class="form-text">{{ form.jira_key.help_text }}</small>{% endif %}
+          {% for error in form.jira_key.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="card-sidebar-actions">
+          <button type="submit" class="btn-primary">
+            💾 {% if mode == "edit" %}Değişiklikleri Kaydet{% else %}Kartı Oluştur{% endif %}
+          </button>
+          {% if mode == "edit" and card.jira_key and project.jira_connection %}
+          <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">
+            🔄 Jira'dan Güncelle
+          </a>
+          {% endif %}
+          <a href="{% url 'board' project.id %}" class="btn-secondary">
+            İptal
+          </a>
+        </div>
+
+        {% if mode != "edit" and project.jira_connection %}
+        <p class="form-text" style="margin-top: 15px; text-align: center;">
+          İş Jira'da kayıtlı mı? <a href="{% url 'kanban_card_import_jira' project.id %}">Jira'dan anlık çekerek eklemek için tıklayın →</a>
+        </p>
+        {% endif %}
+      </div>
+    </div>
   </form>
 </div>
 {% endblock %}

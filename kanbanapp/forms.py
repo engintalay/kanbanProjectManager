@@ -153,8 +153,11 @@ class KanbanCardForm(forms.ModelForm):
         self.fields["description"].required = False
         self.fields["title"].widget.attrs["readonly"] = "readonly"
         self.fields["description"].widget.attrs["readonly"] = "readonly"
-        self.fields["title"].help_text = "Başlık Jira'dan çekilmektedir."
-        self.fields["description"].help_text = "Açıklama Jira'dan çekilmektedir."
+        if self.instance.pk:
+            self.fields["title"].disabled = True
+            self.fields["description"].disabled = True
+        self.fields["title"].help_text = "Başlık Jira'dan çekilmektedir (değiştirilemez)."
+        self.fields["description"].help_text = "Açıklama Jira'dan çekilmektedir (değiştirilemez)."
 
         if "is_extra" in self.fields:
             self.fields["is_extra"].initial = False

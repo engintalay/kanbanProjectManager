@@ -497,3 +497,309 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   background: var(--primary); color: #fff; font-size: .75rem; padding: 2px 7px; border-radius: 999px; font-weight: 700; margin-left: 4px;
 }
 
+
+/* ==========================================================================
+   Card Edit Screen & Jira Description Formatting
+   ========================================================================== */
+.card-edit-wrapper {
+  max-width: 1100px;
+  margin: 16px auto 40px;
+  padding: 0 12px;
+}
+.card-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: flex-start;
+}
+@media (max-width: 900px) {
+  .card-edit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card-main-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px 28px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-sidebar-panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  position: sticky;
+  top: 20px;
+}
+
+.card-readonly-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.45;
+  padding: 12px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.jira-info-banner {
+  background: rgba(2, 132, 199, 0.08);
+  border: 1px solid rgba(2, 132, 199, 0.3);
+  border-left: 4px solid #0284c7;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+}
+.jira-info-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #38bdf8;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.jira-info-text {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Jira Description Box */
+.jira-description-container {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-height: 220px;
+  font-size: 0.93rem;
+  line-height: 1.7;
+  color: var(--text);
+  overflow-wrap: break-word;
+  word-break: break-word;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.jira-description-empty {
+  color: var(--muted);
+  font-style: italic;
+  padding: 36px 16px;
+  text-align: center;
+}
+
+.jira-description-container p.jira-p {
+  margin: 0 0 12px;
+}
+.jira-description-container p.jira-p:last-child {
+  margin-bottom: 0;
+}
+.jira-description-container .jira-spacer {
+  height: 12px;
+}
+.jira-description-container h1,
+.jira-description-container .jira-h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 18px 0 10px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.jira-description-container h2,
+.jira-description-container .jira-h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 16px 0 8px;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+.jira-description-container h3,
+.jira-description-container .jira-h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 14px 0 6px;
+  color: var(--text);
+}
+.jira-description-container h4,
+.jira-description-container .jira-h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 12px 0 4px;
+  color: var(--text);
+}
+
+/* Code & Noformat */
+.jira-description-container .jira-code-container {
+  margin: 14px 0;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0b1120;
+}
+.jira-description-container .jira-code-header {
+  background: #111827;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  border-bottom: 1px solid #1f2937;
+  letter-spacing: 0.03em;
+}
+.jira-description-container .jira-code-block {
+  padding: 12px 16px;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #38bdf8;
+  overflow-x: auto;
+  background: transparent;
+  border: none;
+}
+.jira-description-container .jira-inline-code {
+  background: rgba(148, 163, 184, 0.15);
+  color: #38bdf8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+/* Quotes, Panels, Callouts */
+.jira-description-container .jira-quote {
+  border-left: 4px solid var(--primary);
+  margin: 14px 0;
+  padding: 8px 16px;
+  color: #94a3b8;
+  font-style: italic;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0 6px 6px 0;
+}
+.jira-description-container .jira-callout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin: 14px 0;
+  border: 1px solid;
+}
+.jira-description-container .jira-callout-info {
+  background: rgba(2, 132, 199, 0.1);
+  border-color: rgba(2, 132, 199, 0.35);
+  color: #7dd3fc;
+}
+.jira-description-container .jira-callout-tip {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
+}
+.jira-description-container .jira-callout-warn {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fde047;
+}
+.jira-description-container .jira-callout-note {
+  background: rgba(168, 85, 247, 0.1);
+  border-color: rgba(168, 85, 247, 0.35);
+  color: #d8b4fe;
+}
+.jira-description-container .jira-callout-icon {
+  font-size: 1.15rem;
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+.jira-description-container .jira-callout-body {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.jira-description-container .jira-panel {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin: 14px 0;
+}
+.jira-description-container .jira-panel-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+/* Tables */
+.jira-description-container .jira-table-wrap {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+.jira-description-container .jira-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.jira-description-container .jira-table th {
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+}
+.jira-description-container .jira-table td {
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  color: var(--text);
+}
+
+/* Lists, Links, Dividers */
+.jira-description-container .jira-list {
+  margin: 10px 0 10px 24px;
+  padding: 0;
+  line-height: 1.6;
+}
+.jira-description-container .jira-list li {
+  margin-bottom: 4px;
+}
+.jira-description-container .jira-link {
+  color: #38bdf8;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.jira-description-container .jira-link:hover {
+  color: #7dd3fc;
+}
+.jira-description-container .jira-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+
+/* Sidebar Actions */
+.card-sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.card-sidebar-actions .btn-primary,
+.card-sidebar-actions .btn-secondary,
+.card-sidebar-actions .btn-ghost {
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  border-radius: 6px;
+}

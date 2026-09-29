@@ -857,6 +857,79 @@ class JiraImportAndSyncTests(TestCase):
         self.assertEqual(card.description, "Jira'da Değişen Açıklama")
 
 
+class CardEditJiraFormatTests(TestCase):
+    def setUp(self):
+        self.pm_role = Role.objects.create(name="Proje Yöneticisi", slug="pm", level=Role.LEVEL_PROJECT_MANAGER)
+        self.pm = User.objects.create_user(username="pm_user", password="x", email="pm@test.local", role=self.pm_role)
+        self.project = Project.objects.create(name="Proje 1", key="PRJ", created_by=self.pm)
+        self.col = KanbanColumn.objects.create(project=self.project, name="To Do", position=0)
+        from .models import JiraIssue
+        self.jira_issue = JiraIssue.objects.create(
+            project=self.project,
+            jira_key="PRJ-101",
+            jira_id="101",
+            summary="Örnek İş",
+            description="h2. Başlık\n*bold*\n{code:python}\nprint('hello')\n{code}\n<script>alert(1)</script>",
+        )
+        self.card = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col,
+            title="Örnek İş",
+            description=self.jira_issue.description,
+            jira_key="PRJ-101",
+            difficulty_level=3,
+        )
+
+    def test_render_jira_markup_formatting_and_security(self):
+        from kanbanapp.templatetags.jira_filters import render_jira_markup
+        html_out = render_jira_markup(self.card.description)
+        # Check headings
+        self.assertIn('<h2 class="jira-h2">Başlık</h2>', html_out)
+        # Check bold
+        self.assertIn("<strong>bold</strong>", html_out)
+        # Check code block with safe escaped code
+        self.assertIn('<pre class="jira-code-block"><code>print(&#x27;hello&#x27;)</code></pre>', html_out)
+        # Check XSS prevention: <script> must be escaped
+        self.assertNotIn("<script>", html_out)
+        self.assertIn("&lt;script&gt;", html_out)
+
+    def test_card_edit_view_renders_wide_layout_and_description(self):
+        self.client.force_login(self.pm)
+        resp = self.client.get(
+            reverse("kanban_card_edit", kwargs={"project_id": self.project.id, "card_id": self.card.id})
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "card-edit-wrapper")
+        self.assertContains(resp, "jira-description-container")
+        self.assertContains(resp, "PRJ-101")
+        self.assertContains(resp, "jira-code-block")
+
+    def test_card_edit_description_is_tamper_proof(self):
+        self.client.force_login(self.pm)
+        resp = self.client.post(
+            reverse("kanban_card_edit", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+            {
+                "column": self.col.id,
+                "difficulty_level": 5,
+                "jira_key": "PRJ-101",
+                "title": "Hacked Title",
+                "description": "Hacked Description",
+            },
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.card.refresh_from_db()
+        # Difficulty should be updated
+        self.assertEqual(self.card.difficulty_level, 5)
+        # Title and description must remain intact from Jira!
+        self.assertEqual(self.card.title, "Örnek İş")
+        self.assertEqual(
+            self.card.description,
+            "h2. Başlık\n*bold*\n{code:python}\nprint('hello')\n{code}\n<script>alert(1)</script>",
+        )
+
+
+
 
 
 
