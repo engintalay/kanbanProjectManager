@@ -2,7 +2,12 @@
 
 Only fetches issue data. Never creates, updates, assigns or comments on Jira.
 """
+import ipaddress
+import json
 import logging
+import os
+import re
+from urllib.parse import urlparse
 
 from django.conf import settings
 
@@ -13,10 +18,164 @@ logger = logging.getLogger(__name__)
 FIBONACCI = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
 
 
+def normalize_no_proxy():
+    """Ensure NO_PROXY env variable has syntax compatible with Python urllib.
+
+    Python urllib requires '.domain.com' or 'domain.com' rather than '*.domain.com'.
+    """
+    for env_var in ("NO_PROXY", "no_proxy"):
+        val = os.environ.get(env_var, "")
+        if not val:
+            continue
+        parts = [p.strip() for p in val.split(",") if p.strip()]
+        expanded = list(parts)
+        for p in parts:
+            if p.startswith("*."):
+                dot_dom = p[1:]
+                bare_dom = p[2:]
+                if dot_dom not in expanded:
+                    expanded.append(dot_dom)
+                if bare_dom not in expanded:
+                    expanded.append(bare_dom)
+        for known in (
+            ".gelirler.gov.tr",
+            "gelirler.gov.tr",
+            ".gib.gov.tr",
+            "gib.gov.tr",
+            ".gelbim.gov.tr",
+            "gelbim.gov.tr",
+            "localhost",
+            "127.0.0.1",
+        ):
+            if known not in expanded:
+                expanded.append(known)
+        os.environ[env_var] = ",".join(expanded)
+
+
+def is_local_host(host_or_url: str) -> bool:
+    """Check if host is on local network, intranet, loopback, or in NO_PROXY."""
+    if not host_or_url:
+        return False
+    if "://" in host_or_url:
+        parsed = urlparse(host_or_url)
+        hostname = parsed.hostname or host_or_url
+    else:
+        hostname = host_or_url.split(":")[0]
+
+    hostname = hostname.lower().strip()
+    if hostname in ("localhost", "127.0.0.1", "::1"):
+        return True
+    if hostname.endswith(".local") or "." not in hostname:
+        return True
+
+    # Check private IP ranges
+    try:
+        ip = ipaddress.ip_address(hostname)
+        return ip.is_private or ip.is_loopback
+    except ValueError:
+        pass
+
+    # Known local / intranet domains
+    local_domains = (
+        ".gelirler.gov.tr",
+        "gelirler.gov.tr",
+        ".gib.gov.tr",
+        "gib.gov.tr",
+        ".gelbim.gov.tr",
+        "gelbim.gov.tr",
+    )
+    if any(hostname == d.lstrip(".") or hostname.endswith(d) for d in local_domains):
+        return True
+
+    # Check against NO_PROXY
+    no_proxy = os.environ.get("NO_PROXY", "") or os.environ.get("no_proxy", "")
+    for item in no_proxy.split(","):
+        item = item.strip().lower()
+        if not item:
+            continue
+        if item.startswith("*."):
+            item = item[1:]
+        if item.startswith("."):
+            if hostname.endswith(item) or hostname == item[1:]:
+                return True
+        elif hostname == item:
+            return True
+        else:
+            try:
+                network = ipaddress.ip_network(item, strict=False)
+                try:
+                    ip = ipaddress.ip_address(hostname)
+                    if ip in network:
+                        return True
+                except ValueError:
+                    pass
+            except ValueError:
+                pass
+
+    return False
+
+
+def format_jira_error(exc: Exception) -> str:
+    """Extract a user-friendly, detailed error description from Jira / requests exceptions."""
+    from jira.exceptions import JIRAError
+    import requests
+
+    if isinstance(exc, JIRAError):
+        status_code = getattr(exc, "status_code", None)
+        text = (getattr(exc, "text", "") or "").strip()
+        url = getattr(exc, "url", "")
+
+        msg = ""
+        # Check if error response is JSON
+        if (text.startswith("{") and text.endswith("}")) or (text.startswith("[") and text.endswith("]")):
+            try:
+                data = json.loads(text)
+                if isinstance(data, dict):
+                    if data.get("errorMessages"):
+                        msg = "; ".join(data["errorMessages"])
+                    elif data.get("errors"):
+                        msg = "; ".join(f"{k}: {v}" for k, v in data["errors"].items())
+                    elif data.get("message"):
+                        msg = data["message"]
+            except Exception:
+                pass
+
+        if not msg:
+            if "Basic Authentication Failure" in text or status_code == 401:
+                msg = "Yetkilendirme başarısız (401 Unauthorized - Kullanıcı adı veya şifre/token geçersiz)."
+            elif status_code == 403:
+                msg = "Erişim reddedildi (403 Forbidden - Yetki yetersiz veya hesap kilitli)."
+            elif status_code == 404:
+                msg = f"Kaynak bulunamadı (404 Not Found - {url})."
+            elif text:
+                # Strip HTML tags if server returned an HTML error page
+                cleaned = re.sub(r"<[^>]+>", " ", text)
+                cleaned = " ".join(cleaned.split())
+                if len(cleaned) > 250:
+                    cleaned = cleaned[:250] + "..."
+                msg = cleaned
+
+        status_prefix = f"HTTP {status_code}: " if status_code else ""
+        return f"{status_prefix}{msg}" if msg else str(exc)
+
+    if isinstance(exc, requests.exceptions.ReadTimeout):
+        return f"Zaman aşımı (Read Timeout - 15s): Sunucu yanıt vermedi ({exc})"
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return f"Bağlantı zaman aşımı (Connect Timeout): Sunucuya ulaşılamadı ({exc})"
+    if isinstance(exc, requests.exceptions.SSLError):
+        return f"SSL Sertifika Hatası: {exc}"
+    if isinstance(exc, requests.exceptions.ProxyError):
+        return f"Proxy Bağlantı Hatası: {exc}"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return f"Sunucuya bağlanılamadı (Ağ/DNS hatası): {exc}"
+
+    return str(exc)
+
+
 def _fernet():
     from cryptography.fernet import Fernet
 
-    key = getattr(settings, "DJANGO_ENCRYPTION_KEY", "")
+    key = getattr(settings, "ENCRYPTION_KEY", None) or os.environ.get("ENCRYPTION_KEY", "")
     return Fernet(key.encode() if isinstance(key, str) else key)
 
 
@@ -26,7 +185,8 @@ def _decrypt(value):
     try:
         return _fernet().decrypt(value.encode()).decode()
     except Exception:
-        return ""
+        # Already plaintext or decrypted by EncryptedCharField
+        return str(value)
 
 
 class JiraClient:
@@ -42,19 +202,43 @@ class JiraClient:
         if self._jira is None:
             from jira import JIRA
 
+            normalize_no_proxy()
+
+            # Initialize with get_server_info=False so __init__ doesn't make eager
+            # requests before session proxy settings can be applied
             self._jira = JIRA(
                 server=self.connection.host,
                 basic_auth=(self.connection.username, self.password),
-                timeout=30,
+                timeout=15,
+                get_server_info=False,
+                logging=False,
             )
+
+            # Disable proxy for local network / intranet hosts or if disable_proxy is set
+            should_bypass_proxy = getattr(self.connection, "disable_proxy", False) or is_local_host(
+                self.connection.host
+            )
+            if should_bypass_proxy:
+                self._jira._session.trust_env = False
+                self._jira._session.proxies = {}
+
+            # Fetch server_info safely
+            try:
+                si = self._jira.server_info()
+                if isinstance(si, dict):
+                    self._jira._version = tuple(si.get("versionNumbers", []))
+            except Exception as exc:
+                logger.warning("Jira server_info alınamadı (işlemlere devam ediliyor): %s", exc)
+
         return self._jira
 
     def test_connection(self):
-        try:
-            return bool(self.jira.myself())
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Jira bağlantı testi başarısız: %s", exc)
-            return False
+        """Test connection to Jira and verify authentication.
+
+        Returns user info dict on success.
+        Raises an Exception with detailed root cause on failure.
+        """
+        return self.jira.myself()
 
     def pull_issues(self, jql, max_results=500):
         """Return a list of lightweight issue dicts (status, fields, links)."""
@@ -138,12 +322,17 @@ class JiraService:
 
     def connect(self, connection):
         if not connection or not connection.is_valid:
-            raise ValueError("Bağlantı bilgileri eksik (host, kullanıcı, şifre).")
+            raise ValueError("Bağlantı bilgileri eksik (host, kullanıcı adı veya şifre boş).")
         self.client = JiraClient(connection)
-        ok = self.client.test_connection()
-        if not ok:
-            raise ConnectionError(f"Jira bağlantısı başarısız: {connection.host}")
-        return ok
+        try:
+            return self.client.test_connection()
+        except Exception as exc:
+            err_detail = format_jira_error(exc)
+            logger.error("Jira bağlantı testi başarısız (%s): %s", connection.host, err_detail)
+            raise ConnectionError(f"Jira bağlantısı başarısız ({connection.host}): {err_detail}") from exc
+
+    def test_connection(self, connection):
+        return self.connect(connection)
 
     def sync_statuses(self):
         """Import Jira statuses into local JiraStatus table."""

@@ -114,17 +114,55 @@ LOGIN_REDIRECT = 'dashboard'
 LOGOUT_REDIRECT = 'login'
 
 # ---------------------------------------------------------------------------
+# Proxy settings normalization (Local network bypass for urllib/requests)
+# ---------------------------------------------------------------------------
+def _normalize_no_proxy():
+    for env_var in ("NO_PROXY", "no_proxy"):
+        val = os.environ.get(env_var, "")
+        if not val:
+            continue
+        parts = [p.strip() for p in val.split(",") if p.strip()]
+        expanded = list(parts)
+        for p in parts:
+            if p.startswith("*."):
+                dot_dom = p[1:]
+                bare_dom = p[2:]
+                if dot_dom not in expanded:
+                    expanded.append(dot_dom)
+                if bare_dom not in expanded:
+                    expanded.append(bare_dom)
+        for known in (
+            ".gelirler.gov.tr",
+            "gelirler.gov.tr",
+            ".gib.gov.tr",
+            "gib.gov.tr",
+            ".gelbim.gov.tr",
+            "gelbim.gov.tr",
+            "localhost",
+            "127.0.0.1",
+        ):
+            if known not in expanded:
+                expanded.append(known)
+        os.environ[env_var] = ",".join(expanded)
+
+
+_normalize_no_proxy()
+
+# ---------------------------------------------------------------------------
 # Encryption key for Jira connection passwords (must be kept secret)
 # ---------------------------------------------------------------------------
-def _generate_key():
-    from cryptography.fernet import Fernet
-    key = Fernet.generate_key()
-    return key.decode()
+def _get_encryption_key():
+    val = os.environ.get("ENCRYPTION_KEY") or os.environ.get("DJANGO_ENCRYPTION_KEY")
+    if val:
+        return val
+    import base64
+    import hashlib
+    digest = hashlib.sha256(SECRET_KEY.encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode()
 
 
-ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "")
-if not ENCRYPTION_KEY:
-    ENCRYPTION_KEY = _generate_key()
+ENCRYPTION_KEY = _get_encryption_key()
+os.environ["ENCRYPTION_KEY"] = ENCRYPTION_KEY
 os.environ["DJANGO_ENCRYPTION_KEY"] = ENCRYPTION_KEY
 
 # ---------------------------------------------------------------------------

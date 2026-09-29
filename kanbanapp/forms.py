@@ -38,14 +38,27 @@ class ProjectForm(forms.ModelForm):
 class JiraConnectionForm(forms.ModelForm):
     class Meta:
         model = JiraConnection
-        fields = ["name", "host", "username", "password", "is_default"]
+        fields = ["name", "host", "username", "password", "disable_proxy", "is_default"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
             "host": forms.TextInput(attrs={"class": "form-control", "placeholder": "https://jira.example.com"}),
             "username": forms.TextInput(attrs={"class": "form-control"}),
-            "password": forms.PasswordInput(attrs={"class": "form-control"}),
+            "password": forms.PasswordInput(attrs={"class": "form-control"}, render_value=False),
+            "disable_proxy": forms.CheckboxInput(),
             "is_default": forms.CheckboxInput(),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields["password"].required = False
+            self.fields["password"].help_text = "Mevcut şifreyi/token'ı korumak için boş bırakın."
+
+    def clean_password(self):
+        pw = self.cleaned_data.get("password")
+        if not pw and self.instance and self.instance.pk:
+            return self.instance.password
+        return pw
 
     def clean_host(self):
         host = self.cleaned_data.get("host", "").rstrip("/")

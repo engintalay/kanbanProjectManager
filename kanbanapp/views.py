@@ -329,15 +329,19 @@ def jira_test_connection(request, connection_id):
         return _forbidden(request)
 
     if not connection.is_valid:
-        messages.error(request, "Bağlantı bilgileri eksik.")
+        messages.error(request, "Bağlantı bilgileri eksik (host, kullanıcı adı veya şifre boş).")
         return redirect("jira_connections")
 
     service = JiraService()
     try:
-        service.connect(connection)
-        messages.success(request, "Jira bağlantısı başarılı.")
+        user_info = service.test_connection(connection)
+        display_name = ""
+        if isinstance(user_info, dict):
+            display_name = user_info.get("displayName") or user_info.get("name") or ""
+        user_str = f" ({display_name})" if display_name else ""
+        messages.success(request, f"Jira bağlantısı başarılı! Giriş yapılan kullanıcı: {connection.username}{user_str}")
     except Exception as exc:  # noqa: BLE001
-        messages.error(request, f"Jira bağlantısı başarısız: {exc}")
+        messages.error(request, f"Jira bağlantı hatası: {exc}")
     finally:
         service.close()
     return redirect("jira_connections")

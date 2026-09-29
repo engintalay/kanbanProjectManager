@@ -14,7 +14,7 @@
     <div class="project-name">{{ conn.host }} <span class="muted">({{ conn.username }})</span></div>
     <div class="project-meta">
       <span>{% if conn.is_default %}Varsayılan{% else %}Varsayılan değil{% endif %}</span>
-      <span>Oluşturan: {{ conn.created_by.get_full_name|default:conn.created_by.username }}</span>
+      <span>Oluşturan: {% if conn.created_by %}{{ conn.created_by.get_full_name|default:conn.created_by.username }}{% else %}-{% endif %}</span>
     </div>
     <div class="project-actions">
       <a href="{% url 'jira_test_connection' conn.id %}" class="btn-ghost">Bağlantı Testi</a>

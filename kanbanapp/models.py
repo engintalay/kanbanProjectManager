@@ -95,6 +95,11 @@ class JiraConnection(models.Model):
     host = models.CharField(max_length=255)
     username = models.CharField(max_length=255)
     password = EncryptedCharField(max_length=512, default="")
+    disable_proxy = models.BooleanField(
+        default=True,
+        verbose_name="Proxy Devre Dışı",
+        help_text="Yerel ağ veya doğrudan bağlantılar için proxy kullanımını kapatır.",
+    )
     is_default = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, related_name="created_jira_connections",

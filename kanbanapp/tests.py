@@ -384,4 +384,97 @@ class SprintAndCardWorkflowTests(TestCase):
         admin_login = self.client.get("/admin/login/")
         self.assertEqual(admin_login.status_code, 200)
 
+    def test_is_local_host_and_normalize_no_proxy(self):
+        from .services import is_local_host, normalize_no_proxy
+        import os
+
+        # Test local detection
+        self.assertTrue(is_local_host("http://localhost:8000"))
+        self.assertTrue(is_local_host("https://127.0.0.1:443"))
+        self.assertTrue(is_local_host("https://10.150.1.20:8443"))
+        self.assertTrue(is_local_host("https://192.168.1.50"))
+        self.assertTrue(is_local_host("https://jira.gelirler.gov.tr"))
+        self.assertTrue(is_local_host("https://myhost.gib.gov.tr"))
+        self.assertFalse(is_local_host("https://jira.atlassian.net"))
+
+        # Test normalize_no_proxy
+        orig_np = os.environ.get("NO_PROXY", "")
+        try:
+            os.environ["NO_PROXY"] = "*.example.local,10.*"
+            normalize_no_proxy()
+            self.assertIn(".example.local", os.environ["NO_PROXY"])
+            self.assertIn("example.local", os.environ["NO_PROXY"])
+        finally:
+            os.environ["NO_PROXY"] = orig_np
+
+    def test_format_jira_error(self):
+        from .services import format_jira_error
+        import requests
+        from unittest.mock import MagicMock
+        from jira.exceptions import JIRAError
+
+        # JIRAError with 401
+        resp = MagicMock()
+        resp.status_code = 401
+        err_401 = JIRAError(text="<html><head><title>Unauthorized (401)</title></head><body>Basic Authentication Failure</body></html>", status_code=401, response=resp)
+        formatted_401 = format_jira_error(err_401)
+        self.assertIn("401", formatted_401)
+        self.assertIn("Yetkilendirme", formatted_401)
+
+        # Timeout
+        t_err = requests.exceptions.ReadTimeout("Connection timed out")
+        self.assertIn("Zaman aşımı", format_jira_error(t_err))
+
+        # Proxy error
+        p_err = requests.exceptions.ProxyError("Cannot connect to proxy")
+        self.assertIn("Proxy", format_jira_error(p_err))
+
+    def test_jira_connection_form_preserves_password(self):
+        from .models import JiraConnection
+        from .forms import JiraConnectionForm
+
+        conn = JiraConnection.objects.create(
+            name="Jira Auth Test",
+            host="https://jira.gelirler.gov.tr",
+            username="testuser",
+            password="OriginalSecretPassword",
+        )
+
+        # Submit form with empty password
+        form = JiraConnectionForm(
+            data={"name": "Jira Auth Test Updated", "host": "https://jira.gelirler.gov.tr", "username": "testuser", "password": ""},
+            instance=conn,
+        )
+        self.assertTrue(form.is_valid())
+        updated = form.save()
+        self.assertEqual(updated.password, "OriginalSecretPassword")
+
+    def test_jira_test_connection_view_with_mock(self):
+        from unittest.mock import patch
+        from .models import JiraConnection
+
+        conn = JiraConnection.objects.create(
+            name="Mock Jira",
+            host="https://jira.example.local",
+            username="mockuser",
+            password="mockpassword",
+        )
+
+        self.client.force_login(self.pm)
+
+        # Test success flow
+        with patch("kanbanapp.services.JiraClient.test_connection", return_value={"displayName": "Mock User", "name": "mockuser"}):
+            resp = self.client.get(reverse("jira_test_connection", kwargs={"connection_id": conn.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(b"Jira ba\xc4\x9flant\xc4\xb1s\xc4\xb1 ba\xc5\x9far\xc4\xb1l\xc4\xb1", resp.content)
+            self.assertIn(b"Mock User", resp.content)
+
+        # Test error flow
+        with patch("kanbanapp.services.JiraClient.test_connection", side_effect=Exception("Sunucu bağlantısı koptu")):
+            resp = self.client.get(reverse("jira_test_connection", kwargs={"connection_id": conn.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(b"Jira ba\xc4\x9flant\xc4\xb1 hatas\xc4\xb1", resp.content)
+            self.assertIn("Sunucu bağlantısı koptu".encode("utf-8"), resp.content)
+
+
 
