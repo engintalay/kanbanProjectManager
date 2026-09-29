@@ -213,6 +213,33 @@ class BugFixesAndPermissionsTests(TestCase):
         self.project.refresh_from_db()
         self.assertEqual(self.project.name, "Project 1 Updated")
 
+    def test_project_create_and_edit_with_jira_connection(self):
+        from .models import JiraConnection
+
+        conn = JiraConnection.objects.create(name="Dev Jira", host="https://jira.dev.lan", username="u", password="p")
+        self.client.force_login(self.admin)
+        create_resp = self.client.post(
+            reverse("project_create"),
+            {"name": "New Jira Project", "key": "NJP", "description": "desc", "jira_connection": conn.id},
+        )
+        self.assertEqual(create_resp.status_code, 302)
+        njp = Project.objects.get(key="NJP")
+        self.assertEqual(njp.jira_connection_id, conn.id)
+
+        # Edit and remove / switch connection
+        edit_resp = self.client.post(
+            reverse("project_edit", kwargs={"project_id": njp.id}),
+            {"name": "New Jira Project", "key": "NJP", "description": "desc", "jira_connection": ""},
+        )
+        self.assertEqual(edit_resp.status_code, 302)
+        njp.refresh_from_db()
+        self.assertIsNone(njp.jira_connection)
+
+        # View board of project without jira: banner is displayed
+        board_resp = self.client.get(reverse("board", kwargs={"project_id": njp.id}))
+        self.assertEqual(board_resp.status_code, 200)
+        self.assertContains(board_resp, "Bu Projeye Bağlı Bir Jira Bulunmuyor")
+
     def test_context_processor_current_user_no_crash(self):
         self.client.force_login(self.admin)
         resp = self.client.get(reverse("dashboard"))

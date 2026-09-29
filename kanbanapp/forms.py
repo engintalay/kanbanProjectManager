@@ -18,12 +18,30 @@ from .models import (
 class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
-        fields = ["name", "key", "description"]
+        fields = ["name", "key", "description", "jira_connection"]
+        labels = {
+            "name": "Proje Adı",
+            "key": "Proje Anahtarı (Key)",
+            "description": "Açıklama",
+            "jira_connection": "Jira Bağlantısı",
+        }
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
             "key": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "jira_connection": forms.Select(attrs={"class": "form-control"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["jira_connection"].required = False
+        self.fields["jira_connection"].empty_label = "--- Jira Bağlantısı Seçin ---"
+        self.fields["jira_connection"].help_text = "Projeye ait Jira sunucu bağlantısını seçin. Kartlar bu Jira üzerinden çekilecektir."
+        # If new project and default connection exists, pre-select it
+        if not self.instance.pk and not self.initial.get("jira_connection"):
+            default_conn = JiraConnection.objects.filter(is_default=True).first() or JiraConnection.objects.first()
+            if default_conn:
+                self.initial["jira_connection"] = default_conn.id
 
     def clean_key(self):
         key = self.cleaned_data.get("key", "").strip()

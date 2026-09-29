@@ -11,6 +11,11 @@
     <label>{{ field.label }}
       {{ field }}
       {% if field.help_text %}<small class="form-text">{{ field.help_text }}</small>{% endif %}
+      {% if field.name == 'jira_connection' %}
+      <small class="form-text" style="margin-top: 4px; display: block;">
+        Listede bağlantı yok mu? <a href="{% url 'jira_connection_create' %}?next={{ request.path }}">Yeni bir Jira Bağlantısı Tanımlayın →</a>
+      </small>
+      {% endif %}
     </label>
     {% for error in field.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
     {% endfor %}

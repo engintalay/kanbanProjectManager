@@ -5,8 +5,13 @@
   <div>
     <a href="{% url 'projects' %}" class="back-link">← {{ project.key }}</a>
     <h1>{{ project.name }}</h1>
+    {% if project.jira_connection %}
+    <span class="muted" style="font-size: 0.8rem;">Jira: <strong>{{ project.jira_connection.name }}</strong> ({{ project.jira_connection.host }})</span>
+    {% else %}
+    <span class="badge badge-warn" style="font-size: 0.75rem;">Jira Bağlantısı Yok</span>
+    {% endif %}
     {% if active_sprint %}
-    <span class="muted">Aktif Sprint: <strong>{{ active_sprint.name }}</strong> (Toplam Zorluk: {{ active_sprint.total_difficulty }}) — <a href="{% url 'sprint_board' project.id active_sprint.id %}">Sprint Panosu →</a></span>
+    <span class="muted" style="margin-left: 10px;">Aktif Sprint: <strong>{{ active_sprint.name }}</strong> (Toplam Zorluk: {{ active_sprint.total_difficulty }}) — <a href="{% url 'sprint_board' project.id active_sprint.id %}">Sprint Panosu →</a></span>
     {% endif %}
   </div>
   <div class="head-actions">
@@ -30,6 +35,31 @@
     {% endif %}
   </div>
 </div>
+
+{% if not project.jira_connection %}
+<div class="jira-warning-box" style="background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin-bottom: 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div>
+      <h3 style="margin: 0 0 6px 0; color: #f59e0b; font-size: 1rem;">ℹ️ Bu Projeye Bağlı Bir Jira Bulunmuyor</h3>
+      <p style="margin: 0; color: #cbd5e1; font-size: 0.88rem;">
+        Sistem kuralı gereği tüm kartlar Jira ile bağlı olmak zorundadır. Projeye Jira bağlamak için:
+      </p>
+      <ul style="margin: 6px 0 0 18px; color: #cbd5e1; font-size: 0.84rem; line-height: 1.5;">
+        <li>Sistemde kayıtlı bir Jira bağlantısı varsa: <strong>"Proje Ayarlarından Jira Seç"</strong> butonuna tıklayarak bu projeye atayın.</li>
+        <li>Henüz Jira bağlantısı tanımlamadıysanız: <strong>"Yeni Jira Bağlantısı Ekle"</strong> butonuna tıklayarak sunucu bilgilerinizi ekleyin.</li>
+      </ul>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      {% if can_manage_project %}
+      <a href="{% url 'project_edit' project.id %}" class="btn-primary" style="white-space: nowrap; font-size: 0.85rem;">Proje Ayarlarından Jira Seç</a>
+      {% endif %}
+      {% if can_manage_jira %}
+      <a href="{% url 'jira_connection_create' %}?next={% url 'board' project.id %}" class="btn-ghost" style="white-space: nowrap; font-size: 0.85rem;">+ Yeni Jira Bağlantısı Ekle</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <div class="board">
   {% for column in columns %}

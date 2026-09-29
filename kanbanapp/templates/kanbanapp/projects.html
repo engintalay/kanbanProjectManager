@@ -21,6 +21,10 @@
       <a href="{% url 'board' project.id %}" class="btn-primary">Kanban Panosu</a>
       {% if project.jira_connection %}
       <a href="{% url 'refresh_project' project.id %}" class="btn-ghost">Jira Yenile</a>
+      {% else %}
+      {% if is_admin or project.created_by_id == user.id %}
+      <a href="{% url 'project_edit' project.id %}" class="btn-ghost" style="color: #f59e0b;" title="Bu projeye Jira bağlantısı tanımlayın">Jira Bağla</a>
+      {% endif %}
       {% endif %}
       {% if is_admin or project.created_by_id == user.id %}
       <a href="{% url 'project_edit' project.id %}" class="btn-ghost">Düzenle</a>
