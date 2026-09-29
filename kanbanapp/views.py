@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.shortcuts import get_object_or_404, redirect, render
 
 from .forms import JiraConnectionForm, KanbanCardForm, KanbanColumnForm, ProjectForm, StatusMappingForm
+from .middleware import role_level
 from .models import JiraConnection, JiraIssue, JiraStatus, KanbanCard, KanbanColumn, Project, RefreshLog, Role, StatusMapping
 from .services import JiraService
 
@@ -32,10 +33,7 @@ def logout_view(request):
 
 
 def is_admin(user):
-    if not user or not user.is_authenticated:
-        return False
-    role = getattr(user, "role", None)
-    return role is not None and getattr(role, "level", 1) == 1
+    return _role_level(user) <= 1
 
 
 @user_passes_test(is_admin)
@@ -73,29 +71,8 @@ def register_view(request):
     return render(request, "kanbanapp/register.html", {"error": None})
 
 
-@login_required
-def dashboard_view(request):
-    """Home / dashboard showing projects the user may access."""
-    projects = Project.objects.all()
-    roles = Role.objects.all()
-    return render(request, "kanbanapp/dashboard.html", {"projects": projects, "roles": roles})
-
-
-@login_required
-def project_list_view(request):
-    projects = Project.objects.all()
-    return render(
-        request,
-        "kanbanapp/projects.html",
-        {"projects": projects, "can_create_project": _can_create_project(request.user)},
-    )
-
-
 def _role_level(user):
-    role = getattr(user, "role", None)
-    if role is not None:
-        return getattr(role, "level", 1)
-    return 1
+    return role_level(user)
 
 
 def _forbidden(request):
@@ -113,12 +90,8 @@ def _is_project_manager(user):
 
 
 def _can_create_project(user):
-    """Admin: any project. Project Manager: only projects they created."""
-    if _is_admin(user):
-        return True
-    if _is_project_manager(user):
-        return user.project is not None
-    return False
+    """Admin and Project Manager can create projects."""
+    return _role_level(user) <= 2
 
 
 def _can_manage_project(user, project):
@@ -128,6 +101,58 @@ def _can_manage_project(user, project):
     if _is_project_manager(user):
         return project.created_by_id == user.id
     return False
+
+
+def _get_visible_projects(user):
+    from django.db.models import Q
+    level = _role_level(user)
+    if level <= 1 or level in (4, 5):
+        return Project.objects.all()
+    if level == 2:
+        return Project.objects.filter(created_by=user)
+    if level == 3:
+        return Project.objects.filter(Q(id=getattr(user, "project_id", None)) | Q(created_by=user))
+    return Project.objects.none()
+
+
+def _can_view_project(user, project):
+    level = _role_level(user)
+    if level <= 1 or level in (4, 5):
+        return True
+    if level == 2:
+        return project.created_by_id == user.id
+    if level == 3:
+        return user.project_id == project.id or project.created_by_id == user.id
+    return False
+
+
+def _can_edit_cards(user, project):
+    level = _role_level(user)
+    if level <= 1:
+        return True
+    if level == 2 and project.created_by_id == user.id:
+        return True
+    if level == 3 and (user.project_id == project.id or project.created_by_id == user.id):
+        return True
+    return False
+
+
+@login_required
+def dashboard_view(request):
+    """Home / dashboard showing projects the user may access."""
+    projects = _get_visible_projects(request.user)
+    roles = Role.objects.all()
+    return render(request, "kanbanapp/dashboard.html", {"projects": projects, "roles": roles})
+
+
+@login_required
+def project_list_view(request):
+    projects = _get_visible_projects(request.user)
+    return render(
+        request,
+        "kanbanapp/projects.html",
+        {"projects": projects, "can_create_project": _can_create_project(request.user)},
+    )
 
 
 def project_create_view(request):
@@ -314,12 +339,9 @@ def refresh_project(request, project_id):
 
 @login_required
 def board_view(request, project_id):
-    """Read-only kanban board for a project: columns grouped, cards within each column."""
+    """Kanban board for a project: columns grouped, cards within each column."""
     project = get_object_or_404(Project, id=project_id)
-    if not _can_manage_project(request.user, project):
-        return _forbidden(request)
-
-    if request.method != "GET":
+    if not _can_view_project(request.user, project):
         return _forbidden(request)
 
     columns = KanbanColumn.objects.filter(project=project).order_by("position", "id")
@@ -332,6 +354,7 @@ def board_view(request, project_id):
             "columns": columns,
             "status_mappings": status_mappings,
             "can_manage_project": _can_manage_project(request.user, project),
+            "can_edit_cards": _can_edit_cards(request.user, project),
         },
     )
 
@@ -476,11 +499,11 @@ def kanban_column_delete_view(request, project_id, column_id):
 @login_required
 def kanban_card_create_view(request, project_id):
     project = get_object_or_404(Project, id=project_id)
-    if not _can_manage_project(request.user, project):
+    if not _can_edit_cards(request.user, project):
         return _forbidden(request)
 
     if request.method == "POST":
-        form = KanbanCardForm(request.POST)
+        form = KanbanCardForm(request.POST, project=project)
         form.instance.project = project
         if form.is_valid():
             card = form.save(commit=False)
@@ -490,8 +513,7 @@ def kanban_card_create_view(request, project_id):
             return redirect("board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
-        form = KanbanCardForm()
-        form.fields["column"].queryset = project.columns.all()
+        form = KanbanCardForm(project=project)
     return render(request, "kanbanapp/kanban_card_form.html", {"form": form, "project": project, "mode": "create"})
 
 
@@ -499,18 +521,18 @@ def kanban_card_create_view(request, project_id):
 def kanban_card_edit_view(request, project_id, card_id):
     project = get_object_or_404(Project, id=project_id)
     card = get_object_or_404(KanbanCard, id=card_id, project=project)
-    if not _can_manage_project(request.user, project):
+    if not _can_edit_cards(request.user, project):
         return _forbidden(request)
 
     if request.method == "POST":
-        form = KanbanCardForm(request.POST, instance=card)
+        form = KanbanCardForm(request.POST, instance=card, project=project)
         if form.is_valid():
             form.save()
             messages.success(request, f"'{card.title}' kartı güncellendi.")
             return redirect("board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
-        form = KanbanCardForm(instance=card)
+        form = KanbanCardForm(instance=card, project=project)
     return render(request, "kanbanapp/kanban_card_form.html", {"form": form, "project": project, "mode": "edit", "card": card})
 
 

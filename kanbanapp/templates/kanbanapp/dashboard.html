@@ -6,7 +6,7 @@
 </div>
 <div class="projects-grid">
   {% for project in projects %}
-  <a href="#" class="project-card" onclick="event.preventDefault();">
+  <a href="{% url 'board' project.id %}" class="project-card">
     <div class="project-key">{{ project.key }}</div>
     <div class="project-name">{{ project.name }}</div>
     <div class="project-meta">

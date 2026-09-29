@@ -15,7 +15,13 @@
       <nav>
         <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a>
         <a href="{% url 'projects' %}" class="{% if request.resolver_match.url_name == 'projects' %}active{% endif %}">Projeler</a>
-        {% if role_level >= 1 %}<a href="{% url 'admin:index' %}" target="_blank">Admin</a>{% endif %}
+        {% if can_manage_jira %}
+        <a href="{% url 'jira_connections' %}" class="{% if 'jira' in request.resolver_match.url_name %}active{% endif %}">Jira Bağlantıları</a>
+        {% endif %}
+        {% if is_admin %}
+        <a href="{% url 'register' %}" class="{% if request.resolver_match.url_name == 'register' %}active{% endif %}">Kullanıcı Ekle</a>
+        <a href="{% url 'admin:index' %}" target="_blank">Admin Paneli</a>
+        {% endif %}
       </nav>
       <div class="user-box">
         <span>{{ user.get_full_name|default:user.username }}</span>

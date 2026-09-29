@@ -5,26 +5,29 @@ from django.utils.deprecation import MiddlewareMixin
 
 
 def role_level(user):
-    """Return the numeric role level for a user (higher = more power)."""
+    """Return the numeric role level for a user (1 = admin = most power, 5 = viewer)."""
+    if not user or not getattr(user, "is_authenticated", False):
+        return 99
+    if getattr(user, "is_superuser", False):
+        return 1
     role = getattr(user, "role", None)
     if role is not None:
         return getattr(role, "level", 1)
-    return 1  # default: admin
+    return 1
 
 
-@login_required
-def role_required(level):
-    """Decorator: require the logged-in user to have role level >= ``level``."""
+def role_required(max_level):
+    """Decorator: require the logged-in user to have role level <= max_level (1=admin, 5=viewer)."""
 
-    @wraps(view=role_required)
     def _decorator(view):
+        @wraps(view)
         @login_required
         def wrapped(request, *args, **kwargs):
-            if role_level(request.user) < level:
+            if role_level(request.user) > max_level:
                 return _forbidden(request)
             return view(request, *args, **kwargs)
 
-        wrapped.role_level = level
+        wrapped.max_role_level = max_level
         return wrapped
 
     return _decorator

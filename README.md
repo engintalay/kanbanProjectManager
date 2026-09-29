@@ -71,6 +71,8 @@ Yerel ağda (LAN) çalışan, **Python + Django** tabanlı, tek containerda depl
 
    → `http://localhost:8000/`
 
+   **Not:** Yerel geliştirme için static dosyaları (`/static/...`) çalışması `DEBUG=True` gerekir. `.env` içinde `DEBUG=True` yapın (veya çalıştırırken `DEBUG=True python manage.py runserver`). Production (gunicorn + nginx) için `DEBUG=False` kalır; o zaman `collectstatic` çalışıp nginx static'ı servis eder.
+
 ## Docker / LAN Kurulumu
 
 1. `.env` dosyasını kopyala ve düzenle:

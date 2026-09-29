@@ -1,17 +1,18 @@
 from django.utils.functional import SimpleLazyObject
+from .middleware import role_level
 
 
 def request_user(request):
-    """Expose the current user and its role level to templates.
-
-    Safe for anonymous users: an unauthenticated user gets ``role_level``
-    of ``None`` so ``{% if role_level >= 1 %}`` renders as False.
-    """
+    """Expose the current user, role level, and permissions to templates."""
     user = request.user
-    role = getattr(user, "role", None)
-    level = getattr(role, "level", None) if role is not None else None
+    if getattr(user, "is_authenticated", False):
+        lvl = role_level(user)
+    else:
+        lvl = None
+
     return {
-        "current_user": SimpleLazyObject(lambda r: r.user),
-        "role_level": level,
-        "is_admin": user.is_authenticated and level == 1,
+        "current_user": SimpleLazyObject(lambda: request.user),
+        "role_level": lvl,
+        "is_admin": lvl == 1,
+        "can_manage_jira": lvl is not None and lvl <= 2,
     }

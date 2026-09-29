@@ -32,7 +32,7 @@ services:
     ports:
       - "${WEB_PORT:-8000}:8000"
     command: >
-      sh -c "python manage.py migrate && gunicorn kanban.wsgi:application --bind 0.0.0.0:8000 --workers 4"
+      sh -c "python manage.py collectstatic --noinput && python manage.py migrate && gunicorn kanban.wsgi:application --bind 0.0.0.0:8000 --workers 4"
 
   nginx:
     image: nginx:1.27-alpine

@@ -6,20 +6,27 @@
     <a href="{% url 'projects' %}" class="back-link">← {{ project.key }}</a>
     <h1>{{ project.name }}</h1>
   </div>
-  {% if can_manage_project %}
   <div class="head-actions">
+    {% if can_edit_cards %}
     <a href="{% url 'kanban_card_create' project.id %}" class="btn-primary">Yeni Kart Ekle</a>
+    {% endif %}
     {% if can_manage_project %}
-    <span class="head-hint">Her kolon için Jira durumunu eşleyin.</span>
+    <a href="{% url 'kanban_column_create' project.id %}" class="btn-ghost">Kolon Ekle</a>
+    {% endif %}
+    {% if project.jira_connection %}
+    <a href="{% url 'refresh_project' project.id %}" class="btn-ghost">Jira Yenile</a>
     {% endif %}
   </div>
-{% endif %}
 </div>
 <div class="board">
   {% for column in columns %}
   <div class="board-column">
     <div class="board-column-header">
+      {% if can_manage_project %}
       <a href="{% url 'kanban_column_edit' project.id column.id %}" class="col-name">{{ column.name }}</a>
+      {% else %}
+      <span class="col-name">{{ column.name }}</span>
+      {% endif %}
       <span class="badge">{{ column.cards.count }} kart</span>
       {% if can_manage_project %}
       <a href="{% url 'status_mapping_create' project.id column.id %}" class="status-map-link">Durum Eşle</a>
@@ -35,18 +42,23 @@
         {% if card.jira_key %}<div class="card-key">{{ card.jira_key }}</div>{% endif %}
         {% if card.description %}<div class="card-desc">{{ card.description }}</div>{% endif %}
         <div class="card-actions">
+          {% if can_edit_cards %}
           <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost">Düzenle</a>
+          {% endif %}
+          {% if can_manage_project %}
           <form method="post" action="{% url 'kanban_card_delete' project.id card.id %}" class="inline-delete"
                 onclick="return confirm('Bu kartı silmek istediğinizden emin misiniz?');">
             {% csrf_token %}
             <button type="submit" class="btn-danger">Sil</button>
           </form>
+          {% endif %}
         </div>
       </div>
       {% empty %}
       <p class="empty">Henüz kart yok.</p>
       {% endfor %}
     </div>
+    {% if can_manage_project %}
     <div class="column-actions">
       <a href="{% url 'kanban_column_edit' project.id column.id %}" class="btn-ghost">Düzenle</a>
       <form method="post" action="{% url 'kanban_column_delete' project.id column.id %}" class="inline-delete"
@@ -55,9 +67,10 @@
         <button type="submit" class="btn-danger">Sil</button>
       </form>
     </div>
+    {% endif %}
   </div>
   {% empty %}
-  <p class="empty">Henüz kolon yok. Yeni bir kolon ekleyerek başlangıcı oluşturun.</p>
+  <p class="empty">Henüz kolon yok. {% if can_manage_project %}<a href="{% url 'kanban_column_create' project.id %}">Yeni bir kolon ekleyin.</a>{% endif %}</p>
   {% endfor %}
 </div>
 {% endblock %}

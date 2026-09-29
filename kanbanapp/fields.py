@@ -16,18 +16,25 @@ class EncryptedCharField(TextField):
     @property
     def _fernet(self):
         from cryptography.fernet import Fernet
+        from django.conf import settings
 
         if self._key is None:
-            self._key = getattr(
-                __import__("django").settings, "ENCRYPTION_KEY", ""
-            )
+            self._key = getattr(settings, "ENCRYPTION_KEY", "")
         return Fernet(self._key.encode() if isinstance(self._key, str) else self._key)
 
     def get_prep_value(self, value):
-        # Encrypt before saving; decrypt on read.
-        if value is not None:
-            return self._fernet.encrypt(str(value).encode()).decode()
+        if value not in (None, ""):
+            # Avoid double encryption if value is already a valid fernet token
+            str_val = str(value)
+            try:
+                self._fernet.decrypt(str_val.encode())
+                return str_val
+            except Exception:
+                return self._fernet.encrypt(str_val.encode()).decode()
         return value
+
+    def from_db_value(self, value, expression, connection):
+        return self.to_python(value)
 
     def to_python(self, value):
         if value is None or value == "":

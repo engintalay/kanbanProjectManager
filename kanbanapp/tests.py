@@ -173,3 +173,74 @@ class StatusMappingTests(TestCase):
             reverse("status_mapping_create", kwargs={"project_id": self.project.id, "column_id": self.col.id})
         )
         self.assertEqual(resp.status_code, 403)
+
+
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class BugFixesAndPermissionsTests(TestCase):
+    def setUp(self):
+        self.admin_role = Role.objects.create(name="Admin", slug="admin", level=Role.LEVEL_ADMIN)
+        self.pm_role = Role.objects.create(name="Proje Yöneticisi", slug="pm", level=Role.LEVEL_PROJECT_MANAGER)
+        self.prog_role = Role.objects.create(name="Proje Programcısı", slug="prog", level=Role.LEVEL_PROGRAMMER)
+        self.viewer_role = Role.objects.create(name="İzleyici", slug="viewer", level=Role.LEVEL_VIEWER)
+
+        self.admin = User.objects.create_superuser(username="admin", password="p", email="a@e.com", role=self.admin_role)
+        self.pm = User.objects.create_user(username="pm_user", password="p", email="pm@e.com", role=self.pm_role)
+        self.project = Project.objects.create(key="PRJ", name="Project 1", created_by=self.pm)
+        self.prog = User.objects.create_user(username="prog_user", password="p", email="pr@e.com", role=self.prog_role, project=self.project)
+        self.viewer = User.objects.create_user(username="viewer_user", password="p", email="v@e.com", role=self.viewer_role)
+
+        self.col = KanbanColumn.objects.create(project=self.project, name="Todo", status_type="custom", position=0)
+        self.client = Client()
+
+    def test_encrypted_char_field_roundtrip(self):
+        from .models import JiraConnection
+        conn = JiraConnection.objects.create(
+            name="Test Jira", host="https://jira.example.com", username="admin", password="super_secret_password"
+        )
+        loaded = JiraConnection.objects.get(id=conn.id)
+        self.assertEqual(loaded.password, "super_secret_password")
+
+    def test_project_edit_preserves_key(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(
+            reverse("project_edit", kwargs={"project_id": self.project.id}),
+            {"name": "Project 1 Updated", "key": "PRJ", "description": "new desc"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.name, "Project 1 Updated")
+
+    def test_context_processor_current_user_no_crash(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(resp.status_code, 200)
+        # Verify current_user renders without lambda argument error
+        self.assertTrue(resp.context["is_admin"])
+        self.assertTrue(resp.context["can_manage_jira"])
+        self.assertEqual(resp.context["role_level"], 1)
+
+    def test_programmer_can_view_board_and_create_card(self):
+        self.client.force_login(self.prog)
+        resp = self.client.get(reverse("board", kwargs={"project_id": self.project.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Yeni Kart Ekle", resp.content)
+
+        card_resp = self.client.post(
+            reverse("kanban_card_create", kwargs={"project_id": self.project.id}),
+            {"column": self.col.id, "title": "Prog Task", "description": "desc", "is_extra": True},
+        )
+        self.assertEqual(card_resp.status_code, 302)
+        self.assertEqual(KanbanCard.objects.filter(title="Prog Task").count(), 1)
+
+    def test_viewer_can_view_board_but_cannot_create_card(self):
+        self.client.force_login(self.viewer)
+        resp = self.client.get(reverse("board", kwargs={"project_id": self.project.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn(b"Yeni Kart Ekle", resp.content)
+
+        card_resp = self.client.post(
+            reverse("kanban_card_create", kwargs={"project_id": self.project.id}),
+            {"column": self.col.id, "title": "Unauthorized Task", "description": "d", "is_extra": True},
+        )
+        self.assertEqual(card_resp.status_code, 403)
+

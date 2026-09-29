@@ -27,7 +27,7 @@ DEBUG = env_bool("DEBUG")
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
 
 CSRF_TRUSTED_ORIGINS = [
-    o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o
+    o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o and "<" not in o and "your-" not in o
 ]
 
 # ---------------------------------------------------------------------------
@@ -130,7 +130,10 @@ os.environ["DJANGO_ENCRYPTION_KEY"] = ENCRYPTION_KEY
 # ---------------------------------------------------------------------------
 # Static files
 # ---------------------------------------------------------------------------
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    BASE_DIR / 'kanbanapp' / 'static',
+]
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

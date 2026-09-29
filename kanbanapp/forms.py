@@ -15,7 +15,10 @@ class ProjectForm(forms.ModelForm):
 
     def clean_key(self):
         key = self.cleaned_data.get("key", "").strip()
-        if Project.objects.filter(key=key).exists():
+        qs = Project.objects.filter(key=key)
+        if self.instance and self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
             raise forms.ValidationError("Bu proje anahtarı zaten kullanılıyor.")
         return key
 
@@ -65,14 +68,22 @@ class KanbanCardForm(forms.ModelForm):
             "is_extra": forms.CheckboxInput(),
         }
 
+    def __init__(self, *args, project=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        proj = project or getattr(self.instance, "project", None)
+        if proj:
+            self.fields["column"].queryset = proj.columns.all().order_by("position", "name")
+
     def clean_jira_key(self):
         jira_key = self.cleaned_data.get("jira_key") or ""
         if jira_key:
             jira_key = jira_key.strip()
-            issue = JiraIssue.objects.filter(project=self.instance.project, jira_key=jira_key).first()
-            if issue is None:
-                raise forms.ValidationError("Bu projede böyle bir Jira issue yok.")
-            self.instance.jira_issue_id = issue.jira_id
+            proj = getattr(self.instance, "project", None)
+            if proj:
+                issue = JiraIssue.objects.filter(project=proj, jira_key=jira_key).first()
+                if issue is None:
+                    raise forms.ValidationError("Bu projede böyle bir Jira issue yok.")
+                self.instance.jira_issue_id = issue.jira_id
         return jira_key
 
 
