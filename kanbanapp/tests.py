@@ -320,6 +320,12 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertEqual(board_resp.status_code, 200)
         self.assertIn(b"Sprint 1", board_resp.content)
         self.assertIn(b"Task 1", board_resp.content)
+        self.assertIn(b"container-fluid", board_resp.content)
+
+        # Standard board view
+        kanban_resp = self.client.get(reverse("board", kwargs={"project_id": self.project.id}))
+        self.assertEqual(kanban_resp.status_code, 200)
+        self.assertIn(b"container-fluid", kanban_resp.content)
 
     def test_card_move_between_columns(self):
         card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Movable Task")
