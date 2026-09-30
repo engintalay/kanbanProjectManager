@@ -33,6 +33,8 @@ class KanbanBoardTests(TestCase):
         self.assertIn(b"Yeni Kart Ekle", resp.content)
         self.assertIn(b'draggable="true"', resp.content)
         self.assertIn(b"cardMoveModal", resp.content)
+        self.assertIn(b"col-drag-handle", resp.content)
+        self.assertIn(b"columns/reorder", resp.content)
 
     def test_column_and_card_crud_flow(self):
         col_resp = self.client.post(
@@ -1317,6 +1319,53 @@ class MultiStatusMappingAndScreenTests(TestCase):
         card.refresh_from_db()
         self.assertEqual(card.column_id, col2.id)
         self.assertEqual(card.position, 3)
+
+    def test_kanban_columns_reorder_view(self):
+        col1 = KanbanColumn.objects.create(project=self.project, name="Col 1", position=0)
+        col2 = KanbanColumn.objects.create(project=self.project, name="Col 2", position=1)
+        col3 = KanbanColumn.objects.create(project=self.project, name="Col 3", position=2)
+
+        import json
+        resp = self.client.post(
+            reverse("kanban_columns_reorder", kwargs={"project_id": self.project.id}),
+            data=json.dumps({"column_ids": [col3.id, col1.id, col2.id]}),
+            content_type="application/json",
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "ok")
+
+        col1.refresh_from_db()
+        col2.refresh_from_db()
+        col3.refresh_from_db()
+        self.assertEqual(col3.position, 0)
+        self.assertEqual(col1.position, 1)
+        self.assertEqual(col2.position, 2)
+
+    def test_kanban_columns_reorder_missing_params(self):
+        resp = self.client.post(
+            reverse("kanban_columns_reorder", kwargs={"project_id": self.project.id}),
+            data={},
+            content_type="application/json",
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_kanban_columns_reorder_permission_denied_for_non_member(self):
+        role_prog, _ = Role.objects.get_or_create(slug="proje-programcisi", defaults={"name": "Proje Programcısı", "level": Role.PROGRAMMER})
+        other_user = User.objects.create_user(username="stranger", email="stranger_col@example.com", password="pass12345", role=role_prog)
+        other_client = Client()
+        other_client.force_login(other_user)
+
+        import json
+        resp = other_client.post(
+            reverse("kanban_columns_reorder", kwargs={"project_id": self.project.id}),
+            data=json.dumps({"column_ids": [self.col_todo.id]}),
+            content_type="application/json",
+            headers={"x-requested-with": "XMLHttpRequest"},
+        )
+        self.assertEqual(resp.status_code, 403)
 
 
 class JqlCardImportTests(TestCase):

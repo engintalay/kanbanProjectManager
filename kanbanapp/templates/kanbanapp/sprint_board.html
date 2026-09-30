@@ -60,9 +60,14 @@
 <!-- Sprint Columns & Cards -->
 <div class="board">
   {% for column in columns %}
-  <div class="board-column">
+  <div class="board-column" data-column-id="{{ column.id }}">
     <div class="board-column-header">
-      <span class="col-name">{{ column.name }}</span>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        {% if can_manage_project or can_edit_cards %}
+        <span class="col-drag-handle" title="Kolonu taşımak için sürükleyin">⠿</span>
+        {% endif %}
+        <span class="col-name">{{ column.name }}</span>
+      </div>
       <span class="badge">
         {% with s_cards=column.cards.all %}
           {{ sprint.cards.all|length }} kart
@@ -265,6 +270,7 @@
   // Card dragging & reordering
   document.querySelectorAll('.card[draggable="true"]').forEach(card => {
     card.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
       draggedCardEl = card;
       const colBody = card.closest('.board-column-body');
       originColumnId = colBody ? colBody.dataset.columnId : null;
@@ -277,7 +283,8 @@
       e.dataTransfer.effectAllowed = 'move';
     });
 
-    card.addEventListener('dragend', () => {
+    card.addEventListener('dragend', (e) => {
+      e.stopPropagation();
       if (!draggedCardEl) return;
       draggedCardEl.classList.remove('is-dragging');
       document.querySelectorAll('.board-column-body').forEach(b => b.classList.remove('drag-over'));
@@ -350,11 +357,11 @@
   // Column bodies drop targets with live slotting
   document.querySelectorAll('.board-column-body').forEach(body => {
     body.addEventListener('dragover', (e) => {
+      if (!draggedCardEl) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       body.classList.add('drag-over');
 
-      if (!draggedCardEl) return;
       const afterElement = getDragAfterElement(body, e.clientY);
       if (afterElement == null) {
         body.appendChild(draggedCardEl);
@@ -370,9 +377,115 @@
     });
 
     body.addEventListener('drop', (e) => {
+      if (!draggedCardEl) return;
       e.preventDefault();
       body.classList.remove('drag-over');
     });
   });
+
+  // --- Column Drag & Drop Reordering ---
+  const boardEl = document.querySelector('.board');
+  let draggedColumnEl = null;
+  let originColNextSibling = null;
+
+  function getDragAfterColumn(container, x) {
+    const draggableElements = [...container.querySelectorAll('.board-column:not(.is-col-dragging)')];
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = x - box.left - box.width / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+
+  {% if can_manage_project or can_edit_cards %}
+  document.querySelectorAll('.board-column').forEach(col => {
+    const header = col.querySelector('.board-column-header');
+
+    if (header) {
+      header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('a, button, select, input, form, .status-map-status')) {
+          col.draggable = false;
+          return;
+        }
+        col.draggable = true;
+      });
+
+      header.addEventListener('mouseup', () => {
+        if (!draggedColumnEl) col.draggable = false;
+      });
+      header.addEventListener('mouseleave', () => {
+        if (!draggedColumnEl) col.draggable = false;
+      });
+    }
+
+    col.addEventListener('dragstart', (e) => {
+      if (draggedCardEl || e.target.closest('.card') || e.target.closest('a, button, select, input, form')) {
+        col.draggable = false;
+        return;
+      }
+      draggedColumnEl = col;
+      originColNextSibling = col.nextSibling;
+      col.classList.add('is-col-dragging');
+      if (boardEl) boardEl.classList.add('col-drag-active');
+      e.dataTransfer.setData('text/plain', 'column:' + col.dataset.columnId);
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    col.addEventListener('dragend', () => {
+      if (!draggedColumnEl) return;
+      col.classList.remove('is-col-dragging');
+      col.draggable = false;
+      if (boardEl) boardEl.classList.remove('col-drag-active');
+
+      if (draggedColumnEl.nextSibling !== originColNextSibling) {
+        const columnIds = [...boardEl.querySelectorAll('.board-column')].map(c => c.dataset.columnId);
+        fetch("{% url 'kanban_columns_reorder' project.id %}", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken().value,
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({
+            column_ids: columnIds
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          showToast("Kolon sıralaması güncellendi.");
+        })
+        .catch(err => {
+          console.error("Kolon sıralama hatası:", err);
+        });
+      }
+      draggedColumnEl = null;
+    });
+  });
+
+  if (boardEl) {
+    boardEl.addEventListener('dragover', (e) => {
+      if (!draggedColumnEl) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      const afterElement = getDragAfterColumn(boardEl, e.clientX);
+      if (afterElement == null) {
+        boardEl.appendChild(draggedColumnEl);
+      } else {
+        boardEl.insertBefore(draggedColumnEl, afterElement);
+      }
+    });
+
+    boardEl.addEventListener('drop', (e) => {
+      if (draggedColumnEl) {
+        e.preventDefault();
+      }
+    });
+  }
+  {% endif %}
 </script>
 {% endblock %}

@@ -1054,6 +1054,37 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   border-radius: 8px;
 }
 
+/* Column Drag & Drop Styles */
+.col-drag-handle {
+  cursor: grab;
+  user-select: none;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.col-drag-handle:hover {
+  color: #818cf8;
+  background: rgba(99, 102, 241, 0.12);
+}
+.col-drag-handle:active {
+  cursor: grabbing;
+}
+.board-column.is-col-dragging {
+  opacity: 0.45;
+  outline: 2px dashed #6366f1;
+  outline-offset: -2px;
+  transform: scale(0.99);
+}
+.board.col-drag-active {
+  user-select: none;
+}
+
 /* Status Sync Drag & Drop Styles */
 .jira-status-chip-pool {
   background: rgba(255, 255, 255, 0.02);

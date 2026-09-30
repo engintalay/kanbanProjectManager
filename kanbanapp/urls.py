@@ -35,6 +35,7 @@ urlpatterns = [
     path("projects/<int:project_id>/card/<int:card_id>/delete/", views.kanban_card_delete_view, name="kanban_card_delete"),
     path("projects/<int:project_id>/card/<int:card_id>/move/", views.kanban_card_move_view, name="kanban_card_move"),
     path("projects/<int:project_id>/cards/reorder/", views.kanban_cards_reorder_view, name="kanban_cards_reorder"),
+    path("projects/<int:project_id>/columns/reorder/", views.kanban_columns_reorder_view, name="kanban_columns_reorder"),
     path("projects/<int:project_id>/card/<int:card_id>/assign/", views.kanban_card_assign_view, name="kanban_card_assign"),
     path("projects/<int:project_id>/card/<int:card_id>/request/", views.card_request_create_view, name="card_request_create"),
     path("projects/<int:project_id>/card/<int:card_id>/split/", views.card_split_view, name="card_split"),

@@ -14,5 +14,6 @@ db.sqlite3
 # Env
 .env
 
-# OS
+# OS & Agent
 .DS_Store
+.agy-*

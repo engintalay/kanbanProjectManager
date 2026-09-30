@@ -1635,6 +1635,50 @@ def kanban_cards_reorder_view(request, project_id):
 
 
 @login_required
+def kanban_columns_reorder_view(request, project_id):
+    """Reorder columns on the kanban board via mouse drag-and-drop."""
+    project = get_object_or_404(Project, id=project_id)
+    if not (_can_manage_project(request.user, project) or _can_edit_cards(request.user, project)):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        import json
+
+        data = {}
+        if request.content_type == "application/json" and request.body:
+            try:
+                data = json.loads(request.body)
+            except Exception:
+                data = {}
+        if not data:
+            data = request.POST
+
+        column_ids = data.get("column_ids")
+        if not column_ids:
+            return JsonResponse({"status": "error", "message": "Eksik parametre (column_ids)."}, status=400)
+
+        if isinstance(column_ids, str):
+            try:
+                column_ids = json.loads(column_ids)
+            except Exception:
+                column_ids = [int(x.strip()) for x in column_ids.split(",") if x.strip().isdigit()]
+
+        from django.db import transaction
+
+        with transaction.atomic():
+            for position, col_id in enumerate(column_ids):
+                try:
+                    cid = int(col_id)
+                    KanbanColumn.objects.filter(project=project, id=cid).update(position=position)
+                except (ValueError, TypeError):
+                    continue
+
+        return JsonResponse({"status": "ok", "message": "Kolon sıralaması güncellendi."})
+
+    return JsonResponse({"status": "error", "message": "Sadece POST metodu desteklenir."}, status=405)
+
+
+@login_required
 def kanban_card_assign_view(request, project_id, card_id):
     """Model A (PM assign) and Model B (Programmer self-assign) (PLAN.md §6.5 & §8)."""
     project = get_object_or_404(Project, id=project_id)
