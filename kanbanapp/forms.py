@@ -335,9 +335,12 @@ class StatusMappingForm(forms.ModelForm):
             "position": forms.NumberInput(attrs={"class": "form-control"}),
         }
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, project=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["jira_status"].required = False
         self.fields["jira_status"].empty_label = "--- Jira Statüsü Seçin (Opsiyonel) ---"
         self.fields["transfer_to_jira"].help_text = "İşaret kaldırıldığında ('Jira statüsünü aktarma'), kart bu kolona taşındığında Jira'da durum güncellenmez."
         self.fields["is_primary"].help_text = "Bir kolona birden fazla Jira statüsü eşlendiğinde, kart kolona taşındığında Jira'da geçilecek birincil hedefi belirler."
+        if project:
+            hidden_ids = project.hidden_jira_statuses.values_list("id", flat=True)
+            self.fields["jira_status"].queryset = JiraStatus.objects.exclude(id__in=hidden_ids).order_by("name")

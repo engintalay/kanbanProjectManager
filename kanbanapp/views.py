@@ -703,7 +703,7 @@ def status_mapping_create_view(request, project_id, column_id):
 
     next_url = request.POST.get("next") or request.GET.get("next")
     if request.method == "POST":
-        form = StatusMappingForm(request.POST)
+        form = StatusMappingForm(request.POST, project=project)
         if form.is_valid():
             mapping = form.save(commit=False)
             mapping.project = project
@@ -721,7 +721,7 @@ def status_mapping_create_view(request, project_id, column_id):
                 return redirect(next_url or "board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
-        form = StatusMappingForm()
+        form = StatusMappingForm(project=project)
     return render(
         request,
         "kanbanapp/status_mapping_form.html",
@@ -738,7 +738,7 @@ def status_mapping_edit_view(request, project_id, mapping_id):
 
     next_url = request.POST.get("next") or request.GET.get("next")
     if request.method == "POST":
-        form = StatusMappingForm(request.POST, instance=mapping)
+        form = StatusMappingForm(request.POST, instance=mapping, project=project)
         if form.is_valid():
             mapping = form.save(commit=False)
             if mapping.jira_status and StatusMapping.objects.filter(project=project, app_status=mapping.app_status, jira_status=mapping.jira_status).exclude(pk=mapping.pk).exists():
@@ -751,7 +751,7 @@ def status_mapping_edit_view(request, project_id, mapping_id):
                 return redirect(next_url or "board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
-        form = StatusMappingForm(instance=mapping)
+        form = StatusMappingForm(instance=mapping, project=project)
     return render(
         request,
         "kanbanapp/status_mapping_form.html",
@@ -952,7 +952,8 @@ def project_status_mappings_view(request, project_id):
         # 7. Auto-map
         elif action == "auto_map":
             synced_count = 0
-            all_jira_statuses = list(JiraStatus.objects.all())
+            hidden_ids = set(project.hidden_jira_statuses.values_list("id", flat=True))
+            all_jira_statuses = list(JiraStatus.objects.exclude(id__in=hidden_ids))
             columns = KanbanColumn.objects.filter(project=project)
 
             synonyms = {
@@ -1003,20 +1004,53 @@ def project_status_mappings_view(request, project_id):
                 messages.info(request, "Eşleşen yeni bir Jira statüsü bulunamadı veya tüm durumlar zaten eşlenmiş.")
             return redirect("project_status_mappings", project_id=project.id)
 
+        # 8. Toggle Jira Status Visibility (Hide / Unhide for this project)
+        elif action == "toggle_jira_status_visibility":
+            jira_status_id = request.POST.get("jira_status_id")
+            js = get_object_or_404(JiraStatus, id=jira_status_id)
+            if project.hidden_jira_statuses.filter(id=js.id).exists():
+                project.hidden_jira_statuses.remove(js)
+                messages.success(request, f"'{js.name}' Jira statüsü bu proje için yeniden görünür yapıldı.")
+            else:
+                mapped_cols = StatusMapping.objects.filter(project=project, jira_status=js)
+                if mapped_cols.exists():
+                    col_names = ", ".join(f"'{m.app_status.name}'" for m in mapped_cols)
+                    messages.warning(
+                        request,
+                        f"'{js.name}' statüsü şu anda {col_names} durumuna eşlenmiş. Gizlemeden önce eşlemeyi kaldırmalısınız."
+                    )
+                else:
+                    project.hidden_jira_statuses.add(js)
+                    messages.success(request, f"'{js.name}' Jira statüsü bu proje için gizlendi.")
+            return redirect("project_status_mappings", project_id=project.id)
+
+        # 9. Bulk update hidden statuses
+        elif action == "bulk_update_hidden_statuses":
+            hidden_ids = [int(x) for x in request.POST.getlist("hidden_status_ids") if x.isdigit()]
+            mapped_js_ids = set(
+                StatusMapping.objects.filter(project=project, jira_status__isnull=False).values_list("jira_status_id", flat=True)
+            )
+            safe_hidden_ids = [hid for hid in hidden_ids if hid not in mapped_js_ids]
+            project.hidden_jira_statuses.set(safe_hidden_ids)
+            messages.success(request, "Jira statü görünürlük ayarları kaydedildi.")
+            return redirect("project_status_mappings", project_id=project.id)
+
     # GET
     columns = (
         KanbanColumn.objects.filter(project=project)
         .prefetch_related("status_mappings__jira_status")
         .order_by("position", "id")
     )
+    hidden_status_ids = set(project.hidden_jira_statuses.values_list("id", flat=True))
     all_jira_statuses = list(JiraStatus.objects.all().order_by("name"))
+    visible_jira_statuses = [js for js in all_jira_statuses if js.id not in hidden_status_ids]
     mappings = list(StatusMapping.objects.filter(project=project).select_related("app_status", "jira_status"))
 
     columns_data = []
     for col in columns:
         col_mappings = [m for m in mappings if m.app_status_id == col.id]
         col_mapped_js_ids = {m.jira_status_id for m in col_mappings if m.jira_status_id}
-        available_js = [js for js in all_jira_statuses if js.id not in col_mapped_js_ids]
+        available_js = [js for js in visible_jira_statuses if js.id not in col_mapped_js_ids]
         columns_data.append({
             "column": col,
             "mappings": col_mappings,
@@ -1031,6 +1065,7 @@ def project_status_mappings_view(request, project_id):
             "status": js,
             "mapped_columns": mapped_cols,
             "is_mapped": len(mapped_cols) > 0,
+            "is_hidden": js.id in hidden_status_ids,
         })
 
     return render(
@@ -1044,7 +1079,9 @@ def project_status_mappings_view(request, project_id):
             "total_columns": columns.count(),
             "total_mappings": len(mappings),
             "total_jira_statuses": len(all_jira_statuses),
-            "unmapped_jira_count": len([j for j in jira_statuses_data if not j["is_mapped"]]),
+            "hidden_jira_count": len(hidden_status_ids),
+            "visible_jira_count": len(visible_jira_statuses),
+            "unmapped_jira_count": len([j for j in jira_statuses_data if not j["is_mapped"] and not j["is_hidden"]]),
         },
     )
 

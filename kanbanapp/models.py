@@ -106,6 +106,13 @@ class Project(models.Model):
         verbose_name="Jira Statü Aktarımı",
         help_text="Kart hareketlerinde Jira üzerindeki statünün de güncellenmesini sağlar. Kapatılırsa durum Jira'ya aktarılmaz.",
     )
+    hidden_jira_statuses = models.ManyToManyField(
+        "JiraStatus",
+        blank=True,
+        related_name="hidden_in_projects",
+        verbose_name="Gizlenen Jira Statüleri",
+        help_text="Bu proje için kullanılmayan ve gizlenen Jira statüleri.",
+    )
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, related_name="created_projects",
         blank=True, null=True, default=None,

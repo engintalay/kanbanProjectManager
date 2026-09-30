@@ -1146,6 +1146,44 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   background: rgba(245, 158, 11, 0.15);
   color: #f59e0b;
 }
+.jira-status-chip .chip-badge.hidden-badge {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+.jira-status-chip.is-hidden-chip {
+  opacity: 0.65;
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.status-pool-tabs {
+  display: flex;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+.btn-tab {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.btn-tab.active {
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+}
 
 .status-drop-zone {
   border: 2px dashed rgba(255, 255, 255, 0.14);

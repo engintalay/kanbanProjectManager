@@ -61,10 +61,15 @@
         <strong>{{ total_mappings }}</strong> Aktif Eşleme
       </span>
       <span style="background: var(--bg); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);">
-        <strong>{{ total_jira_statuses }}</strong> Jira Statüsü
+        <strong>{{ visible_jira_count }}</strong> Kullanılan Jira Statüsü
       </span>
+      {% if hidden_jira_count > 0 %}
+      <span style="background: rgba(245, 158, 11, 0.12); color: #f59e0b; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.3);">
+        <strong>{{ hidden_jira_count }}</strong> Gizlenen Statü
+      </span>
+      {% endif %}
       <span style="background: var(--bg); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);">
-        <strong>{{ unmapped_jira_count }}</strong> Eşlenmemiş Jira Statüsü
+        <strong>{{ unmapped_jira_count }}</strong> Eşlenmemiş Statü
       </span>
     </div>
   </div>
@@ -244,15 +249,36 @@
 
   <!-- Section 2: Jira Status Pool with Draggable Chips -->
   <div style="margin-top: 10px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-      <h2 style="margin: 0; font-size: 1.25rem;">🌐 Jira Sunucusu Statü Havuzu</h2>
-      {% if project.jira_connection and can_manage_project %}
-      <form method="post" style="display: inline;">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="pull_jira_statuses">
-        <button type="submit" class="btn-ghost" style="font-size: 0.82rem;">🔄 Statüleri Yeniden Çek</button>
-      </form>
-      {% endif %}
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <h2 style="margin: 0; font-size: 1.25rem;">🌐 Jira Sunucusu Statü Havuzu</h2>
+        <!-- Filter Tabs / Buttons -->
+        <div class="status-pool-tabs">
+          <button type="button" class="btn-tab active" id="tabActiveStatuses" onclick="filterStatusPool('active')">
+            Kullanılan Statüler ({{ visible_jira_count }})
+          </button>
+          <button type="button" class="btn-tab" id="tabHiddenStatuses" onclick="filterStatusPool('hidden')">
+            Gizlenen Statüler ({{ hidden_jira_count }})
+          </button>
+          <button type="button" class="btn-tab" id="tabAllStatuses" onclick="filterStatusPool('all')">
+            Tümü ({{ total_jira_statuses }})
+          </button>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% if can_manage_project %}
+        <button type="button" class="btn-ghost" onclick="openBulkManageModal()" style="font-size: 0.82rem;" title="Kullanılmayan Jira statülerini bu proje için topluca gizle veya göster">
+          ⚙️ Statüleri Gizle / Yönet {% if hidden_jira_count > 0 %}<span class="badge" style="background:#f59e0b; color:#000; font-size:0.68rem; margin-left:4px;">{{ hidden_jira_count }} gizli</span>{% endif %}
+        </button>
+        {% endif %}
+        {% if project.jira_connection and can_manage_project %}
+        <form method="post" style="display: inline; margin: 0;">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="pull_jira_statuses">
+          <button type="submit" class="btn-ghost" style="font-size: 0.82rem;">🔄 Statüleri Yeniden Çek</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
 
     <!-- Draggable Chips Pool Card -->
@@ -263,20 +289,32 @@
           🖐️ Mouse ile Kolonlara Sürükle & Bırak
         </span>
         <span style="font-size: 0.8rem; color: var(--muted);">
-          Aşağıdaki Jira statü kartlarını tutup yukarıdaki kolonların üzerine bırakarak doğrudan eşleyebilirsiniz.
+          Aşağıdaki Jira statü kartlarını tutup yukarıdaki kolonların üzerine bırakarak doğrudan eşleyebilirsiniz. (Gizlenen statüler havuzda listelenmez).
         </span>
       </div>
 
-      <div class="status-chips-container">
+      <div class="status-chips-container" id="statusChipsContainer">
         {% for js_row in jira_statuses_data %}
-        <div class="jira-status-chip"
-             {% if can_manage_project %}draggable="true"{% endif %}
+        <div class="jira-status-chip {% if js_row.is_hidden %}is-hidden-chip{% endif %}"
+             {% if can_manage_project and not js_row.is_hidden %}draggable="true"{% endif %}
              data-jira-status-id="{{ js_row.status.id }}"
              data-jira-status-name="{{ js_row.status.name }}"
-             title="Mouse ile tutup yukarıdaki bir uygulama durumuna sürükleyin">
-          <span class="drag-grip">⠿</span>
+             data-is-hidden="{% if js_row.is_hidden %}true{% else %}false{% endif %}"
+             data-is-mapped="{% if js_row.is_mapped %}true{% else %}false{% endif %}"
+             title="{% if js_row.is_hidden %}Bu statü bu proje için gizlenmiştir.{% else %}Mouse ile tutup yukarıdaki bir uygulama durumuna sürükleyin{% endif %}">
+          <span class="drag-grip">{% if js_row.is_hidden %}👁️{% else %}⠿{% endif %}</span>
           <span style="font-weight: 600;">{{ js_row.status.name }}</span>
-          {% if js_row.is_mapped %}
+          {% if js_row.is_hidden %}
+          <span class="chip-badge hidden-badge">Gizli</span>
+          {% if can_manage_project %}
+          <form method="post" style="display:inline; margin:0; padding:0;" onsubmit="event.stopPropagation();">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="toggle_jira_status_visibility">
+            <input type="hidden" name="jira_status_id" value="{{ js_row.status.id }}">
+            <button type="submit" class="btn-ghost" style="padding:1px 5px; font-size:0.68rem; line-height:1.2; color:#22c55e; border-color:rgba(34,197,94,0.4);" title="Projeye yeniden ekle">Göster</button>
+          </form>
+          {% endif %}
+          {% elif js_row.is_mapped %}
           <span class="chip-badge ok">Eşli ({{ js_row.mapped_columns|length }})</span>
           {% else %}
           <span class="chip-badge warn">+ Eşle</span>
@@ -303,12 +341,16 @@
             <th style="padding: 10px 16px;">Jira ID / Anahtar</th>
             <th style="padding: 10px 16px;">Kategori</th>
             <th style="padding: 10px 16px;">Eşleştiği Uygulama Durumları</th>
-            <th style="padding: 10px 16px;">Durum</th>
+            <th style="padding: 10px 16px;">Eşleme Durumu</th>
+            <th style="padding: 10px 16px;">Görünürlük</th>
+            <th style="padding: 10px 16px; text-align: right;">İşlem</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="statusTableBody">
           {% for js_row in jira_statuses_data %}
-          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+          <tr class="status-table-row"
+              data-is-hidden="{% if js_row.is_hidden %}true{% else %}false{% endif %}"
+              style="border-bottom: 1px solid rgba(255,255,255,0.04); {% if js_row.is_hidden %}opacity: 0.75;{% endif %}">
             <td style="padding: 10px 16px; font-weight: 600; color: var(--text);">
               {{ js_row.status.name }}
             </td>
@@ -342,6 +384,31 @@
               <span class="badge badge-ok" style="font-size: 0.72rem;">Eşlenmiş</span>
               {% else %}
               <span class="badge badge-warn" style="font-size: 0.72rem;">Eşlenmemiş</span>
+              {% endif %}
+            </td>
+            <td style="padding: 10px 16px;">
+              {% if js_row.is_hidden %}
+              <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; font-size: 0.72rem;">Bu Projede Gizli</span>
+              {% else %}
+              <span class="badge badge-ok" style="font-size: 0.72rem;">Kullanılıyor</span>
+              {% endif %}
+            </td>
+            <td style="padding: 10px 16px; text-align: right;">
+              {% if can_manage_project %}
+              <form method="post" style="display: inline; margin: 0;">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="toggle_jira_status_visibility">
+                <input type="hidden" name="jira_status_id" value="{{ js_row.status.id }}">
+                {% if js_row.is_hidden %}
+                <button type="submit" class="btn-ghost" style="padding: 3px 8px; font-size: 0.74rem; color: #22c55e; border-color: rgba(34, 197, 94, 0.4);" title="Bu statüyü bu proje için yeniden görünür yap">
+                  👁️ Göster
+                </button>
+                {% else %}
+                <button type="submit" class="btn-ghost" style="padding: 3px 8px; font-size: 0.74rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);" title="Bu statüyü bu proje için gizle" {% if js_row.is_mapped %}onclick="return confirm('Bu statü şu anda bir uygulama durumuna eşlenmiş. Gizlemek için önce eşlemeyi kaldırmalısınız.');"{% endif %}>
+                  👁️ Gizle
+                </button>
+                {% endif %}
+              </form>
               {% endif %}
             </td>
           </tr>
@@ -457,8 +524,72 @@
   </div>
 </div>
 
+<!-- 4. Bulk Manage Hidden Statuses Modal -->
+<div class="drag-modal-backdrop" id="bulkManageModal">
+  <div class="drag-modal" style="max-width: 650px; width: 92%;">
+    <div class="drag-modal-header">
+      <h3><span>⚙️</span> Projede Kullanılmayan Jira Statülerini Gizle</h3>
+      <button type="button" class="drag-modal-close" onclick="closeModal('bulkManageModal')">&times;</button>
+    </div>
+    <form method="post" id="bulkManageForm">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="bulk_update_hidden_statuses">
+
+      <div class="drag-modal-body">
+        <p style="margin-top: 0; margin-bottom: 12px; font-size: 0.88rem; color: var(--muted); line-height: 1.5;">
+          Bu proje için kullanılmayan Jira statülerini işaretleyerek gizleyebilirsiniz.
+          Gizlenen statüler statü eşleme havuzunda ve açılır menülerde listelenmez.
+          <strong style="color: #f8fafc;">(Eşlenmiş statüler gizlenemez, önce eşlemeleri kaldırılmalıdır.)</strong>
+        </p>
+
+        <!-- Quick filter & buttons bar -->
+        <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px;">
+          <input type="text" id="bulkStatusSearchInput" placeholder="🔍 Statü ara..." oninput="filterBulkModalCheckboxes(this.value)"
+                 style="flex: 1; min-width: 180px; padding: 6px 10px; font-size: 0.82rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn-ghost" onclick="setBulkCheckboxes(true)" style="padding: 4px 8px; font-size: 0.74rem;">Tümünü Gizle</button>
+            <button type="button" class="btn-ghost" onclick="setBulkCheckboxes(false)" style="padding: 4px 8px; font-size: 0.74rem;">Temizle (Tümünü Göster)</button>
+            <button type="button" class="btn-ghost" onclick="selectUnmappedForHide()" style="padding: 4px 8px; font-size: 0.74rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);">Eşlenmemişleri Gizle</button>
+          </div>
+        </div>
+
+        <div id="bulkStatusList" style="max-height: 320px; overflow-y: auto; background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px;">
+          {% for js_row in jira_statuses_data %}
+          <label class="bulk-status-item" data-status-name="{{ js_row.status.name|lower }}" data-is-mapped="{% if js_row.is_mapped %}true{% else %}false{% endif %}"
+                 style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); cursor: {% if js_row.is_mapped %}not-allowed; opacity: 0.6;{% else %}pointer;{% endif %} margin: 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="checkbox" name="hidden_status_ids" value="{{ js_row.status.id }}" class="bulk-hide-checkbox"
+                     {% if js_row.is_hidden %}checked{% endif %}
+                     {% if js_row.is_mapped %}disabled title="Eşlenmiş durumlar gizlenemez"{% endif %}>
+              <span style="font-weight: 500; font-size: 0.88rem; color: var(--text);">{{ js_row.status.name }}</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              {% if js_row.is_mapped %}
+              <span class="badge badge-ok" style="font-size: 0.68rem;">Eşli ({{ js_row.mapped_columns|join:', ' }})</span>
+              {% else %}
+              <span class="badge" style="font-size: 0.68rem; color: var(--muted);">Eşlenmemiş</span>
+              {% endif %}
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="drag-modal-footer">
+        <button type="button" class="btn-ghost" onclick="closeModal('bulkManageModal')">Vazgeç</button>
+        <button type="submit" class="btn-primary">Görünürlük Ayarlarını Kaydet</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
   let draggedStatusData = null;
+
+  function openModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.add('active');
+  }
 
   function closeModal(id) {
     const m = document.getElementById(id);
@@ -467,7 +598,7 @@
 
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
-      ['addMappingModal', 'moveMappingModal', 'deleteMappingModal'].forEach(closeModal);
+      ['addMappingModal', 'moveMappingModal', 'deleteMappingModal', 'bulkManageModal'].forEach(closeModal);
     }
   });
 
@@ -477,6 +608,69 @@
       if (e.target === b) closeModal(b.id);
     });
   });
+
+  // Filter Pool & Table by Active / Hidden / All
+  let currentPoolTab = 'active';
+
+  function filterStatusPool(tab) {
+    currentPoolTab = tab;
+    document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+    if (tab === 'active') document.getElementById('tabActiveStatuses')?.classList.add('active');
+    else if (tab === 'hidden') document.getElementById('tabHiddenStatuses')?.classList.add('active');
+    else if (tab === 'all') document.getElementById('tabAllStatuses')?.classList.add('active');
+
+    // Filter Chips
+    document.querySelectorAll('.jira-status-chip').forEach(chip => {
+      const isHidden = chip.dataset.isHidden === 'true';
+      if (tab === 'active') {
+        chip.style.display = isHidden ? 'none' : 'inline-flex';
+      } else if (tab === 'hidden') {
+        chip.style.display = isHidden ? 'inline-flex' : 'none';
+      } else {
+        chip.style.display = 'inline-flex';
+      }
+    });
+
+    // Filter Table Rows
+    document.querySelectorAll('.status-table-row').forEach(row => {
+      const isHidden = row.dataset.isHidden === 'true';
+      if (tab === 'active') {
+        row.style.display = isHidden ? 'none' : '';
+      } else if (tab === 'hidden') {
+        row.style.display = isHidden ? '' : 'none';
+      } else {
+        row.style.display = '';
+      }
+    });
+  }
+
+  function openBulkManageModal() {
+    openModal('bulkManageModal');
+  }
+
+  function filterBulkModalCheckboxes(query) {
+    const q = (query || '').toLowerCase().trim();
+    document.querySelectorAll('.bulk-status-item').forEach(item => {
+      const name = item.dataset.statusName || '';
+      item.style.display = name.includes(q) ? 'flex' : 'none';
+    });
+  }
+
+  function setBulkCheckboxes(checked) {
+    document.querySelectorAll('.bulk-hide-checkbox:not(:disabled)').forEach(cb => {
+      cb.checked = checked;
+    });
+  }
+
+  function selectUnmappedForHide() {
+    document.querySelectorAll('.bulk-status-item').forEach(item => {
+      const isMapped = item.dataset.isMapped === 'true';
+      const cb = item.querySelector('.bulk-hide-checkbox');
+      if (cb && !isMapped) {
+        cb.checked = true;
+      }
+    });
+  }
 
   // 1. Jira Pool Chips Dragging
   document.querySelectorAll('.jira-status-chip[draggable="true"]').forEach(chip => {
@@ -618,5 +812,8 @@
       document.getElementById('deleteMappingModal').classList.add('active');
     });
   }
+
+  // Initialize status pool filter on load
+  filterStatusPool('active');
 </script>
 {% endblock %}

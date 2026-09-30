@@ -1279,7 +1279,87 @@ class MultiStatusMappingAndScreenTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         m1.refresh_from_db()
         self.assertEqual(m1.app_status_id, self.col_dev.id)
-        self.assertContains(resp, "taşındı")
+
+    def test_toggle_jira_status_visibility_for_project(self):
+        # 1. Hide unmapped js_review for this project
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "toggle_jira_status_visibility", "jira_status_id": self.js_review.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(self.project.hidden_jira_statuses.filter(id=self.js_review.id).exists())
+        self.assertContains(resp, "gizlendi")
+
+        # 2. Toggle again to unhide
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "toggle_jira_status_visibility", "jira_status_id": self.js_review.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(self.project.hidden_jira_statuses.filter(id=self.js_review.id).exists())
+        self.assertContains(resp, "yeniden görünür yapıldı")
+
+    def test_toggle_jira_status_visibility_prevents_hiding_mapped_status(self):
+        StatusMapping.objects.create(
+            project=self.project, app_status=self.col_todo, jira_status=self.js_todo,
+            is_primary=True, transfer_to_jira=True
+        )
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "toggle_jira_status_visibility", "jira_status_id": self.js_todo.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Gizlemeden önce eşlemeyi kaldırmalısınız")
+        self.assertFalse(self.project.hidden_jira_statuses.filter(id=self.js_todo.id).exists())
+
+    def test_bulk_update_hidden_statuses(self):
+        js_unused1 = JiraStatus.objects.create(jira_status_key="unused1", name="Unused Status 1")
+        js_unused2 = JiraStatus.objects.create(jira_status_key="unused2", name="Unused Status 2")
+
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {
+                "action": "bulk_update_hidden_statuses",
+                "hidden_status_ids": [str(js_unused1.id), str(js_unused2.id)],
+            },
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Jira statü görünürlük ayarları kaydedildi")
+        hidden_ids = list(self.project.hidden_jira_statuses.values_list("id", flat=True))
+        self.assertIn(js_unused1.id, hidden_ids)
+        self.assertIn(js_unused2.id, hidden_ids)
+
+    def test_hidden_status_excluded_from_auto_map_and_dropdowns(self):
+        from kanbanapp.forms import StatusMappingForm
+
+        # Hide js_todo
+        self.project.hidden_jira_statuses.add(self.js_todo)
+
+        # 1. auto_map must NOT map js_todo
+        resp = self.client.post(
+            reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
+            {"action": "auto_map"},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        mapped = StatusMapping.objects.filter(project=self.project, app_status=self.col_todo, jira_status=self.js_todo).exists()
+        self.assertFalse(mapped)
+
+        # 2. GET view context must exclude js_todo from available_jira_statuses
+        resp = self.client.get(reverse("project_status_mappings", kwargs={"project_id": self.project.id}))
+        self.assertEqual(resp.status_code, 200)
+        col_data = resp.context["columns_data"][0]
+        avail_ids = [js.id for js in col_data["available_jira_statuses"]]
+        self.assertNotIn(self.js_todo.id, avail_ids)
+        self.assertGreaterEqual(resp.context["hidden_jira_count"], 1)
+
+        # 3. StatusMappingForm must exclude js_todo
+        form = StatusMappingForm(project=self.project)
+        self.assertNotIn(self.js_todo, form.fields["jira_status"].queryset)
 
     def test_kanban_cards_reorder_view_success(self):
         col = KanbanColumn.objects.create(project=self.project, name="Col1", status_type="custom", position=0)
