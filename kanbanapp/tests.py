@@ -1931,6 +1931,63 @@ class ProjectTicketAndMessagingTests(TestCase):
         self.assertEqual(resp_del.status_code, 200)
         self.assertEqual(ticket.attachments.count(), 0)
 
+    def test_ticket_paste_elements_and_image_handling(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self.client.force_login(self.reporter_user)
+
+        # 1. Talep oluşturma sayfasında paste dropzone ve preview alanlarının varlığı
+        create_resp = self.client.get(reverse("project_ticket_create", kwargs={"project_id": self.project.id}))
+        self.assertEqual(create_resp.status_code, 200)
+        self.assertContains(create_resp, "paste-dropzone")
+        self.assertContains(create_resp, "Ctrl+V")
+        self.assertContains(create_resp, "pasted-images-preview")
+
+        # 2. Panodan yapıştırılan isimlendirilmiş bir ekran görüntüsünü ticket oluştururken yükleme
+        pasted_img = SimpleUploadedFile("ekran_goruntusu_20261007_134500_1.png", b"\x89PNG\r\n\x1a\nfakeimagecontent", content_type="image/png")
+        post_resp = self.client.post(
+            reverse("project_ticket_create", kwargs={"project_id": self.project.id}),
+            {
+                "project": self.project.id,
+                "ticket_type": ProjectTicket.TYPE_BUG,
+                "title": "Paste Test Talebi",
+                "description": "Panodan yapıştırma testi açıklaması",
+                "priority": ProjectTicket.PRIORITY_MEDIUM,
+                "attachments": [pasted_img],
+            },
+            follow=True,
+        )
+        self.assertEqual(post_resp.status_code, 200)
+        ticket = ProjectTicket.objects.get(project=self.project, title="Paste Test Talebi")
+        self.assertEqual(ticket.attachments.count(), 1)
+        att = ticket.attachments.first()
+        self.assertTrue(att.is_image)
+        self.assertIn("ekran_goruntusu", att.filename)
+
+        # 3. Detay sayfasında mesajlaşma paste önizleme ve detay paste dropzone varlığı
+        detail_resp = self.client.get(reverse("ticket_detail", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(detail_resp.status_code, 200)
+        self.assertContains(detail_resp, "detail-paste-dropzone")
+        self.assertContains(detail_resp, "chat-attachment-preview")
+        self.assertContains(detail_resp, "Ctrl+V")
+
+        # 4. Mesaj kutusuna yapıştırılan ekran görüntüsünün yüklenmesi
+        pasted_chat_img = SimpleUploadedFile("ekran_goruntusu_chat_1.png", b"\x89PNG\r\n\x1a\nchatimagecontent", content_type="image/png")
+        comment_resp = self.client.post(
+            reverse("ticket_add_comment", kwargs={"ticket_id": ticket.id}),
+            {
+                "message": "İşte hatanın ekran görüntüsü:",
+                "attachment": pasted_chat_img,
+            },
+            follow=True,
+        )
+        self.assertEqual(comment_resp.status_code, 200)
+        comment = ticket.comments.filter(is_system_note=False).last()
+        self.assertEqual(comment.message, "İşte hatanın ekran görüntüsü:")
+        self.assertTrue(comment.attachment_is_image)
+        self.assertIn("ekran_goruntusu_chat_1", comment.attachment.name)
+
+
 
 
 
