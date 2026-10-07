@@ -64,6 +64,13 @@
 </div>
 {% endif %}
 
+<div class="board-filter-bar">
+  <div class="board-filter-label">Kart Filtresi:</div>
+  <button type="button" class="board-filter-btn active" onclick="filterBoardCards('all', this)">Tümü (Ana + Alt Görevler)</button>
+  <button type="button" class="board-filter-btn" onclick="filterBoardCards('parents', this)">Sadece Ana İşler</button>
+  <button type="button" class="board-filter-btn" onclick="filterBoardCards('subtasks', this)">Sadece Alt Görevler</button>
+</div>
+
 <div class="board">
   {% for column in columns %}
   <div class="board-column" data-column-id="{{ column.id }}">
@@ -106,7 +113,9 @@
            data-card-title="{{ card.title|escape }}"
            data-column-id="{{ column.id }}"
            data-column-name="{{ column.name|escape }}"
-           data-jira-key="{{ card.jira_key|default:'' }}">
+           data-jira-key="{{ card.jira_key|default:'' }}"
+           data-is-subtask="{% if card.parent_card %}1{% else %}0{% endif %}"
+           data-has-subtasks="{% if card.has_sub_tasks %}1{% else %}0{% endif %}">
         <div class="card-header">
           <div class="card-title">{{ card.title }}</div>
           {% if card.difficulty_level %}
@@ -115,6 +124,12 @@
           </span>
           {% endif %}
         </div>
+
+        {% if card.parent_card %}
+        <div class="subtask-parent-ref" title="Bu kart bir alt görevdir">
+          ↳ Ana İş: {{ card.parent_card.title|truncatechars:45 }}
+        </div>
+        {% endif %}
 
         <div class="card-meta-row">
           {% if card.jira_key %}<span class="card-key">{{ card.jira_key }}</span>{% endif %}
@@ -129,7 +144,12 @@
           <span class="muted" style="font-size:0.72rem;">Atanmadı</span>
           {% endif %}
           {% if card.has_sub_tasks %}
-          <span class="subtask-badge">{{ card.sub_tasks.count }} Alt Görev</span>
+          <button type="button" class="subtask-badge-btn" onclick="toggleSubtasks(event, 'subtasks-{{ card.id }}')" title="Alt görevleri listele / gizle">
+            <span id="arrow-subtasks-{{ card.id }}">▸</span> {{ card.sub_tasks.count }} Alt Görev
+            {% if card.completed_sub_tasks_count > 0 %}
+            <span class="subtask-completed-pill">({{ card.completed_sub_tasks_count }}/{{ card.sub_tasks.count }} bitti)</span>
+            {% endif %}
+          </button>
           {% endif %}
           {% if card.sprint %}
           <span class="badge" style="font-size:0.7rem;">🏃 {{ card.sprint.name }}</span>
@@ -137,6 +157,54 @@
         </div>
 
         {% if card.description %}<div class="card-desc">{{ card.description|truncatechars:120 }}</div>{% endif %}
+
+        {% if card.has_sub_tasks %}
+        <div id="subtasks-{{ card.id }}" class="card-subtasks-panel is-hidden">
+          <div class="subtasks-panel-header">
+            <span>Alt Görevler ({{ card.sub_tasks.count }})</span>
+            <span class="subtasks-count-pill">{{ card.completed_sub_tasks_count }}/{{ card.sub_tasks.count }} Tamamlandı</span>
+          </div>
+          <div class="subtasks-panel-list">
+            {% for sub in card.sub_tasks.all %}
+            <div class="subtask-item-card">
+              <div class="subtask-item-top">
+                {% if sub.difficulty_level %}
+                <span class="diff-badge-sm" style="background-color: {{ sub.difficulty_color }};" title="{{ sub.difficulty_label }}">
+                  {{ sub.difficulty_level }}
+                </span>
+                {% endif %}
+                <span class="subtask-item-title">{{ sub.title }}</span>
+              </div>
+
+              <div class="subtask-item-details">
+                {% if sub.assignee %}
+                <span class="subtask-assignee-chip" title="Atanan">👤 {{ sub.assignee.get_full_name|default:sub.assignee.username }}</span>
+                {% else %}
+                <span class="text-muted" style="font-size:0.7rem;">Atanmadı</span>
+                {% endif %}
+
+                <span class="subtask-col-pill" title="Durum: {{ sub.column.name }}">{{ sub.column.name }}</span>
+
+                {% if can_edit_cards %}
+                <form method="post" action="{% url 'kanban_card_move' project.id sub.id %}" class="subtask-inline-move">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <select name="column_id" onchange="this.form.submit()" class="subtask-mini-select" title="Durumunu Değiştir">
+                    <option disabled selected>Durum...</option>
+                    {% for col in columns %}
+                      {% if col.id != sub.column_id %}
+                      <option value="{{ col.id }}">→ {{ col.name }}</option>
+                      {% endif %}
+                    {% endfor %}
+                  </select>
+                </form>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
 
         <div class="card-footer">
           {% if can_edit_cards %}
@@ -225,6 +293,30 @@
 </div>
 
 <script>
+  function toggleSubtasks(e, panelId) {
+    if (e) e.stopPropagation();
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    panel.classList.toggle('is-hidden');
+    const arrow = document.getElementById('arrow-' + panelId);
+    if (arrow) arrow.textContent = panel.classList.contains('is-hidden') ? '▸' : '▾';
+  }
+
+  function filterBoardCards(filterType, btn) {
+    document.querySelectorAll('.board-filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    document.querySelectorAll('.board .card').forEach(card => {
+      const isSub = card.getAttribute('data-is-subtask') === '1';
+      if (filterType === 'all') {
+        card.style.display = '';
+      } else if (filterType === 'parents') {
+        card.style.display = isSub ? 'none' : '';
+      } else if (filterType === 'subtasks') {
+        card.style.display = isSub ? '' : 'none';
+      }
+    });
+  }
+
   let draggedCardEl = null;
   let originColumnId = null;
   let originParent = null;

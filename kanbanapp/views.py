@@ -1856,6 +1856,7 @@ def card_split_view(request, project_id, card_id):
             sub.parent_card = card
             sub.is_sub_task = True
             sub.is_extra = False
+            sub.sprint = card.sprint
             sub.jira_key = f"{card.jira_key}-sub{card.sub_tasks.count() + 1}" if card.jira_key else ""
             sub.jira_issue_id = card.jira_issue_id
             sub.save()

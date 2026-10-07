@@ -401,6 +401,21 @@ class KanbanCard(models.Model):
     def has_sub_tasks(self):
         return self.sub_tasks.exists()
 
+    @property
+    def completed_sub_tasks_count(self):
+        done_keywords = ("done", "tamamlandı", "tamamlandi", "bitti", "closed", "kapalı", "kapali", "resolved", "çözüldü", "cozuldu")
+        return sum(1 for s in self.sub_tasks.all() if any(k in s.column.name.lower() for k in done_keywords))
+
+    def save(self, *args, **kwargs):
+        if self.parent_card_id:
+            self.is_sub_task = True
+        super().save(*args, **kwargs)
+        # Eğer bu bir ana iş ise ve alt görevleri varsa, sprint atamasını alt görevlere de aktar
+        if not self.is_sub_task and self.id:
+            sub_tasks_to_sync = self.sub_tasks.exclude(sprint_id=self.sprint_id)
+            if sub_tasks_to_sync.exists():
+                sub_tasks_to_sync.update(sprint=self.sprint)
+
 
 class IssueRequest(models.Model):
     TYPE_DIFFICULTY = "difficulty_change"

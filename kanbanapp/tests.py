@@ -1,8 +1,10 @@
+import datetime
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.test.utils import override_settings
 from django.test.runner import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .models import (
     JiraConnection,
@@ -13,6 +15,7 @@ from .models import (
     Project,
     ProjectTicket,
     Role,
+    Sprint,
     StatusMapping,
     TicketAttachment,
     TicketComment,
@@ -1986,6 +1989,95 @@ class ProjectTicketAndMessagingTests(TestCase):
         self.assertEqual(comment.message, "İşte hatanın ekran görüntüsü:")
         self.assertTrue(comment.attachment_is_image)
         self.assertIn("ekran_goruntusu_chat_1", comment.attachment.name)
+
+    def test_subtasks_inherit_and_sync_sprint(self):
+        sprint = Sprint.objects.create(
+            project=self.project,
+            name="Sprint Test Subtasks",
+            status=Sprint.STATUS_ACTIVE,
+            start_date=timezone.now().date(),
+            duration=Sprint.DURATION_2_WEEKS,
+        )
+        # 1. Ana işin sprint'i varken bölünmesi: alt görev sprint_id'yi devralmalı
+        parent_card = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="Ana Görev 1",
+            difficulty_level=13,
+            sprint=sprint,
+        )
+        self.client.force_login(self.admin)
+        split_resp = self.client.post(
+            reverse("card_split", kwargs={"project_id": self.project.id, "card_id": parent_card.id}),
+            {"title": "Alt Görev A", "difficulty_level": 5, "description": "Detay A"},
+        )
+        self.assertEqual(split_resp.status_code, 302)
+        sub_a = parent_card.sub_tasks.first()
+        self.assertIsNotNone(sub_a)
+        self.assertEqual(sub_a.sprint_id, sprint.id)
+
+        # 2. Ana işin sprint'i sonradan değiştiğinde veya kaydedildiğinde alt görevler senkronize olmalı
+        sprint_2 = Sprint.objects.create(
+            project=self.project,
+            name="Sprint 2",
+            status=Sprint.STATUS_PLANNING,
+            start_date=timezone.now().date() + datetime.timedelta(days=15),
+            duration=Sprint.DURATION_2_WEEKS,
+        )
+        parent_card.sprint = sprint_2
+        parent_card.save()
+
+        sub_a.refresh_from_db()
+        self.assertEqual(sub_a.sprint_id, sprint_2.id)
+
+    def test_sprint_board_renders_subtasks_details_and_filter(self):
+        sprint = Sprint.objects.create(
+            project=self.project,
+            name="Sprint UI Test",
+            status=Sprint.STATUS_ACTIVE,
+            start_date=timezone.now().date(),
+            duration=Sprint.DURATION_2_WEEKS,
+        )
+        parent = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="Ana İş - E-Belge",
+            difficulty_level=0,
+            sprint=sprint,
+        )
+        sub1 = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="Alt Görev 1 - Ekran Tasarımı",
+            difficulty_level=5,
+            sprint=sprint,
+            parent_card=parent,
+        )
+        sub2 = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="Alt Görev 2 - Servis Entegrasyonu",
+            difficulty_level=8,
+            sprint=sprint,
+            parent_card=parent,
+        )
+
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(resp.status_code, 200)
+
+        # Filtre butonları
+        self.assertContains(resp, "board-filter-bar")
+        self.assertContains(resp, "Sadece Ana İşler")
+        self.assertContains(resp, "Sadece Alt Görevler")
+
+        # Alt görev panel ve detayları
+        self.assertContains(resp, "Alt Görev 1 - Ekran Tasarımı")
+        self.assertContains(resp, "Alt Görev 2 - Servis Entegrasyonu")
+        self.assertContains(resp, "2 Alt Görev")
+        self.assertContains(resp, "card-subtasks-panel")
+        self.assertContains(resp, "subtask-parent-ref")
+
 
 
 
