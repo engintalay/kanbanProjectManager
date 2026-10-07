@@ -564,3 +564,209 @@ class RefreshLog(models.Model):
 
     def __str__(self):
         return f"{self.project.key} - {self.status} @ {self.timestamp:%Y-%m-%d %H:%M}"
+
+
+class ProjectTicket(models.Model):
+    """Hata bildirimi (bug) veya yeni geliştirme isteği (feature request)."""
+
+    TYPE_BUG = "bug"
+    TYPE_FEATURE = "feature"
+    TYPE_IMPROVEMENT = "improvement"
+
+    TYPE_CHOICES = [
+        (TYPE_BUG, "Hata Bildirimi (Bug)"),
+        (TYPE_FEATURE, "Yeni Geliştirme İsteği (Feature)"),
+        (TYPE_IMPROVEMENT, "İyileştirme / Revizyon"),
+    ]
+
+    PRIORITY_LOW = "low"
+    PRIORITY_MEDIUM = "medium"
+    PRIORITY_HIGH = "high"
+    PRIORITY_URGENT = "urgent"
+
+    PRIORITY_CHOICES = [
+        (PRIORITY_LOW, "Düşük"),
+        (PRIORITY_MEDIUM, "Normal"),
+        (PRIORITY_HIGH, "Yüksek"),
+        (PRIORITY_URGENT, "Acil / Kritik"),
+    ]
+
+    STATUS_OPEN = "open"
+    STATUS_INVESTIGATING = "investigating"
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_RESOLVED = "resolved"
+    STATUS_CLOSED = "closed"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_OPEN, "Açık"),
+        (STATUS_INVESTIGATING, "İnceleniyor"),
+        (STATUS_IN_PROGRESS, "Geliştirmede"),
+        (STATUS_RESOLVED, "Çözüldü"),
+        (STATUS_CLOSED, "Kapatıldı"),
+        (STATUS_REJECTED, "Reddedildi"),
+    ]
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tickets")
+    ticket_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_BUG)
+    title = models.CharField(max_length=300)
+    description = models.TextField(blank=True, default="")
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
+
+    # İşi Açan (Talep Sahibi)
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name="reported_tickets")
+    # İşi Yapan / Geliştirici (Atanan Kişi)
+    assignee = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"
+    )
+
+    # İlgili Kanban Kartı (Geliştirme takibinin panodan izlenmesi için)
+    card = models.ForeignKey(
+        KanbanCard, on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets"
+    )
+
+    resolution_notes = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Hata / Talep"
+        verbose_name_plural = "Hatalar ve Talepler"
+
+    def __str__(self):
+        return f"[{self.project.key}-T{self.id}] {self.title}"
+
+    @property
+    def ticket_code(self):
+        return f"{self.project.key}-T{self.id}"
+
+    @property
+    def is_bug(self):
+        return self.ticket_type == self.TYPE_BUG
+
+    @property
+    def is_feature(self):
+        return self.ticket_type == self.TYPE_FEATURE
+
+    @property
+    def is_closed_or_resolved(self):
+        return self.status in (self.STATUS_RESOLVED, self.STATUS_CLOSED, self.STATUS_REJECTED)
+
+    @property
+    def priority_color(self):
+        colors = {
+            self.PRIORITY_LOW: "#10b981",
+            self.PRIORITY_MEDIUM: "#3b82f6",
+            self.PRIORITY_HIGH: "#f59e0b",
+            self.PRIORITY_URGENT: "#ef4444",
+        }
+        return colors.get(self.priority, "#6b7280")
+
+    @property
+    def status_color(self):
+        colors = {
+            self.STATUS_OPEN: "#3b82f6",
+            self.STATUS_INVESTIGATING: "#8b5cf6",
+            self.STATUS_IN_PROGRESS: "#f59e0b",
+            self.STATUS_RESOLVED: "#10b981",
+            self.STATUS_CLOSED: "#6b7280",
+            self.STATUS_REJECTED: "#ef4444",
+        }
+        return colors.get(self.status, "#6b7280")
+
+
+class TicketAttachment(models.Model):
+    """Talebe eklenen resim veya dosyalar."""
+
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="attachments")
+    file = models.FileField(upload_to="ticket_attachments/%Y/%m/")
+    filename = models.CharField(max_length=255, blank=True)
+    file_size = models.PositiveIntegerField(default=0)
+    uploaded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="uploaded_ticket_attachments"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Talep Eki"
+        verbose_name_plural = "Talep Ekleri"
+
+    def __str__(self):
+        return self.filename or str(self.file.name)
+
+    def save(self, *args, **kwargs):
+        if self.file and not self.filename:
+            import os
+            self.filename = os.path.basename(self.file.name)
+        if self.file and hasattr(self.file, "size"):
+            try:
+                self.file_size = self.file.size
+            except Exception:
+                pass
+        super().save(*args, **kwargs)
+
+    @property
+    def is_image(self):
+        import os
+        ext = os.path.splitext(self.filename or self.file.name)[1].lower()
+        return ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]
+
+    @property
+    def file_size_display(self):
+        if self.file_size < 1024:
+            return f"{self.file_size} B"
+        elif self.file_size < 1024 * 1024:
+            return f"{self.file_size / 1024:.1f} KB"
+        return f"{self.file_size / (1024 * 1024):.1f} MB"
+
+
+class TicketComment(models.Model):
+    """Talebin altındaki yorumlar ve işi açan ile yapan arasındaki mesajlar."""
+
+    ticket = models.ForeignKey(ProjectTicket, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="ticket_comments")
+    message = models.TextField()
+    attachment = models.FileField(upload_to="ticket_comment_attachments/%Y/%m/", null=True, blank=True)
+    is_system_note = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Talep Yorumu / Mesajı"
+        verbose_name_plural = "Talep Yorumları / Mesajları"
+
+    def __str__(self):
+        return f"{self.author.username} - {self.ticket}"
+
+    @property
+    def is_reporter(self):
+        return self.ticket.reporter_id == self.author_id
+
+    @property
+    def is_assignee(self):
+        return self.ticket.assignee_id == self.author_id
+
+    @property
+    def author_badge_label(self):
+        if self.is_system_note:
+            return "Sistem Bildirimi"
+        if self.is_reporter and self.is_assignee:
+            return "İşi Açan & Yapan"
+        if self.is_reporter:
+            return "İşi Açan"
+        if self.is_assignee:
+            return "İşi Yapan / Geliştirici"
+        if hasattr(self.author, "role") and self.author.role:
+            return self.author.role.name
+        return "Üye"
+
+    @property
+    def attachment_is_image(self):
+        if not self.attachment:
+            return False
+        import os
+        ext = os.path.splitext(self.attachment.name)[1].lower()
+        return ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]

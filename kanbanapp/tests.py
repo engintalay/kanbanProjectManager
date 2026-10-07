@@ -4,7 +4,19 @@ from django.test.utils import override_settings
 from django.test.runner import TestCase
 from django.urls import reverse
 
-from .models import JiraConnection, JiraIssue, JiraStatus, KanbanCard, KanbanColumn, Project, Role, StatusMapping
+from .models import (
+    JiraConnection,
+    JiraIssue,
+    JiraStatus,
+    KanbanCard,
+    KanbanColumn,
+    Project,
+    ProjectTicket,
+    Role,
+    StatusMapping,
+    TicketAttachment,
+    TicketComment,
+)
 
 User = get_user_model()
 
@@ -1645,6 +1657,280 @@ class JqlCardImportTests(TestCase):
             c1 = KanbanCard.objects.get(project=self.project, jira_key="JQLP-B1")
             self.assertEqual(c1.difficulty_level, 3)
             self.assertEqual(c1.column_id, self.col_todo.id)
+
+
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class ProjectTicketAndMessagingTests(TestCase):
+    def setUp(self):
+        self.admin_role = Role.objects.create(name="Admin", slug="admin", level=Role.LEVEL_ADMIN)
+        self.pm_role = Role.objects.create(name="Proje Yöneticisi", slug="pm", level=Role.LEVEL_PROJECT_MANAGER)
+        self.prog_role = Role.objects.create(name="Proje Programcısı", slug="prog", level=Role.LEVEL_PROGRAMMER)
+
+        self.admin = User.objects.create_superuser(username="tadmin", password="p", email="tadmin@e.com", role=self.admin_role)
+        self.reporter_user = User.objects.create_user(username="reporter1", password="p", email="rep@e.com", role=self.prog_role)
+        self.dev_user = User.objects.create_user(username="dev1", password="p", email="dev@e.com", role=self.prog_role)
+
+        self.project = Project.objects.create(key="TCK", name="Ticket Test Project", created_by=self.admin)
+        from .models import ProjectMember
+        ProjectMember.objects.create(project=self.project, user=self.reporter_user)
+        ProjectMember.objects.create(project=self.project, user=self.dev_user)
+        self.col_todo = KanbanColumn.objects.create(project=self.project, name="Yapılacak", status_type="custom", position=0)
+
+        self.client = Client()
+
+    def test_create_bug_and_feature_ticket(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self.client.force_login(self.reporter_user)
+        dummy_file = SimpleUploadedFile("screenshot.png", b"fake-png-content", content_type="image/png")
+
+        resp = self.client.post(
+            reverse("project_ticket_create", kwargs={"project_id": self.project.id}),
+            {
+                "project": self.project.id,
+                "ticket_type": ProjectTicket.TYPE_BUG,
+                "title": "Giriş sayfası 500 hatası veriyor",
+                "description": "Kullanıcı hatalı şifre girince uygulama çöküyor.",
+                "priority": ProjectTicket.PRIORITY_HIGH,
+                "assignee": self.dev_user.id,
+                "attachments": [dummy_file],
+            },
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(ProjectTicket.objects.filter(project=self.project, title="Giriş sayfası 500 hatası veriyor").exists())
+
+        ticket = ProjectTicket.objects.get(project=self.project, title="Giriş sayfası 500 hatası veriyor")
+        self.assertEqual(ticket.reporter, self.reporter_user)
+        self.assertEqual(ticket.assignee, self.dev_user)
+        self.assertTrue(ticket.is_bug)
+        self.assertEqual(ticket.ticket_code, f"TCK-T{ticket.id}")
+
+        # Ek kontrolü
+        self.assertEqual(ticket.attachments.count(), 1)
+        att = ticket.attachments.first()
+        self.assertTrue(att.is_image)
+        self.assertEqual(att.uploaded_by, self.reporter_user)
+
+        # İlk sistem yorumu kontrolü
+        self.assertTrue(ticket.comments.filter(is_system_note=True).exists())
+
+    def test_ticket_list_view_and_filtering(self):
+        t1 = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_BUG,
+            title="Kritik UI Hatası",
+            reporter=self.reporter_user,
+            priority=ProjectTicket.PRIORITY_URGENT,
+            status=ProjectTicket.STATUS_OPEN,
+        )
+        t2 = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_FEATURE,
+            title="Excel Dışa Aktarım İsteği",
+            reporter=self.reporter_user,
+            assignee=self.dev_user,
+            priority=ProjectTicket.PRIORITY_MEDIUM,
+            status=ProjectTicket.STATUS_RESOLVED,
+        )
+
+        self.client.force_login(self.reporter_user)
+
+        # Genel liste
+        resp = self.client.get(reverse("ticket_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Kritik UI Hatası")
+        self.assertContains(resp, "Excel Dışa Aktarım İsteği")
+
+        # Tür filtresi: sadece bug
+        resp_bug = self.client.get(reverse("ticket_list"), {"type": "bug"})
+        self.assertContains(resp_bug, "Kritik UI Hatası")
+        self.assertNotContains(resp_bug, "Excel Dışa Aktarım İsteği")
+
+        # Durum filtresi: all_open
+        resp_open = self.client.get(reverse("ticket_list"), {"status": "all_open"})
+        self.assertContains(resp_open, "Kritik UI Hatası")
+        self.assertNotContains(resp_open, "Excel Dışa Aktarım İsteği")
+
+        # Bana atananlar
+        self.client.force_login(self.dev_user)
+        resp_me = self.client.get(reverse("ticket_list"), {"assigned": "me"})
+        self.assertContains(resp_me, "Excel Dışa Aktarım İsteği")
+        self.assertNotContains(resp_me, "Kritik UI Hatası")
+
+    def test_messaging_between_reporter_and_assignee(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        ticket = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_BUG,
+            title="Raporlama Donuyor",
+            reporter=self.reporter_user,
+            assignee=self.dev_user,
+            status=ProjectTicket.STATUS_OPEN,
+        )
+
+        # İşi açan mesaj atar
+        self.client.force_login(self.reporter_user)
+        resp_rep = self.client.post(
+            reverse("ticket_add_comment", kwargs={"ticket_id": ticket.id}),
+            {"message": "Hata sadece Chrome tarayıcısında oluyor bilginize."},
+            follow=True,
+        )
+        self.assertEqual(resp_rep.status_code, 200)
+
+        # Geliştirici (işi yapan) cevap yazar ve ek dosya ekler
+        self.client.force_login(self.dev_user)
+        dummy_log = SimpleUploadedFile("log.txt", b"error stack trace", content_type="text/plain")
+        resp_dev = self.client.post(
+            reverse("ticket_add_comment", kwargs={"ticket_id": ticket.id}),
+            {
+                "message": "Logları inceledim, düzeltiyorum.",
+                "attachment": dummy_log,
+            },
+            follow=True,
+        )
+        self.assertEqual(resp_dev.status_code, 200)
+
+        comments = ticket.comments.filter(is_system_note=False).order_by("created_at")
+        self.assertEqual(comments.count(), 2)
+
+        c1 = comments[0]
+        self.assertEqual(c1.author, self.reporter_user)
+        self.assertTrue(c1.is_reporter)
+        self.assertEqual(c1.author_badge_label, "İşi Açan")
+
+        c2 = comments[1]
+        self.assertEqual(c2.author, self.dev_user)
+        self.assertTrue(c2.is_assignee)
+        self.assertEqual(c2.author_badge_label, "İşi Yapan / Geliştirici")
+        self.assertTrue(bool(c2.attachment))
+
+        # Detay sayfasında görüntüleme kontrolü
+        detail_resp = self.client.get(reverse("ticket_detail", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(detail_resp.status_code, 200)
+        self.assertContains(detail_resp, "Hata sadece Chrome tarayıcısında oluyor")
+        self.assertContains(detail_resp, "Logları inceledim, düzeltiyorum.")
+        self.assertContains(detail_resp, "İşi Açan")
+        self.assertContains(detail_resp, "İşi Yapan / Geliştirici")
+
+    def test_ticket_status_update_and_resolution_notes(self):
+        ticket = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_BUG,
+            title="CSS Bozulması",
+            reporter=self.reporter_user,
+            status=ProjectTicket.STATUS_OPEN,
+        )
+
+        self.client.force_login(self.dev_user)
+        resp = self.client.post(
+            reverse("ticket_update_status", kwargs={"ticket_id": ticket.id}),
+            {"status": ProjectTicket.STATUS_RESOLVED, "resolution_notes": "Stil dosyası güncellendi."},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.status, ProjectTicket.STATUS_RESOLVED)
+        self.assertEqual(ticket.resolution_notes, "Stil dosyası güncellendi.")
+
+        # Sistem yorumu kaydedildi mi?
+        self.assertTrue(ticket.comments.filter(message__contains="Çözüldü").exists())
+
+    def test_ticket_assign_and_self_assign(self):
+        ticket = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_FEATURE,
+            title="Dark Mode Desteği",
+            reporter=self.reporter_user,
+            status=ProjectTicket.STATUS_OPEN,
+        )
+
+        # Geliştirici kendini atar
+        self.client.force_login(self.dev_user)
+        resp = self.client.post(
+            reverse("ticket_assign", kwargs={"ticket_id": ticket.id}),
+            {"assignee": self.dev_user.id},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.assignee, self.dev_user)
+        self.assertTrue(ticket.comments.filter(message__contains=self.dev_user.username).exists())
+
+        # Atamayı kaldır
+        resp_clear = self.client.post(
+            reverse("ticket_assign", kwargs={"ticket_id": ticket.id}),
+            {"assignee": ""},
+            follow=True,
+        )
+        self.assertEqual(resp_clear.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.assignee)
+
+    def test_ticket_convert_to_kanban_card(self):
+        ticket = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_FEATURE,
+            title="Otomatik Mail Bildirimi",
+            description="İş bittiğinde mail atılsın.",
+            reporter=self.reporter_user,
+            assignee=self.dev_user,
+            status=ProjectTicket.STATUS_OPEN,
+        )
+
+        self.client.force_login(self.dev_user)
+        resp = self.client.post(
+            reverse("ticket_create_card", kwargs={"ticket_id": ticket.id}),
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        ticket.refresh_from_db()
+        self.assertIsNotNone(ticket.card)
+        self.assertEqual(ticket.status, ProjectTicket.STATUS_IN_PROGRESS)
+        self.assertIn("Otomatik Mail Bildirimi", ticket.card.title)
+        self.assertEqual(ticket.card.assignee, self.dev_user)
+        self.assertEqual(ticket.card.column, self.col_todo)
+
+        # Detay sayfasında Kanban kartı bilgisi görüntülenmeli
+        detail_resp = self.client.get(reverse("ticket_detail", kwargs={"ticket_id": ticket.id}))
+        self.assertContains(detail_resp, "Pano Üzerinde Görüntüle")
+        self.assertContains(detail_resp, self.col_todo.name)
+
+    def test_ticket_attachment_upload_and_delete(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        ticket = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_BUG,
+            title="Ek Yükleme Testi",
+            reporter=self.reporter_user,
+        )
+
+        self.client.force_login(self.reporter_user)
+        dummy_file = SimpleUploadedFile("extra_doc.pdf", b"pdf-content", content_type="application/pdf")
+
+        # Yeni ek yükle
+        resp_upload = self.client.post(
+            reverse("ticket_add_attachment", kwargs={"ticket_id": ticket.id}),
+            {"file": dummy_file},
+            follow=True,
+        )
+        self.assertEqual(resp_upload.status_code, 200)
+        self.assertEqual(ticket.attachments.count(), 1)
+        att = ticket.attachments.first()
+
+        # Eki sil
+        resp_del = self.client.post(
+            reverse("ticket_delete_attachment", kwargs={"ticket_id": ticket.id, "attachment_id": att.id}),
+            follow=True,
+        )
+        self.assertEqual(resp_del.status_code, 200)
+        self.assertEqual(ticket.attachments.count(), 0)
+
 
 
 

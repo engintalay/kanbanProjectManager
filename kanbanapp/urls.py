@@ -48,4 +48,16 @@ urlpatterns = [
     path("projects/<int:project_id>/sprints/<int:sprint_id>/board/", views.sprint_board_view, name="sprint_board"),
     path("projects/<int:project_id>/reports/", views.report_view, name="project_reports"),
     path("projects/<int:project_id>/reports/export/", views.export_cards_csv, name="export_cards_csv"),
+    # Hata ve Geliştirme Talepleri (Tickets / Issues)
+    path("tickets/", views.ticket_list_view, name="ticket_list"),
+    path("tickets/create/", views.ticket_create_view, name="ticket_create"),
+    path("projects/<int:project_id>/tickets/", views.ticket_list_view, name="project_tickets"),
+    path("projects/<int:project_id>/tickets/create/", views.ticket_create_view, name="project_ticket_create"),
+    path("tickets/<int:ticket_id>/", views.ticket_detail_view, name="ticket_detail"),
+    path("tickets/<int:ticket_id>/comment/", views.ticket_add_comment_view, name="ticket_add_comment"),
+    path("tickets/<int:ticket_id>/status/", views.ticket_update_status_view, name="ticket_update_status"),
+    path("tickets/<int:ticket_id>/assign/", views.ticket_assign_view, name="ticket_assign"),
+    path("tickets/<int:ticket_id>/create-card/", views.ticket_create_card_view, name="ticket_create_card"),
+    path("tickets/<int:ticket_id>/attachment/add/", views.ticket_add_attachment_view, name="ticket_add_attachment"),
+    path("tickets/<int:ticket_id>/attachment/<int:attachment_id>/delete/", views.ticket_delete_attachment_view, name="ticket_delete_attachment"),
 ]

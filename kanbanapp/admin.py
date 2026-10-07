@@ -11,10 +11,13 @@ from .models import (
     KanbanColumn,
     Project,
     ProjectMember,
+    ProjectTicket,
     RefreshLog,
     Role,
     Sprint,
     StatusMapping,
+    TicketAttachment,
+    TicketComment,
     User,
 )
 
@@ -138,3 +141,39 @@ class RefreshLogAdmin(admin.ModelAdmin):
     list_display = ("project", "jira_connection", "status", "pulled_count", "timestamp")
     list_filter = ("status", "project")
     search_fields = ("project__key", "error")
+
+
+class TicketAttachmentInline(admin.TabularInline):
+    model = TicketAttachment
+    extra = 1
+    fields = ("file", "filename", "file_size", "uploaded_by", "created_at")
+    readonly_fields = ("file_size", "created_at")
+
+
+class TicketCommentInline(admin.TabularInline):
+    model = TicketComment
+    extra = 1
+    fields = ("author", "message", "attachment", "is_system_note", "created_at")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(ProjectTicket)
+class ProjectTicketAdmin(admin.ModelAdmin):
+    list_display = ("ticket_code", "title", "project", "ticket_type", "priority", "status", "reporter", "assignee", "created_at")
+    list_filter = ("project", "ticket_type", "priority", "status")
+    search_fields = ("title", "description", "project__key", "project__name")
+    inlines = [TicketAttachmentInline, TicketCommentInline]
+
+
+@admin.register(TicketAttachment)
+class TicketAttachmentAdmin(admin.ModelAdmin):
+    list_display = ("filename", "ticket", "file_size_display", "uploaded_by", "created_at")
+    list_filter = ("ticket__project",)
+    search_fields = ("filename", "ticket__title")
+
+
+@admin.register(TicketComment)
+class TicketCommentAdmin(admin.ModelAdmin):
+    list_display = ("ticket", "author", "is_system_note", "created_at")
+    list_filter = ("is_system_note", "ticket__project")
+    search_fields = ("message", "ticket__title")

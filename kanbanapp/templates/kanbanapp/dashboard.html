@@ -124,6 +124,7 @@
     </div>
     <div class="project-actions">
       <a href="{% url 'board' project.id %}" class="btn-primary" title="Kanban Panosu">📋 Pano</a>
+      <a href="{% url 'project_tickets' project.id %}" class="btn-ghost" title="Hatalar ve Talepler">🐞 Talepler</a>
       <a href="{% url 'sprints' project.id %}" class="btn-ghost" title="Sprintler">🏃 Sprintler</a>
       <a href="{% url 'project_reports' project.id %}" class="btn-ghost" title="Raporlar">📊 Rapor</a>
     </div>

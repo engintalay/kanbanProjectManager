@@ -1,0 +1,207 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Hata ve Geliştirme Talepleri — Kanban Manager{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Hata ve Geliştirme Talepleri</h2>
+    <p class="text-muted">Projelere ait hata bildirimleri, yeni özellik istekleri ve geliştirme takibi.</p>
+  </div>
+  <div class="head-actions">
+    {% if current_project %}
+      <a href="{% url 'board' current_project.id %}" class="btn-ghost">← Proje Panosu</a>
+      <a href="{% url 'project_ticket_create' current_project.id %}" class="btn-primary">+ Yeni Talep Bildir</a>
+    {% else %}
+      <a href="{% url 'ticket_create' %}" class="btn-primary">+ Yeni Talep Bildir</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- İstatistik Sayaçları -->
+<div class="ticket-stats-grid">
+  <div class="ticket-stat-card">
+    <div class="stat-number">{{ total_count }}</div>
+    <div class="stat-label">Toplam Talep</div>
+  </div>
+  <div class="ticket-stat-card stat-bug">
+    <div class="stat-number">{{ open_bugs_count }}</div>
+    <div class="stat-label">Açık Hatalar (Bug)</div>
+  </div>
+  <div class="ticket-stat-card stat-feature">
+    <div class="stat-number">{{ open_features_count }}</div>
+    <div class="stat-label">Açık İstekler (Feature)</div>
+  </div>
+  <div class="ticket-stat-card stat-resolved">
+    <div class="stat-number">{{ resolved_count }}</div>
+    <div class="stat-label">Çözülen / Kapatılan</div>
+  </div>
+</div>
+
+<!-- Filtre Çubuğu -->
+<div class="card mb-4">
+  <form method="get" class="ticket-filter-form">
+    {% if not current_project %}
+    <div class="filter-item">
+      <label for="filter-project">Proje:</label>
+      <select name="project" id="filter-project" class="form-control" onchange="this.form.submit()">
+        <option value="">Tüm Projeler</option>
+        {% for p in projects %}
+          <option value="{{ p.id }}" {% if request.GET.project == p.id|stringformat:"i" %}selected{% endif %}>{{ p.key }} - {{ p.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+
+    <div class="filter-item">
+      <label for="filter-type">Tür:</label>
+      <select name="type" id="filter-type" class="form-control" onchange="this.form.submit()">
+        <option value="">Tüm Türler</option>
+        {% for t_val, t_name in type_choices %}
+          <option value="{{ t_val }}" {% if type_filter == t_val %}selected{% endif %}>{{ t_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-item">
+      <label for="filter-status">Durum:</label>
+      <select name="status" id="filter-status" class="form-control" onchange="this.form.submit()">
+        <option value="">Tüm Durumlar</option>
+        <option value="all_open" {% if status_filter == 'all_open' %}selected{% endif %}>Tüm Açıklar (Çözülmemişler)</option>
+        {% for s_val, s_name in status_choices %}
+          <option value="{{ s_val }}" {% if status_filter == s_val %}selected{% endif %}>{{ s_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-item">
+      <label for="filter-priority">Öncelik:</label>
+      <select name="priority" id="filter-priority" class="form-control" onchange="this.form.submit()">
+        <option value="">Tüm Öncelikler</option>
+        {% for p_val, p_name in priority_choices %}
+          <option value="{{ p_val }}" {% if priority_filter == p_val %}selected{% endif %}>{{ p_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="filter-item filter-search">
+      <label for="filter-q">Ara:</label>
+      <div class="input-with-button">
+        <input type="text" name="q" id="filter-q" value="{{ search_query }}" placeholder="Başlık veya içerikte ara..." class="form-control">
+        <button type="submit" class="btn-secondary">Filtrele</button>
+      </div>
+    </div>
+
+    <div class="filter-quick-links">
+      <a href="?assigned=me{% if current_project %}&project={{ current_project.id }}{% endif %}" class="filter-chip {% if assigned_filter == 'me' %}active{% endif %}">Bana Atananlar</a>
+      <a href="?reported=me{% if current_project %}&project={{ current_project.id }}{% endif %}" class="filter-chip {% if reported_filter == 'me' %}active{% endif %}">Açtığım Talepler</a>
+      <a href="{% if current_project %}{% url 'project_tickets' current_project.id %}{% else %}{% url 'ticket_list' %}{% endif %}" class="filter-chip-clear">Sıfırla</a>
+    </div>
+  </form>
+</div>
+
+<!-- Talep Listesi Tablosu -->
+<div class="card">
+  {% if tickets %}
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 100px;">Kod</th>
+          <th style="width: 130px;">Tür</th>
+          <th>Başlık</th>
+          <th style="width: 120px;">Proje</th>
+          <th style="width: 100px;">Öncelik</th>
+          <th style="width: 120px;">Durum</th>
+          <th style="width: 140px;">İşi Açan</th>
+          <th style="width: 140px;">İşi Yapan</th>
+          <th style="width: 130px;">Geliştirme</th>
+          <th style="width: 70px;">Ek / Yorum</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tickets %}
+        <tr class="ticket-row">
+          <td>
+            <a href="{% url 'ticket_detail' t.id %}" class="ticket-code-link">{{ t.ticket_code }}</a>
+          </td>
+          <td>
+            {% if t.ticket_type == 'bug' %}
+              <span class="badge badge-bug">Hata</span>
+            {% elif t.ticket_type == 'feature' %}
+              <span class="badge badge-feature">Yeni İstek</span>
+            {% else %}
+              <span class="badge badge-improvement">İyileştirme</span>
+            {% endif %}
+          </td>
+          <td>
+            <a href="{% url 'ticket_detail' t.id %}" class="ticket-title-link">
+              <strong>{{ t.title }}</strong>
+            </a>
+            {% if t.description %}
+              <div class="ticket-desc-snippet text-muted">{{ t.description|truncatechars:85 }}</div>
+            {% endif %}
+          </td>
+          <td>
+            <span class="project-tag">{{ t.project.key }}</span>
+          </td>
+          <td>
+            <span class="priority-dot" style="background-color: {{ t.priority_color }};"></span>
+            {{ t.get_priority_display }}
+          </td>
+          <td>
+            <span class="status-pill" style="border-color: {{ t.status_color }}; color: {{ t.status_color }};">
+              {{ t.get_status_display }}
+            </span>
+          </td>
+          <td>
+            <span class="user-chip" title="İşi Açan">
+              👤 {{ t.reporter.get_full_name|default:t.reporter.username }}
+            </span>
+          </td>
+          <td>
+            {% if t.assignee %}
+              <span class="user-chip chip-assigned" title="İşi Yapan / Geliştirici">
+                🛠️ {{ t.assignee.get_full_name|default:t.assignee.username }}
+              </span>
+            {% else %}
+              <span class="text-muted" style="font-size: 0.82rem;">Atanmadı</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if t.card %}
+              <a href="{% url 'board' t.project.id %}#card-{{ t.card.id }}" class="card-link-badge" title="Panodaki Kartı Gör">
+                📋 {{ t.card.column.name }}
+              </a>
+            {% else %}
+              <span class="text-muted" style="font-size: 0.8rem;">-</span>
+            {% endif %}
+          </td>
+          <td style="text-align: center; white-space: nowrap;">
+            {% if t.attachments.all %}
+              <span title="{{ t.attachments.count }} adet ek dosya" class="badge-icon">📎 {{ t.attachments.count }}</span>
+            {% endif %}
+            {% if t.comments.all %}
+              <span title="{{ t.comments.count }} adet mesaj / yorum" class="badge-icon">💬 {{ t.comments.count }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="empty-state">
+      <div style="font-size: 2.2rem; margin-bottom: 10px;">📋</div>
+      <h3>Henüz Talep Bulunmuyor</h3>
+      <p class="text-muted">Seçili filtrelere uygun hata veya geliştirme talebi kaydedilmemiş.</p>
+      <div style="margin-top: 15px;">
+        {% if current_project %}
+          <a href="{% url 'project_ticket_create' current_project.id %}" class="btn-primary">+ Yeni Talep Bildir</a>
+        {% else %}
+          <a href="{% url 'ticket_create' %}" class="btn-primary">+ Yeni Talep Bildir</a>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

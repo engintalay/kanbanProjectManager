@@ -9,8 +9,11 @@ from .models import (
     KanbanCard,
     KanbanColumn,
     Project,
+    ProjectTicket,
     Sprint,
     StatusMapping,
+    TicketAttachment,
+    TicketComment,
     User,
 )
 
@@ -344,3 +347,113 @@ class StatusMappingForm(forms.ModelForm):
         if project:
             hidden_ids = project.hidden_jira_statuses.values_list("id", flat=True)
             self.fields["jira_status"].queryset = JiraStatus.objects.exclude(id__in=hidden_ids).order_by("name")
+
+
+class ProjectTicketForm(forms.ModelForm):
+    """Hata veya geliştirme talebi oluşturma/düzenleme formu."""
+
+    class Meta:
+        model = ProjectTicket
+        fields = ["project", "ticket_type", "title", "description", "priority", "assignee"]
+        labels = {
+            "project": "Proje",
+            "ticket_type": "Talep Türü",
+            "title": "Başlık / Konu",
+            "description": "Detaylı Açıklama (Hata adımları, beklenen durum veya istek detayları)",
+            "priority": "Öncelik",
+            "assignee": "Atanan Geliştirici (Opsiyonel)",
+        }
+        widgets = {
+            "project": forms.Select(attrs={"class": "form-control"}),
+            "ticket_type": forms.Select(attrs={"class": "form-control"}),
+            "title": forms.TextInput(attrs={"class": "form-control", "placeholder": "Örn: Giriş yaparken hata alınıyor veya Yeni raporlama ekranı", "autofocus": True}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 5, "placeholder": "Ayrıntılı açıklama yazın..."}),
+            "priority": forms.Select(attrs={"class": "form-control"}),
+            "assignee": forms.Select(attrs={"class": "form-control"}),
+        }
+
+    def __init__(self, *args, user=None, project=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["assignee"].required = False
+        self.fields["assignee"].empty_label = "--- Henüz Atanmadı ---"
+
+        # Proje kısıtlaması
+        if project:
+            self.fields["project"].queryset = Project.objects.filter(id=project.id)
+            self.fields["project"].initial = project
+            self.fields["project"].widget = forms.HiddenInput()
+            # Assignee listesini projeyle ilişkili kullanıcılara göre filtrele
+            from django.db.models import Q
+            member_ids = list(project.project_members.values_list("user_id", flat=True))
+            if project.created_by_id:
+                member_ids.append(project.created_by_id)
+            self.fields["assignee"].queryset = User.objects.filter(
+                Q(id__in=member_ids) | Q(project_id=project.id) | Q(role__level__in=[1, 2, 3])
+            ).distinct().order_by("username")
+        elif user:
+            from .views import _get_visible_projects
+            visible_projects = _get_visible_projects(user)
+            self.fields["project"].queryset = visible_projects
+            self.fields["assignee"].queryset = User.objects.filter(is_active=True).order_by("username")
+
+
+class TicketCommentForm(forms.ModelForm):
+    """Talep altına mesaj / yorum ekleme formu."""
+
+    class Meta:
+        model = TicketComment
+        fields = ["message", "attachment"]
+        labels = {
+            "message": "Mesajınız",
+            "attachment": "Ek Dosya / Ekran Görüntüsü (Opsiyonel)",
+        }
+        widgets = {
+            "message": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": "İşle ilgili görüşünüzü, sorunuzu veya geliştirme durumu notunuzu yazın...",
+                }
+            ),
+            "attachment": forms.FileInput(attrs={"class": "form-control"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["attachment"].required = False
+
+
+class TicketStatusUpdateForm(forms.Form):
+    """Talebin durumunu güncelleme ve çözüm notu ekleme formu."""
+
+    status = forms.ChoiceField(
+        choices=ProjectTicket.STATUS_CHOICES,
+        label="Yeni Durum",
+        widget=forms.Select(attrs={"class": "form-control"}),
+    )
+    resolution_notes = forms.CharField(
+        label="Çözüm / Değişiklik Notu",
+        required=False,
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "Durum değişikliği ile ilgili açıklama (opsiyonel)...",
+            }
+        ),
+    )
+
+
+class TicketAttachmentForm(forms.ModelForm):
+    """Ek dosya / resim yükleme formu."""
+
+    class Meta:
+        model = TicketAttachment
+        fields = ["file"]
+        labels = {
+            "file": "Dosya veya Ekran Görüntüsü Seçin",
+        }
+        widgets = {
+            "file": forms.FileInput(attrs={"class": "form-control"}),
+        }
+

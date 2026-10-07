@@ -1,0 +1,440 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{{ ticket.ticket_code }}: {{ ticket.title }} — Kanban Manager{% endblock %}
+
+{% block content %}
+<div class="ticket-detail-page">
+  <!-- Sayfa Üst Başlık ve Hızlı Eylemler -->
+  <div class="page-head ticket-head">
+    <div>
+      <div class="ticket-breadcrumbs">
+        <a href="{% url 'ticket_list' %}">Talepler</a> &rsaquo;
+        <a href="{% url 'project_tickets' ticket.project.id %}">{{ ticket.project.key }}</a> &rsaquo;
+        <span class="text-muted">{{ ticket.ticket_code }}</span>
+      </div>
+      <h2 class="ticket-main-title">
+        <span class="ticket-code-badge">{{ ticket.ticket_code }}</span>
+        {{ ticket.title }}
+      </h2>
+      <div class="ticket-meta-pills">
+        {% if ticket.ticket_type == 'bug' %}
+          <span class="badge badge-bug">Hata Bildirimi (Bug)</span>
+        {% elif ticket.ticket_type == 'feature' %}
+          <span class="badge badge-feature">Yeni İstek (Feature)</span>
+        {% else %}
+          <span class="badge badge-improvement">İyileştirme</span>
+        {% endif %}
+
+        <span class="priority-pill" style="border: 1px solid {{ ticket.priority_color }}; color: {{ ticket.priority_color }};">
+          ● {{ ticket.get_priority_display }} Öncelik
+        </span>
+
+        <span class="status-pill-lg" style="background-color: {{ ticket.status_color }}; color: #fff;">
+          {{ ticket.get_status_display }}
+        </span>
+
+        <span class="text-muted meta-date">Oluşturuldu: {{ ticket.created_at|date:"d M Y, H:i" }}</span>
+      </div>
+    </div>
+    <div class="head-actions">
+      <a href="{% url 'project_tickets' ticket.project.id %}" class="btn-ghost">← Proje Talepleri</a>
+      {% if ticket.card %}
+        <a href="{% url 'board' ticket.project.id %}#card-{{ ticket.card.id }}" class="btn-secondary" title="Kanban Panosundaki Kartı Aç">
+          📋 Panoda Gör
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Geliştirme Süreci Takip Çubuğu (Stepper) -->
+  <div class="ticket-stepper-card mb-4">
+    <div class="stepper-title">İş Geliştirme ve Çözüm Aşaması</div>
+    <div class="stepper-wrapper">
+      <div class="step-item {% if ticket.status == 'open' or ticket.status == 'investigating' or ticket.status == 'in_progress' or ticket.status == 'resolved' or ticket.status == 'closed' %}step-completed{% endif %} {% if ticket.status == 'open' %}step-active{% endif %}">
+        <div class="step-circle">1</div>
+        <div class="step-label">Talep Açıldı</div>
+      </div>
+      <div class="step-line {% if ticket.status == 'investigating' or ticket.status == 'in_progress' or ticket.status == 'resolved' or ticket.status == 'closed' %}line-active{% endif %}"></div>
+
+      <div class="step-item {% if ticket.status == 'investigating' or ticket.status == 'in_progress' or ticket.status == 'resolved' or ticket.status == 'closed' %}step-completed{% endif %} {% if ticket.status == 'investigating' %}step-active{% endif %}">
+        <div class="step-circle">2</div>
+        <div class="step-label">İnceleniyor</div>
+      </div>
+      <div class="step-line {% if ticket.status == 'in_progress' or ticket.status == 'resolved' or ticket.status == 'closed' %}line-active{% endif %}"></div>
+
+      <div class="step-item {% if ticket.status == 'in_progress' or ticket.status == 'resolved' or ticket.status == 'closed' %}step-completed{% endif %} {% if ticket.status == 'in_progress' %}step-active{% endif %}">
+        <div class="step-circle">3</div>
+        <div class="step-label">Geliştirmede</div>
+      </div>
+      <div class="step-line {% if ticket.status == 'resolved' or ticket.status == 'closed' %}line-active{% endif %}"></div>
+
+      <div class="step-item {% if ticket.status == 'resolved' or ticket.status == 'closed' %}step-completed{% endif %} {% if ticket.status == 'resolved' %}step-active{% endif %}">
+        <div class="step-circle">4</div>
+        <div class="step-label">Çözüldü</div>
+      </div>
+      <div class="step-line {% if ticket.status == 'closed' %}line-active{% endif %}"></div>
+
+      <div class="step-item {% if ticket.status == 'closed' %}step-completed step-active{% endif %}">
+        <div class="step-circle">5</div>
+        <div class="step-label">Kapatıldı</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ana İçerik Grid: Sol (Açıklama, Ekler, Mesajlaşma) - Sağ (Geliştirme Takibi, Atama, Durum) -->
+  <div class="ticket-layout-grid">
+    
+    <!-- SOL KOLON -->
+    <div class="ticket-main-col">
+      <!-- Açıklama Kartı -->
+      <div class="card mb-4 ticket-desc-card">
+        <h3 class="card-title">Talep Açıklaması</h3>
+        <div class="ticket-description-text">
+          {% if ticket.description %}
+            {{ ticket.description|linebreaks }}
+          {% else %}
+            <p class="text-muted">Açıklama belirtilmemiş.</p>
+          {% endif %}
+        </div>
+
+        {% if ticket.resolution_notes %}
+          <div class="resolution-notes-box mt-3">
+            <strong>Çözüm / Kapatma Notu:</strong>
+            <div>{{ ticket.resolution_notes|linebreaks }}</div>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Ekler ve Resimler Galerisi -->
+      <div class="card mb-4 attachments-card">
+        <div class="card-head-flex">
+          <h3 class="card-title">Ekler ve Ekran Görüntüleri ({{ attachments.count }})</h3>
+          <button type="button" class="btn-ghost btn-sm" onclick="document.getElementById('add-attachment-panel').style.display='block';">
+            + Yeni Ek Ekle
+          </button>
+        </div>
+
+        <!-- Yeni Ek Yükleme Formu (Varsayılan gizli) -->
+        <div id="add-attachment-panel" class="attachment-upload-panel" style="display: none;">
+          <form method="post" action="{% url 'ticket_add_attachment' ticket.id %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="form-row align-items-center" style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <input type="file" name="file" multiple class="form-control" style="flex: 1;" required>
+              <button type="submit" class="btn-primary">Yükle</button>
+              <button type="button" class="btn-ghost" onclick="document.getElementById('add-attachment-panel').style.display='none';">Vazgeç</button>
+            </div>
+          </form>
+        </div>
+
+        {% if attachments %}
+          <div class="attachments-grid mt-3">
+            {% for att in attachments %}
+              <div class="attachment-item-card">
+                {% if att.is_image %}
+                  <div class="attachment-img-wrap">
+                    <a href="{{ att.file.url }}" target="_blank" title="Büyük görüntüle">
+                      <img src="{{ att.file.url }}" alt="{{ att.filename }}" class="attachment-thumbnail">
+                    </a>
+                  </div>
+                {% else %}
+                  <div class="attachment-file-icon">
+                    📄
+                  </div>
+                {% endif %}
+                <div class="attachment-info">
+                  <a href="{{ att.file.url }}" target="_blank" class="attachment-name" title="{{ att.filename }}">
+                    {{ att.filename|truncatechars:26 }}
+                  </a>
+                  <div class="attachment-meta text-muted">
+                    <span>{{ att.file_size_display }}</span>
+                    <span>&bull; {{ att.created_at|date:"d M, H:i" }}</span>
+                  </div>
+                </div>
+                {% if can_manage or att.uploaded_by_id == user.id %}
+                  <form method="post" action="{% url 'ticket_delete_attachment' ticket.id att.id %}" onsubmit="return confirm('Bu eki silmek istediğinize emin misiniz?');" class="attachment-delete-form">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-delete-att" title="Eki Sil">&times;</button>
+                  </form>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty-attachments-text text-muted mt-2">
+            Henüz ek veya ekran görüntüsü yüklenmemiş.
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- İşi Açan ve Yapan Arasında Mesajlaşma / Yorumlaşma -->
+      <div class="card messaging-card">
+        <div class="card-head-flex">
+          <h3 class="card-title">💬 Mesajlaşma & Geliştirme Geçmişi</h3>
+          <div class="chat-participants-info">
+            <span class="participant-badge reporter-badge">İşi Açan: {{ ticket.reporter.get_full_name|default:ticket.reporter.username }}</span>
+            {% if ticket.assignee %}
+              <span class="participant-badge assignee-badge">İşi Yapan: {{ ticket.assignee.get_full_name|default:ticket.assignee.username }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Mesaj Akışı -->
+        <div class="chat-thread mt-3">
+          {% for c in comments %}
+            {% if c.is_system_note %}
+              <!-- Sistem Bildirimi -->
+              <div class="system-timeline-item">
+                <span class="system-bubble">
+                  ⚙️ {{ c.message|linebreaksbr }}
+                  <span class="comment-time">{{ c.created_at|date:"d M H:i" }}</span>
+                </span>
+              </div>
+            {% else %}
+              <!-- Kullanıcı Mesajı -->
+              <div class="chat-message-row {% if c.is_reporter %}msg-reporter{% elif c.is_assignee %}msg-assignee{% else %}msg-other{% endif %}">
+                <div class="chat-bubble">
+                  <div class="chat-bubble-header">
+                    <span class="chat-author-name">
+                      {{ c.author.get_full_name|default:c.author.username }}
+                    </span>
+                    <span class="chat-role-pill {% if c.is_reporter %}role-reporter{% elif c.is_assignee %}role-assignee{% endif %}">
+                      {{ c.author_badge_label }}
+                    </span>
+                    <span class="chat-timestamp">{{ c.created_at|date:"d M Y, H:i" }}</span>
+                  </div>
+
+                  <div class="chat-text">
+                    {{ c.message|linebreaks }}
+                  </div>
+
+                  {% if c.attachment %}
+                    <div class="chat-attachment-box">
+                      {% if c.attachment_is_image %}
+                        <a href="{{ c.attachment.url }}" target="_blank">
+                          <img src="{{ c.attachment.url }}" alt="Ek görsel" class="chat-img-preview">
+                        </a>
+                      {% else %}
+                        <a href="{{ c.attachment.url }}" target="_blank" class="chat-file-link">
+                          📎 {{ c.attachment.name }}
+                        </a>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+            {% endif %}
+          {% empty %}
+            <div class="no-messages-placeholder text-muted">
+              Henüz bir mesajlaşma bulunmuyor. Aşağıdaki alandan soru sorabilir veya bilgi verebilirsiniz.
+            </div>
+          {% endfor %}
+        </div>
+
+        <!-- Hızlı Mesaj Gönderme Formu -->
+        <div class="chat-input-container mt-4">
+          <form method="post" action="{% url 'ticket_add_comment' ticket.id %}" enctype="multipart/form-data" class="chat-form">
+            {% csrf_token %}
+            <div class="form-group mb-2">
+              <label for="id_message"><strong>Yeni Mesaj / Cevap Yaz:</strong></label>
+              {{ comment_form.message }}
+            </div>
+
+            <div class="chat-form-bottom" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+              <div class="file-attach-wrapper">
+                <label for="id_attachment" class="btn-ghost btn-sm" style="cursor: pointer; margin-bottom: 0;">
+                  📎 Resim / Dosya Ekle
+                </label>
+                {{ comment_form.attachment }}
+              </div>
+              <button type="submit" class="btn-primary">
+                Mesaj Gönder
+              </button>
+            </div>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- SAĞ KOLON (Geliştirme & Yönetim Paneli) -->
+    <div class="ticket-sidebar-col">
+      
+      <!-- Durum & Hızlı Aksiyon Kartı -->
+      <div class="card mb-4 sidebar-panel-card">
+        <h4 class="sidebar-card-title">Durum ve Eylemler</h4>
+        
+        <form method="post" action="{% url 'ticket_update_status' ticket.id %}" class="status-change-form">
+          {% csrf_token %}
+          <div class="form-group mb-2">
+            <label for="id_status">Mevcut Durum:</label>
+            <select name="status" id="id_status" class="form-control">
+              {% for s_val, s_name in ticket.STATUS_CHOICES %}
+                <option value="{{ s_val }}" {% if ticket.status == s_val %}selected{% endif %}>{{ s_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
+            <label for="id_resolution_notes">Çözüm / Durum Notu (Opsiyonel):</label>
+            <textarea name="resolution_notes" id="id_resolution_notes" rows="2" class="form-control" placeholder="Örn: Sorun giderildi, test ortamına alındı...">{{ ticket.resolution_notes }}</textarea>
+          </div>
+
+          <button type="submit" class="btn-secondary btn-block">Durumu Güncelle</button>
+        </form>
+
+        <hr class="panel-divider">
+
+        <!-- Hızlı Durum Butonları -->
+        <div class="quick-status-buttons">
+          {% if ticket.status != 'in_progress' %}
+            <form method="post" action="{% url 'ticket_update_status' ticket.id %}" style="display: inline;">
+              {% csrf_token %}
+              <input type="hidden" name="status" value="in_progress">
+              <button type="submit" class="btn-ghost btn-sm btn-block mb-1">▶️ Geliştirmeye Al</button>
+            </form>
+          {% endif %}
+
+          {% if ticket.status != 'resolved' %}
+            <form method="post" action="{% url 'ticket_update_status' ticket.id %}" style="display: inline;">
+              {% csrf_token %}
+              <input type="hidden" name="status" value="resolved">
+              <button type="submit" class="btn-ghost btn-sm btn-block mb-1">✅ Çözüldü Olarak İşaretle</button>
+            </form>
+          {% endif %}
+
+          {% if ticket.status != 'closed' %}
+            <form method="post" action="{% url 'ticket_update_status' ticket.id %}" style="display: inline;">
+              {% csrf_token %}
+              <input type="hidden" name="status" value="closed">
+              <button type="submit" class="btn-ghost btn-sm btn-block">🔒 Talebi Kapat</button>
+            </form>
+          {% else %}
+            <form method="post" action="{% url 'ticket_update_status' ticket.id %}" style="display: inline;">
+              {% csrf_token %}
+              <input type="hidden" name="status" value="open">
+              <button type="submit" class="btn-ghost btn-sm btn-block">🔄 Talebi Yeniden Aç</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- İşi Yapan (Geliştirici) Atama Kartı -->
+      <div class="card mb-4 sidebar-panel-card">
+        <h4 class="sidebar-card-title">İşi Yapan (Geliştirici)</h4>
+
+        <div class="current-assignee-box mb-3">
+          {% if ticket.assignee %}
+            <div class="assignee-card-view">
+              <div class="assignee-avatar">🛠️</div>
+              <div class="assignee-details">
+                <strong>{{ ticket.assignee.get_full_name|default:ticket.assignee.username }}</strong>
+                <div class="text-muted" style="font-size: 0.8rem;">{{ ticket.assignee.role.name|default:"Geliştirici" }}</div>
+              </div>
+            </div>
+          {% else %}
+            <div class="unassigned-badge">
+              ⚠️ Henüz bir geliştiriciye atanmadı
+            </div>
+          {% endif %}
+        </div>
+
+        <form method="post" action="{% url 'ticket_assign' ticket.id %}" class="assign-form">
+          {% csrf_token %}
+          <div class="form-group mb-2">
+            <select name="assignee" class="form-control">
+              <option value="">-- Atamayı Kaldır / Boş --</option>
+              {% for u in assignable_users %}
+                <option value="{{ u.id }}" {% if ticket.assignee_id == u.id %}selected{% endif %}>
+                  {{ u.get_full_name|default:u.username }} ({{ u.username }})
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button type="submit" class="btn-secondary btn-sm" style="flex: 1;">Ata</button>
+            {% if user != ticket.assignee %}
+              <button type="button" class="btn-ghost btn-sm" onclick="this.form.assignee.value='{{ user.id }}'; this.form.submit();">
+                Kendime Ata
+              </button>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+
+      <!-- Kanban Panosu Geliştirme Entegrasyonu -->
+      <div class="card mb-4 sidebar-panel-card kanban-tracking-card">
+        <h4 class="sidebar-card-title">📋 Kanban Panosu Takibi</h4>
+
+        {% if ticket.card %}
+          <div class="linked-card-info">
+            <div class="card-status-line">
+              <span class="text-muted">Mevcut Kolon:</span>
+              <span class="badge" style="background-color: var(--primary); font-size: 0.85rem;">
+                {{ ticket.card.column.name }}
+              </span>
+            </div>
+
+            <div class="card-detail-mini mt-2">
+              <div><strong>Kart:</strong> {{ ticket.card.title }}</div>
+              {% if ticket.card.difficulty_level %}
+                <div><strong>Zorluk:</strong> {{ ticket.card.difficulty_label }}</div>
+              {% endif %}
+              {% if ticket.card.sprint %}
+                <div><strong>Sprint:</strong> {{ ticket.card.sprint.name }}</div>
+              {% endif %}
+              {% if ticket.card.assignee %}
+                <div><strong>Kart Sorumlusu:</strong> {{ ticket.card.assignee.get_full_name|default:ticket.card.assignee.username }}</div>
+              {% endif %}
+            </div>
+
+            <div class="mt-3">
+              <a href="{% url 'board' ticket.project.id %}#card-{{ ticket.card.id }}" class="btn-primary btn-block text-center" style="display: block;">
+                Pano Üzerinde Görüntüle
+              </a>
+            </div>
+          </div>
+        {% else %}
+          <div class="no-card-box">
+            <p class="text-muted" style="font-size: 0.85rem;">
+              Bu talep henüz Kanban panosunda bir geliştirme kartına bağlanmadı.
+            </p>
+            <form method="post" action="{% url 'ticket_create_card' ticket.id %}">
+              {% csrf_token %}
+              <button type="submit" class="btn-primary btn-block">
+                ⚡ Panoda Kart Oluştur (Geliştirmeye Al)
+              </button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Talep Meta Bilgileri -->
+      <div class="card sidebar-panel-card meta-info-card">
+        <h4 class="sidebar-card-title">Bilgiler</h4>
+        <div class="meta-info-list">
+          <div class="meta-row">
+            <span class="meta-label">Proje:</span>
+            <span class="meta-val"><a href="{% url 'board' ticket.project.id %}">{{ ticket.project.name }} ({{ ticket.project.key }})</a></span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">İşi Açan:</span>
+            <span class="meta-val">👤 {{ ticket.reporter.get_full_name|default:ticket.reporter.username }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">E-posta:</span>
+            <span class="meta-val">{{ ticket.reporter.email|default:"-" }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Kayıt Tarihi:</span>
+            <span class="meta-val">{{ ticket.created_at|date:"d.m.Y H:i" }}</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Son Güncelleme:</span>
+            <span class="meta-val">{{ ticket.updated_at|date:"d.m.Y H:i" }}</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Yeni Talep / Hata Bildir — Kanban Manager{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h2>Yeni Hata / Geliştirme Talebi</h2>
+    <p class="text-muted">Projeniz için hata bildirin veya yeni özellik / iyileştirme isteği açın.</p>
+  </div>
+  <div>
+    {% if project %}
+      <a href="{% url 'project_tickets' project.id %}" class="btn-ghost">← Proje Talepleri</a>
+    {% else %}
+      <a href="{% url 'ticket_list' %}" class="btn-ghost">← Tüm Talepler</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="form-container">
+  <form method="post" enctype="multipart/form-data" class="card">
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">
+        {{ form.non_field_errors }}
+      </div>
+    {% endif %}
+
+    {% if not project %}
+    <div class="form-group mb-3">
+      <label for="{{ form.project.id_for_label }}">{{ form.project.label }} <span class="text-danger">*</span></label>
+      {{ form.project }}
+      {% if form.project.errors %}<div class="form-error">{{ form.project.errors }}</div>{% endif %}
+    </div>
+    {% else %}
+      {{ form.project }}
+      <div class="form-group mb-3">
+        <label>Proje:</label>
+        <div class="form-control-static">
+          <strong>{{ project.key }}</strong> — {{ project.name }}
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="form-row" style="display: flex; gap: 16px; flex-wrap: wrap;">
+      <div class="form-group mb-3" style="flex: 1; min-width: 240px;">
+        <label for="{{ form.ticket_type.id_for_label }}">{{ form.ticket_type.label }} <span class="text-danger">*</span></label>
+        {{ form.ticket_type }}
+        {% if form.ticket_type.errors %}<div class="form-error">{{ form.ticket_type.errors }}</div>{% endif %}
+      </div>
+
+      <div class="form-group mb-3" style="flex: 1; min-width: 240px;">
+        <label for="{{ form.priority.id_for_label }}">{{ form.priority.label }} <span class="text-danger">*</span></label>
+        {{ form.priority }}
+        {% if form.priority.errors %}<div class="form-error">{{ form.priority.errors }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="form-group mb-3">
+      <label for="{{ form.title.id_for_label }}">{{ form.title.label }} <span class="text-danger">*</span></label>
+      {{ form.title }}
+      {% if form.title.errors %}<div class="form-error">{{ form.title.errors }}</div>{% endif %}
+    </div>
+
+    <div class="form-group mb-3">
+      <label for="{{ form.description.id_for_label }}">{{ form.description.label }}</label>
+      {{ form.description }}
+      {% if form.description.errors %}<div class="form-error">{{ form.description.errors }}</div>{% endif %}
+      <small class="text-muted">Hatanın nasıl oluştuğu, adımlar, beklenen davranış veya geliştirilmesi istenen özelliğin kapsamını detaylıca yazabilirsiniz.</small>
+    </div>
+
+    <div class="form-group mb-3">
+      <label for="{{ form.assignee.id_for_label }}">{{ form.assignee.label }}</label>
+      {{ form.assignee }}
+      {% if form.assignee.errors %}<div class="form-error">{{ form.assignee.errors }}</div>{% endif %}
+      <small class="text-muted">Geliştirmeyi yapacak kişiyi biliyorsanız şimdi atayabilirsiniz. Boş bırakırsanız sonradan da atanabilir.</small>
+    </div>
+
+    <!-- Resim ve Ek Dosyalar Yükleme Alanı -->
+    <div class="form-group mb-4 attachment-upload-box">
+      <label for="attachments"><strong>Ekler ve Resimler:</strong></label>
+      <input type="file" name="attachments" id="attachments" multiple class="form-control" accept="image/*,.pdf,.txt,.log,.zip,.json">
+      <small class="text-muted">Hata ekran görüntüleri (screenshot), log dosyaları veya ilgili belgeleri seçebilirsiniz (birden fazla dosya seçilebilir).</small>
+    </div>
+
+    <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+      {% if project %}
+        <a href="{% url 'project_tickets' project.id %}" class="btn-ghost">İptal</a>
+      {% else %}
+        <a href="{% url 'ticket_list' %}" class="btn-ghost">İptal</a>
+      {% endif %}
+      <button type="submit" class="btn-primary">Talebi Oluştur ve Kaydet</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

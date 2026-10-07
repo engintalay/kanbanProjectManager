@@ -166,10 +166,13 @@ os.environ["ENCRYPTION_KEY"] = ENCRYPTION_KEY
 os.environ["DJANGO_ENCRYPTION_KEY"] = ENCRYPTION_KEY
 
 # ---------------------------------------------------------------------------
-# Static files
+# Static and Media files
 # ---------------------------------------------------------------------------
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

@@ -31,6 +31,7 @@
       Talepler {% if pending_requests_count > 0 %}<span class="badge-count">{{ pending_requests_count }}</span>{% endif %}
     </a>
     {% endif %}
+    <a href="{% url 'project_tickets' project.id %}" class="btn-ghost" title="Hata Bildirimleri ve Geliştirme Talepleri">🐞 Hata & Talepler</a>
     {% if project.jira_connection %}
     <a href="{% url 'refresh_project' project.id %}" class="btn-ghost">Jira Yenile</a>
     <a href="{% url 'project_status_mappings' project.id %}" class="btn-ghost" title="Jira Statü Eşleme & Aktarma Ekranı">🔄 Statü Eşleme & Aktar</a>

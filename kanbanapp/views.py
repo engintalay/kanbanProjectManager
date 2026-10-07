@@ -14,9 +14,13 @@ from .forms import (
     KanbanCardForm,
     KanbanColumnForm,
     ProjectForm,
+    ProjectTicketForm,
     SprintForm,
     StatusMappingForm,
     SubTaskForm,
+    TicketAttachmentForm,
+    TicketCommentForm,
+    TicketStatusUpdateForm,
 )
 from .middleware import role_level
 from .models import (
@@ -29,10 +33,13 @@ from .models import (
     KanbanColumn,
     Project,
     ProjectMember,
+    ProjectTicket,
     RefreshLog,
     Role,
     Sprint,
     StatusMapping,
+    TicketAttachment,
+    TicketComment,
 )
 from .services import JiraService
 
@@ -2066,4 +2073,414 @@ def export_cards_csv(request, project_id):
         ])
 
     return response
+
+
+# ===========================================================================
+# Hata Bildirimi ve Geliştirme Talepleri (Tickets / Issues)
+# ===========================================================================
+
+@login_required
+def ticket_list_view(request, project_id=None):
+    """Tüm projeler veya belirli bir proje genelinde hata ve geliştirme taleplerini listele."""
+    visible_projects = _get_visible_projects(request.user)
+    current_project = None
+
+    tickets_qs = ProjectTicket.objects.filter(project__in=visible_projects).select_related(
+        "project", "reporter", "assignee", "card", "card__column"
+    ).prefetch_related("attachments", "comments")
+
+    if project_id:
+        current_project = get_object_or_404(Project, id=project_id)
+        if not _can_view_project(request.user, current_project):
+            return _forbidden(request)
+        tickets_qs = tickets_qs.filter(project=current_project)
+    else:
+        req_proj = request.GET.get("project")
+        if req_proj and req_proj.isdigit():
+            tickets_qs = tickets_qs.filter(project_id=int(req_proj))
+
+    # Filtreler
+    type_filter = request.GET.get("type", "").strip()
+    if type_filter in [ProjectTicket.TYPE_BUG, ProjectTicket.TYPE_FEATURE, ProjectTicket.TYPE_IMPROVEMENT]:
+        tickets_qs = tickets_qs.filter(ticket_type=type_filter)
+
+    status_filter = request.GET.get("status", "").strip()
+    if status_filter == "all_open":
+        tickets_qs = tickets_qs.exclude(status__in=[ProjectTicket.STATUS_RESOLVED, ProjectTicket.STATUS_CLOSED, ProjectTicket.STATUS_REJECTED])
+    elif status_filter in dict(ProjectTicket.STATUS_CHOICES):
+        tickets_qs = tickets_qs.filter(status=status_filter)
+
+    priority_filter = request.GET.get("priority", "").strip()
+    if priority_filter in dict(ProjectTicket.PRIORITY_CHOICES):
+        tickets_qs = tickets_qs.filter(priority=priority_filter)
+
+    assigned_filter = request.GET.get("assigned", "").strip()
+    if assigned_filter == "me":
+        tickets_qs = tickets_qs.filter(assignee=request.user)
+    elif assigned_filter == "unassigned":
+        tickets_qs = tickets_qs.filter(assignee__isnull=True)
+
+    reported_filter = request.GET.get("reported", "").strip()
+    if reported_filter == "me":
+        tickets_qs = tickets_qs.filter(reporter=request.user)
+
+    search_query = request.GET.get("q", "").strip()
+    if search_query:
+        tickets_qs = tickets_qs.filter(
+            Q(title__icontains=search_query) | Q(description__icontains=search_query)
+        )
+
+    # İstatistikler (Genel görünüm için)
+    base_scope = ProjectTicket.objects.filter(project=current_project) if current_project else ProjectTicket.objects.filter(project__in=visible_projects)
+    total_count = base_scope.count()
+    open_bugs_count = base_scope.filter(
+        ticket_type=ProjectTicket.TYPE_BUG
+    ).exclude(status__in=[ProjectTicket.STATUS_RESOLVED, ProjectTicket.STATUS_CLOSED, ProjectTicket.STATUS_REJECTED]).count()
+    open_features_count = base_scope.filter(
+        ticket_type=ProjectTicket.TYPE_FEATURE
+    ).exclude(status__in=[ProjectTicket.STATUS_RESOLVED, ProjectTicket.STATUS_CLOSED, ProjectTicket.STATUS_REJECTED]).count()
+    resolved_count = base_scope.filter(
+        status__in=[ProjectTicket.STATUS_RESOLVED, ProjectTicket.STATUS_CLOSED]
+    ).count()
+
+    return render(
+        request,
+        "kanbanapp/tickets.html",
+        {
+            "tickets": tickets_qs,
+            "projects": visible_projects,
+            "current_project": current_project,
+            "type_filter": type_filter,
+            "status_filter": status_filter,
+            "priority_filter": priority_filter,
+            "assigned_filter": assigned_filter,
+            "reported_filter": reported_filter,
+            "search_query": search_query,
+            "total_count": total_count,
+            "open_bugs_count": open_bugs_count,
+            "open_features_count": open_features_count,
+            "resolved_count": resolved_count,
+            "type_choices": ProjectTicket.TYPE_CHOICES,
+            "status_choices": ProjectTicket.STATUS_CHOICES,
+            "priority_choices": ProjectTicket.PRIORITY_CHOICES,
+        },
+    )
+
+
+@login_required
+def ticket_create_view(request, project_id=None):
+    """Yeni hata bildirimi veya geliştirme isteği oluştur."""
+    project = None
+    if project_id:
+        project = get_object_or_404(Project, id=project_id)
+        if not _can_view_project(request.user, project):
+            return _forbidden(request)
+
+    if request.method == "POST":
+        form = ProjectTicketForm(request.POST, request.FILES, user=request.user, project=project)
+        if form.is_valid():
+            ticket = form.save(commit=False)
+            if project:
+                ticket.project = project
+            ticket.reporter = request.user
+            ticket.save()
+
+            # Eklenen dosyalar/resimler
+            attachments_files = request.FILES.getlist("attachments")
+            for uploaded_file in attachments_files:
+                TicketAttachment.objects.create(
+                    ticket=ticket,
+                    file=uploaded_file,
+                    filename=uploaded_file.name,
+                    uploaded_by=request.user,
+                )
+
+            # Sistem notu oluştur
+            type_label = ticket.get_ticket_type_display()
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                message=f"Talep başarıyla oluşturuldu: {type_label}",
+                is_system_note=True,
+            )
+
+            messages.success(request, f"'{ticket.title}' talebi başarıyla oluşturuldu.")
+            return redirect("ticket_detail", ticket_id=ticket.id)
+        messages.error(request, "Lütfen formdaki eksik veya hatalı alanları düzeltin.")
+    else:
+        form = ProjectTicketForm(user=request.user, project=project)
+
+    return render(
+        request,
+        "kanbanapp/ticket_form.html",
+        {
+            "form": form,
+            "project": project,
+            "mode": "create",
+        },
+    )
+
+
+@login_required
+def ticket_detail_view(request, ticket_id):
+    """Talep detay sayfası: Resim ve ekler, geliştirme takibi, işi açan-yapan mesajlaşması."""
+    ticket = get_object_or_404(
+        ProjectTicket.objects.select_related(
+            "project", "reporter", "assignee", "card", "card__column", "card__sprint"
+        ),
+        id=ticket_id,
+    )
+
+    if not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+
+    attachments = ticket.attachments.all().select_related("uploaded_by")
+    comments = ticket.comments.all().select_related("author", "author__role")
+
+    comment_form = TicketCommentForm()
+    status_form = TicketStatusUpdateForm(
+        initial={"status": ticket.status, "resolution_notes": ticket.resolution_notes}
+    )
+    attachment_form = TicketAttachmentForm()
+
+    # Proje üyeleri ve geliştiriciler
+    from django.db.models import Q
+    member_ids = list(ticket.project.project_members.values_list("user_id", flat=True))
+    if ticket.project.created_by_id:
+        member_ids.append(ticket.project.created_by_id)
+    assignable_users = User.objects.filter(
+        Q(id__in=member_ids) | Q(project_id=ticket.project.id) | Q(role__level__in=[1, 2, 3])
+    ).distinct().order_by("username")
+
+    can_manage = (
+        _is_admin(request.user)
+        or ticket.project.created_by_id == request.user.id
+        or ticket.reporter_id == request.user.id
+        or ticket.assignee_id == request.user.id
+        or _role_level(request.user) <= 3
+    )
+
+    return render(
+        request,
+        "kanbanapp/ticket_detail.html",
+        {
+            "ticket": ticket,
+            "attachments": attachments,
+            "comments": comments,
+            "comment_form": comment_form,
+            "status_form": status_form,
+            "attachment_form": attachment_form,
+            "assignable_users": assignable_users,
+            "can_manage": can_manage,
+            "is_reporter": ticket.reporter_id == request.user.id,
+            "is_assignee": ticket.assignee_id == request.user.id,
+        },
+    )
+
+
+@login_required
+def ticket_add_comment_view(request, ticket_id):
+    """Talep altına mesaj veya yorum gönder (İşi açan ve yapan arasında mesajlaşma)."""
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id)
+    if not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = TicketCommentForm(request.POST, request.FILES)
+        if form.is_valid():
+            comment = form.save(commit=False)
+            comment.ticket = ticket
+            comment.author = request.user
+            comment.save()
+            messages.success(request, "Mesajınız iletildi.")
+        else:
+            messages.error(request, "Mesaj gönderilemedi, lütfen içeriği kontrol edin.")
+
+    return redirect("ticket_detail", ticket_id=ticket.id)
+
+
+@login_required
+def ticket_update_status_view(request, ticket_id):
+    """Talebin durumunu güncelle ve çözüm notu kaydet."""
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id)
+    if not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        new_status = request.POST.get("status", "").strip()
+        resolution_notes = request.POST.get("resolution_notes", "").strip()
+
+        if new_status in dict(ProjectTicket.STATUS_CHOICES):
+            old_status_display = ticket.get_status_display()
+            ticket.status = new_status
+            if resolution_notes:
+                ticket.resolution_notes = resolution_notes
+            ticket.save()
+
+            note_text = f"Durum '{old_status_display}' seviyesinden '{ticket.get_status_display()}' olarak güncellendi."
+            if resolution_notes:
+                note_text += f"\nÇözüm Notu: {resolution_notes}"
+
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                message=note_text,
+                is_system_note=True,
+            )
+            messages.success(request, f"Talep durumu '{ticket.get_status_display()}' olarak güncellendi.")
+        else:
+            messages.error(request, "Geçersiz durum seçildi.")
+
+    return redirect("ticket_detail", ticket_id=ticket.id)
+
+
+@login_required
+def ticket_assign_view(request, ticket_id):
+    """Talebi bir kullanıcıya / geliştiriciye ata veya atamayı kaldır."""
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id)
+    if not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        assignee_id = request.POST.get("assignee", "").strip()
+        if assignee_id:
+            new_assignee = get_object_or_404(User, id=int(assignee_id))
+            ticket.assignee = new_assignee
+            ticket.save()
+
+            # Bağlı kanban kartı varsa ve sorumlusu yoksa ona da ata
+            if ticket.card and not ticket.card.assignee:
+                ticket.card.assignee = new_assignee
+                ticket.card.save()
+
+            name = new_assignee.get_full_name() or new_assignee.username
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                message=f"İş geliştirilmek üzere {name} kullanıcısına atandı.",
+                is_system_note=True,
+            )
+            messages.success(request, f"Talep {name} kullanıcısına atandı.")
+        else:
+            ticket.assignee = None
+            ticket.save()
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                message="Atama kaldırıldı.",
+                is_system_note=True,
+            )
+            messages.info(request, "Atama kaldırıldı.")
+
+    return redirect("ticket_detail", ticket_id=ticket.id)
+
+
+@login_required
+def ticket_create_card_view(request, ticket_id):
+    """Talebi tek tıkla Kanban panosunda geliştirme kartına dönüştür ve bağla."""
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id)
+    if not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+
+    if not _can_edit_cards(request.user, ticket.project):
+        return _forbidden(request)
+
+    if ticket.card:
+        messages.warning(request, "Bu talep zaten bir Kanban kartına bağlı.")
+        return redirect("ticket_detail", ticket_id=ticket.id)
+
+    # İlk uygun kolonu seç veya oluştur
+    column = ticket.project.columns.first()
+    if not column:
+        column = KanbanColumn.objects.create(
+            project=ticket.project,
+            name="Yapılacak (To Do)",
+            status_type=KanbanColumn.CUSTOM,
+            position=0,
+        )
+
+    # Kartı oluştur
+    card = KanbanCard.objects.create(
+        project=ticket.project,
+        column=column,
+        title=f"[{ticket.get_ticket_type_display()}] {ticket.title}",
+        description=ticket.description,
+        assignee=ticket.assignee,
+        is_extra=True,
+    )
+
+    ticket.card = card
+    if ticket.status == ProjectTicket.STATUS_OPEN:
+        ticket.status = ProjectTicket.STATUS_IN_PROGRESS
+    ticket.save()
+
+    TicketComment.objects.create(
+        ticket=ticket,
+        author=request.user,
+        message=f"Bu talep için Kanban panosunda '{card.title}' başlıklı yeni kart oluşturuldu (Kolon: {column.name}).",
+        is_system_note=True,
+    )
+
+    messages.success(request, f"'{card.title}' panoya eklendi ve geliştirmeye alındı.")
+    return redirect("ticket_detail", ticket_id=ticket.id)
+
+
+@login_required
+def ticket_add_attachment_view(request, ticket_id):
+    """Talebe yeni dosya veya resim ekle."""
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id)
+    if not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        files = request.FILES.getlist("file")
+        if not files and "file" in request.FILES:
+            files = [request.FILES["file"]]
+
+        added = 0
+        for uploaded_file in files:
+            TicketAttachment.objects.create(
+                ticket=ticket,
+                file=uploaded_file,
+                filename=uploaded_file.name,
+                uploaded_by=request.user,
+            )
+            added += 1
+
+        if added > 0:
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                message=f"{added} adet yeni ek yüklendi.",
+                is_system_note=True,
+            )
+            messages.success(request, f"{added} adet ek başarıyla yüklendi.")
+        else:
+            messages.error(request, "Yüklenecek dosya seçilmedi.")
+
+    return redirect("ticket_detail", ticket_id=ticket.id)
+
+
+@login_required
+def ticket_delete_attachment_view(request, ticket_id, attachment_id):
+    """Eklenen bir dosyayı veya resmi sil."""
+    ticket = get_object_or_404(ProjectTicket, id=ticket_id)
+    attachment = get_object_or_404(TicketAttachment, id=attachment_id, ticket=ticket)
+
+    can_delete = (
+        _is_admin(request.user)
+        or ticket.project.created_by_id == request.user.id
+        or attachment.uploaded_by_id == request.user.id
+    )
+    if not can_delete:
+        return _forbidden(request)
+
+    if request.method == "POST":
+        fname = attachment.filename
+        attachment.file.delete(save=False)
+        attachment.delete()
+        messages.success(request, f"'{fname}' eki silindi.")
+
+    return redirect("ticket_detail", ticket_id=ticket.id)
+
 

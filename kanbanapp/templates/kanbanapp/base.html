@@ -15,6 +15,7 @@
       <nav>
         <a href="{% url 'dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">Dashboard</a>
         <a href="{% url 'projects' %}" class="{% if request.resolver_match.url_name == 'projects' %}active{% endif %}">Projeler</a>
+        <a href="{% url 'ticket_list' %}" class="{% if 'ticket' in request.resolver_match.url_name %}active{% endif %}">Hata & Talepler</a>
         {% if can_manage_jira %}
         <a href="{% url 'jira_connections' %}" class="{% if 'jira' in request.resolver_match.url_name %}active{% endif %}">Jira Bağlantıları</a>
         {% endif %}
