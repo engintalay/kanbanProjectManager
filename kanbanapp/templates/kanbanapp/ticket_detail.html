@@ -16,7 +16,7 @@
       </div>
       <h2 class="ticket-main-title">
         <span class="ticket-code-badge">{{ ticket.ticket_code }}</span>
-        {{ ticket.title }}
+        {{ ticket.title|render_jira_inline }}
       </h2>
       <div class="ticket-meta-pills">
         {% if ticket.ticket_type == 'bug' %}
@@ -217,7 +217,7 @@
               <!-- Sistem Bildirimi -->
               <div class="system-timeline-item">
                 <span class="system-bubble">
-                  ⚙️ {{ c.message|linebreaksbr }}
+                  ⚙️ {{ c.message|render_jira_markup }}
                   <span class="comment-time">{{ c.created_at|date:"d M H:i" }}</span>
                 </span>
               </div>
@@ -236,7 +236,7 @@
                   </div>
 
                   <div class="chat-text">
-                    {{ c.message|linebreaks }}
+                    {{ c.message|render_jira_markup }}
                   </div>
 
                   {% if c.attachment %}
@@ -423,7 +423,7 @@
             </div>
 
             <div class="card-detail-mini mt-2">
-              <div><strong>Kart:</strong> {{ ticket.card.title }}</div>
+              <div><strong>Kart:</strong> {{ ticket.card.title|render_jira_inline }}</div>
               {% if ticket.card.difficulty_level %}
                 <div><strong>Zorluk:</strong> {{ ticket.card.difficulty_label }}</div>
               {% endif %}

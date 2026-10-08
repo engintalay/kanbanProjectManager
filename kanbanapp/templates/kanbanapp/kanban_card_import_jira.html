@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}Jira'dan İş Ekle — {{ project.key }}{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -166,10 +167,10 @@
               </span>
             </td>
             <td style="padding: 12px 14px;">
-              <div style="font-weight: 600; color: var(--text); margin-bottom: 2px;">{{ issue.summary }}</div>
+              <div style="font-weight: 600; color: var(--text); margin-bottom: 2px;">{{ issue.summary|render_jira_inline }}</div>
               {% if issue.description %}
               <div style="font-size: 0.78rem; color: var(--muted); max-height: 2.4em; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">
-                {{ issue.description|truncatechars:140 }}
+                {{ issue.description|render_jira_preview:140 }}
               </div>
               {% endif %}
             </td>

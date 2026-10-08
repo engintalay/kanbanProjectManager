@@ -137,7 +137,7 @@
           </td>
           <td>
             <a href="{% url 'ticket_detail' t.id %}" class="ticket-title-link">
-              <strong>{{ t.title }}</strong>
+              <strong>{{ t.title|render_jira_inline }}</strong>
             </a>
             {% if t.description %}
               <div class="ticket-desc-snippet text-muted">{{ t.description|render_jira_preview:85 }}</div>

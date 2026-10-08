@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}{{ project.key }} — Raporlar{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -53,7 +54,7 @@
       {% for card in drift_cards %}
       <tr>
         <td>
-          <strong>{{ card.title }}</strong>
+          <strong>{{ card.title|render_jira_inline }}</strong>
           {% if card.jira_key %}<br><span class="card-key">{{ card.jira_key }}</span>{% endif %}
         </td>
         <td>{{ card.assignee.username|default:"-" }}</td>

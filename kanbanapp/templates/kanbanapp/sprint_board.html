@@ -51,7 +51,7 @@
   <ul style="margin:6px 0 0 20px; padding:0; font-size:0.9rem;">
     {% for b in blocked_cards %}
     <li>
-      <strong>{{ b.card.jira_key }} - {{ b.card.title }}</strong> işi tamamlanmamış bağımlılıklara sahiptir:
+      <strong>{{ b.card.jira_key }} - {{ b.card.title|render_jira_inline }}</strong> işi tamamlanmamış bağımlılıklara sahiptir:
       <code>{{ b.blocked_by|join:", " }}</code>
     </li>
     {% endfor %}
@@ -106,7 +106,7 @@
         <div class="card"
              {% if can_edit_cards %}draggable="true"{% endif %}
              data-card-id="{{ card.id }}"
-             data-card-title="{{ card.title|escape }}"
+             data-card-title="{{ card.title|strip_jira_markup|escape }}"
              data-column-id="{{ column.id }}"
              data-column-name="{{ column.name|escape }}"
              data-jira-key="{{ card.jira_key|default:'' }}"
@@ -114,13 +114,13 @@
              data-has-subtasks="{{ card.has_sub_tasks|yesno:'1,0' }}">
           
           {% if card.parent_card %}
-          <div class="subtask-parent-ref" title="Ana İş: {{ card.parent_card.title }}">
-            ↳ <strong>Ana İş:</strong> {{ card.parent_card.title|truncatechars:30 }}
+          <div class="subtask-parent-ref" title="Ana İş: {{ card.parent_card.title|strip_jira_markup|escape }}">
+            ↳ <strong>Ana İş:</strong> {{ card.parent_card.title|render_jira_inline }}
           </div>
           {% endif %}
 
           <div class="card-header">
-            <div class="card-title">{{ card.title }}</div>
+            <div class="card-title">{{ card.title|render_jira_inline }}</div>
             {% if card.difficulty_level %}
             <span class="diff-badge" style="background-color: {{ card.difficulty_color }};" title="{{ card.difficulty_label }}">
               {{ card.difficulty_level }}
@@ -170,7 +170,7 @@
                     {{ sub.difficulty_level }}
                   </span>
                   {% endif %}
-                  <span class="subtask-item-title">{{ sub.title }}</span>
+                  <span class="subtask-item-title">{{ sub.title|render_jira_inline }}</span>
                 </div>
 
                 <div class="subtask-item-details">

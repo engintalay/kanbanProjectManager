@@ -1,10 +1,11 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}İş Bölme — {{ card.title }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <a href="{% url 'board' project.id %}" class="back-link">← Panoya Dön</a>
-    <h1>İş Bölme &mdash; {{ card.title }}</h1>
+    <h1>İş Bölme &mdash; {{ card.title|render_jira_inline }}</h1>
     <p class="muted">Ana işi alt görevlere (sub-task) bölerek takip edin. Ana işin zorluk seviyesi 0'a çekilir.</p>
   </div>
 </div>
@@ -45,7 +46,7 @@
       {% for sub in sub_tasks %}
       <div class="card">
         <div class="card-header">
-          <div class="card-title">{{ sub.title }}</div>
+          <div class="card-title">{{ sub.title|render_jira_inline }}</div>
           {% if sub.difficulty_level %}
           <span class="diff-badge" style="background-color: {{ sub.difficulty_color }};">
             {{ sub.difficulty_level }}
@@ -60,7 +61,7 @@
           {% endif %}
           <span class="badge">{{ sub.column.name }}</span>
         </div>
-        {% if sub.description %}<div class="card-desc">{{ sub.description }}</div>{% endif %}
+        {% if sub.description %}<div class="card-desc">{{ sub.description|render_jira_preview:140 }}</div>{% endif %}
       </div>
       {% empty %}
       <p class="empty">Henüz eklenmiş alt görev yok.</p>

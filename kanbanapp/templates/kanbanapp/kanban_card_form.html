@@ -12,7 +12,7 @@
         {% if card.jira_key %}
         <span class="card-key" style="font-size:0.95rem; padding:4px 10px; border-radius:6px;">{{ card.jira_key }}</span>
         {% endif %}
-        <h1 style="margin:0; font-size:1.45rem;">{% if mode == "edit" %}{{ card.title|default:"Kartı Düzenle" }}{% else %}Yeni Kart Oluştur{% endif %}</h1>
+        <h1 style="margin:0; font-size:1.45rem;">{% if mode == "edit" %}{{ card.title|render_jira_inline|default:"Kartı Düzenle" }}{% else %}Yeni Kart Oluştur{% endif %}</h1>
       </div>
     </div>
     {% if mode == "edit" and card.jira_key and project.jira_connection %}
@@ -60,7 +60,7 @@
             </span>
           </div>
           <div class="card-readonly-title">
-            {{ card.title|default:form.title.value|default:"(Başlık belirtilmemiş)" }}
+            {{ card.title|render_jira_inline|default:form.title.value|default:"(Başlık belirtilmemiş)" }}
           </div>
           {% for error in form.title.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
         </div>

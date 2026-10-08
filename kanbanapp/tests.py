@@ -2284,6 +2284,70 @@ class JiraMarkupAndColorFormattingTests(TestCase):
         self.assertIn("Acil Hata!", rendered_preview)
         self.assertIn("Lütfen hemen ilgilenin.", rendered_preview)
 
+    def test_jira_markup_color_syntax_variants(self):
+        from kanbanapp.templatetags.jira_filters import render_jira_markup, render_jira_preview, render_jira_inline
+
+        # Semicolon ve quotes varyantları
+        self.assertIn('style="color: #FF0000;"', render_jira_markup('{color:#FF0000;}Noktalı virgüllü{color}'))
+        self.assertIn('style="color: #FF0000;"', render_jira_markup('{color:"#FF0000"}Çift tırnaklı{color}'))
+        self.assertIn('style="color: #FF0000;"', render_jira_markup("{color:'#FF0000'}Tek tırnaklı{color}"))
+
+        # Çok satırlı ve kapanmamış renk etiketi
+        unclosed_multi = "{color:#FF0000}\n\nAşağıda belirtilenlerin ivedilikle yapılmasını rica ederim."
+        res_unclosed = render_jira_markup(unclosed_multi)
+        self.assertNotIn("{color:#FF0000}", res_unclosed)
+        self.assertIn('style="color: #FF0000;"', res_unclosed)
+        self.assertIn("Aşağıda belirtilenlerin ivedilikle yapılmasını rica ederim.", res_unclosed)
+
+        # Kapanış etiketi {color:#FF0000} veya {/color} olanlar
+        self.assertIn('style="color: #FF0000;"', render_jira_markup('{color:#FF0000}Metin{/color}'))
+        self.assertIn('style="color: #FF0000;"', render_jira_markup('{color:#FF0000}Metin{color:#FF0000}'))
+
+        # Aynı satırda birden fazla renk
+        multi_colors = "{color:#FF0000}Kırmızı{color} ve {color:#0000FF}Mavi{color}"
+        res_multi = render_jira_markup(multi_colors)
+        self.assertIn('style="color: #FF0000;"', res_multi)
+        self.assertIn('style="color: #0000FF;"', res_multi)
+        self.assertNotIn("{color", res_multi)
+
+        # render_jira_inline testi (kart başlıkları ve kısa etiketler için)
+        inline_input = "{color:#FF0000}[ACİL]{color} Ödeme Ekranı Hatası"
+        res_inline = render_jira_inline(inline_input)
+        self.assertNotIn("{color:#FF0000}", res_inline)
+        self.assertNotIn("{color}", res_inline)
+        self.assertIn('style="color: #FF0000;', res_inline)
+        self.assertIn("[ACİL]", res_inline)
+        self.assertIn("Ödeme Ekranı Hatası", res_inline)
+
+    def test_board_view_renders_jira_colors_without_raw_tags(self):
+        from .models import Role, Project, KanbanColumn, KanbanCard
+        admin_role, _ = Role.objects.get_or_create(slug="admin", defaults={"name": "Admin", "level": Role.LEVEL_ADMIN})
+        user = User.objects.create_superuser(username="board_color_admin", password="p", email="bca@e.com", role=admin_role)
+        project = Project.objects.create(key="COLP", name="Color Project", created_by=user)
+        col = KanbanColumn.objects.create(project=project, name="Yapılacak", position=0)
+
+        card = KanbanCard.objects.create(
+            project=project,
+            column=col,
+            title="{color:#FF0000}[ACİL]{color} Veri Aktarım Hatası",
+            description="{color:#FF0000}\n\nAşağıda belirtilenlerin ivedilikle yapılmasını rica ederim.{color}",
+        )
+
+        client = Client()
+        client.force_login(user)
+        resp = client.get(reverse("board", kwargs={"project_id": project.id}))
+        self.assertEqual(resp.status_code, 200)
+
+        content = resp.content.decode("utf-8")
+        # Formatlama etiketleri ham olarak GÖRÜNMEMELİ
+        self.assertNotIn("{color:#FF0000}", content)
+        self.assertNotIn("{color}", content)
+
+        # Renk stili uygulanmış OLMALI
+        self.assertIn("color: #FF0000;", content)
+        self.assertIn("Aşağıda belirtilenlerin ivedilikle yapılmasını rica ederim.", content)
+        self.assertIn("[ACİL]", content)
+
 
 
 

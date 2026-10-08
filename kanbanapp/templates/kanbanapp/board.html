@@ -111,14 +111,14 @@
       <div class="card"
            {% if can_edit_cards %}draggable="true"{% endif %}
            data-card-id="{{ card.id }}"
-           data-card-title="{{ card.title|escape }}"
+           data-card-title="{{ card.title|strip_jira_markup|escape }}"
            data-column-id="{{ column.id }}"
            data-column-name="{{ column.name|escape }}"
            data-jira-key="{{ card.jira_key|default:'' }}"
            data-is-subtask="{% if card.parent_card %}1{% else %}0{% endif %}"
            data-has-subtasks="{% if card.has_sub_tasks %}1{% else %}0{% endif %}">
         <div class="card-header">
-          <div class="card-title">{{ card.title }}</div>
+          <div class="card-title">{{ card.title|render_jira_inline }}</div>
           {% if card.difficulty_level %}
           <span class="diff-badge" style="background-color: {{ card.difficulty_color }};" title="{{ card.difficulty_label }}">
             {{ card.difficulty_level }}
@@ -128,7 +128,7 @@
 
         {% if card.parent_card %}
         <div class="subtask-parent-ref" title="Bu kart bir alt görevdir">
-          ↳ Ana İş: {{ card.parent_card.title|truncatechars:45 }}
+          ↳ Ana İş: {{ card.parent_card.title|render_jira_inline }}
         </div>
         {% endif %}
 
@@ -174,7 +174,7 @@
                   {{ sub.difficulty_level }}
                 </span>
                 {% endif %}
-                <span class="subtask-item-title">{{ sub.title }}</span>
+                <span class="subtask-item-title">{{ sub.title|render_jira_inline }}</span>
               </div>
 
               <div class="subtask-item-details">

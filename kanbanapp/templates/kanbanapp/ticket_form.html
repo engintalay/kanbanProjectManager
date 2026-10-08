@@ -1,11 +1,12 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}{% if mode == 'edit' %}{{ ticket.ticket_code }}: Talebi Düzenle — Kanban Manager{% else %}Yeni Talep / Hata Bildir — Kanban Manager{% endif %}{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
     <h2>{% if mode == 'edit' %}Talebi Düzenle: {{ ticket.ticket_code }}{% else %}Yeni Hata / Geliştirme Talebi{% endif %}</h2>
-    <p class="text-muted">{% if mode == 'edit' %}{{ ticket.title }}{% else %}Kanban Project Manager uygulaması için hata bildirin veya yeni özellik / iyileştirme isteği açın.{% endif %}</p>
+    <p class="text-muted">{% if mode == 'edit' %}{{ ticket.title|render_jira_inline }}{% else %}Kanban Project Manager uygulaması için hata bildirin veya yeni özellik / iyileştirme isteği açın.{% endif %}</p>
   </div>
   <div>
     {% if mode == 'edit' %}

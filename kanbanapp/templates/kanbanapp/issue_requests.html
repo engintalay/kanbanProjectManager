@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}{{ project.key }} — Geliştirici Talepleri{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -29,7 +30,7 @@
     <tr>
       <td class="muted">{{ req.created_at|date:"d M H:i" }}</td>
       <td>
-        <strong>{{ req.card.title }}</strong>
+        <strong>{{ req.card.title|render_jira_inline }}</strong>
         {% if req.card.jira_key %}<br><span class="card-key">{{ req.card.jira_key }}</span>{% endif %}
       </td>
       <td>{{ req.requested_by.username }}</td>
@@ -40,7 +41,7 @@
         <span class="diff-badge" style="background:#4f46e5;">{{ req.requested_difficulty }}</span>
         {% else %}-{% endif %}
       </td>
-      <td>{{ req.description|default:"-" }}</td>
+      <td>{% if req.description %}{{ req.description|render_jira_preview:140 }}{% else %}-{% endif %}</td>
       <td>
         <span class="badge {% if req.status == 'approved' %}badge-ok{% elif req.status == 'rejected' %}badge-warn{% endif %}">
           {{ req.get_status_display }}
