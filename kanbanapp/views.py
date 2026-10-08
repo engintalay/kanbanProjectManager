@@ -293,6 +293,8 @@ def _user_has_project_access(user, project):
     """
     if not user or not user.is_authenticated:
         return False
+    if not project:
+        return True
     if _is_admin(user):
         return True
     if _role_level(user) in (4, 5):
@@ -2082,11 +2084,11 @@ def export_cards_csv(request, project_id):
 
 @login_required
 def ticket_list_view(request, project_id=None):
-    """Tüm projeler veya belirli bir proje genelinde hata ve geliştirme taleplerini listele."""
+    """Kanban Project Manager ve projeler genelinde hata ve geliştirme taleplerini listele."""
     visible_projects = _get_visible_projects(request.user)
     current_project = None
 
-    tickets_qs = ProjectTicket.objects.filter(project__in=visible_projects).select_related(
+    tickets_qs = ProjectTicket.objects.all().select_related(
         "project", "reporter", "assignee", "card", "card__column"
     ).prefetch_related("attachments", "comments")
 
@@ -2096,8 +2098,10 @@ def ticket_list_view(request, project_id=None):
             return _forbidden(request)
         tickets_qs = tickets_qs.filter(project=current_project)
     else:
-        req_proj = request.GET.get("project")
-        if req_proj and req_proj.isdigit():
+        req_proj = request.GET.get("project", "").strip()
+        if req_proj == "app":
+            tickets_qs = tickets_qs.filter(project__isnull=True)
+        elif req_proj and req_proj.isdigit():
             tickets_qs = tickets_qs.filter(project_id=int(req_proj))
 
     # Filtreler
@@ -2132,7 +2136,7 @@ def ticket_list_view(request, project_id=None):
         )
 
     # İstatistikler (Genel görünüm için)
-    base_scope = ProjectTicket.objects.filter(project=current_project) if current_project else ProjectTicket.objects.filter(project__in=visible_projects)
+    base_scope = ProjectTicket.objects.filter(project=current_project) if current_project else ProjectTicket.objects.all()
     total_count = base_scope.count()
     open_bugs_count = base_scope.filter(
         ticket_type=ProjectTicket.TYPE_BUG
@@ -2170,15 +2174,13 @@ def ticket_list_view(request, project_id=None):
 
 @login_required
 def ticket_create_view(request, project_id=None):
-    """Yeni hata bildirimi veya geliştirme isteği oluştur."""
+    """Yeni hata bildirimi veya geliştirme isteği oluştur (Kanban Project Manager uygulaması için)."""
     project = None
     if project_id:
-        project = get_object_or_404(Project, id=project_id)
-        if not _can_view_project(request.user, project):
-            return _forbidden(request)
+        project = Project.objects.filter(id=project_id).first()
 
     if request.method == "POST":
-        form = ProjectTicketForm(request.POST, request.FILES, user=request.user, project=project)
+        form = ProjectTicketForm(request.POST, request.FILES, user=request.user)
         if form.is_valid():
             ticket = form.save(commit=False)
             if project:
@@ -2209,7 +2211,7 @@ def ticket_create_view(request, project_id=None):
             return redirect("ticket_detail", ticket_id=ticket.id)
         messages.error(request, "Lütfen formdaki eksik veya hatalı alanları düzeltin.")
     else:
-        form = ProjectTicketForm(user=request.user, project=project)
+        form = ProjectTicketForm(user=request.user)
 
     return render(
         request,
@@ -2232,7 +2234,7 @@ def ticket_detail_view(request, ticket_id):
         id=ticket_id,
     )
 
-    if not _can_view_project(request.user, ticket.project):
+    if ticket.project and not _can_view_project(request.user, ticket.project):
         return _forbidden(request)
 
     attachments = ticket.attachments.all().select_related("uploaded_by")
@@ -2244,18 +2246,21 @@ def ticket_detail_view(request, ticket_id):
     )
     attachment_form = TicketAttachmentForm()
 
-    # Proje üyeleri ve geliştiriciler
     from django.db.models import Q
-    member_ids = list(ticket.project.project_members.values_list("user_id", flat=True))
-    if ticket.project.created_by_id:
-        member_ids.append(ticket.project.created_by_id)
-    assignable_users = User.objects.filter(
-        Q(id__in=member_ids) | Q(project_id=ticket.project.id) | Q(role__level__in=[1, 2, 3])
-    ).distinct().order_by("username")
+    visible_projects = _get_visible_projects(request.user)
+    if ticket.project:
+        member_ids = list(ticket.project.project_members.values_list("user_id", flat=True))
+        if ticket.project.created_by_id:
+            member_ids.append(ticket.project.created_by_id)
+        assignable_users = User.objects.filter(
+            Q(id__in=member_ids) | Q(project_id=ticket.project.id) | Q(role__level__in=[1, 2, 3])
+        ).distinct().order_by("username")
+    else:
+        assignable_users = User.objects.filter(is_active=True).order_by("username")
 
     can_manage = (
         _is_admin(request.user)
-        or ticket.project.created_by_id == request.user.id
+        or (ticket.project and ticket.project.created_by_id == request.user.id)
         or ticket.reporter_id == request.user.id
         or ticket.assignee_id == request.user.id
         or _role_level(request.user) <= 3
@@ -2273,6 +2278,7 @@ def ticket_detail_view(request, ticket_id):
             "attachment_form": attachment_form,
             "assignable_users": assignable_users,
             "can_manage": can_manage,
+            "projects": visible_projects,
             "is_reporter": ticket.reporter_id == request.user.id,
             "is_assignee": ticket.assignee_id == request.user.id,
         },
@@ -2380,21 +2386,33 @@ def ticket_assign_view(request, ticket_id):
 def ticket_create_card_view(request, ticket_id):
     """Talebi tek tıkla Kanban panosunda geliştirme kartına dönüştür ve bağla."""
     ticket = get_object_or_404(ProjectTicket, id=ticket_id)
-    if not _can_view_project(request.user, ticket.project):
+    if ticket.project and not _can_view_project(request.user, ticket.project):
         return _forbidden(request)
 
-    if not _can_edit_cards(request.user, ticket.project):
+    if ticket.project and not _can_edit_cards(request.user, ticket.project):
         return _forbidden(request)
 
     if ticket.card:
         messages.warning(request, "Bu talep zaten bir Kanban kartına bağlı.")
         return redirect("ticket_detail", ticket_id=ticket.id)
 
+    target_project = ticket.project
+    if not target_project:
+        target_project_id = request.POST.get("target_project_id")
+        if target_project_id and target_project_id.isdigit():
+            target_project = Project.objects.filter(id=int(target_project_id)).first()
+        if not target_project:
+            target_project = _get_visible_projects(request.user).first()
+        if not target_project:
+            messages.error(request, "Kart oluşturmak için sistemde en az bir proje bulunmalıdır.")
+            return redirect("ticket_detail", ticket_id=ticket.id)
+        ticket.project = target_project
+
     # İlk uygun kolonu seç veya oluştur
-    column = ticket.project.columns.first()
+    column = target_project.columns.first()
     if not column:
         column = KanbanColumn.objects.create(
-            project=ticket.project,
+            project=target_project,
             name="Yapılacak (To Do)",
             status_type=KanbanColumn.CUSTOM,
             position=0,
@@ -2402,7 +2420,7 @@ def ticket_create_card_view(request, ticket_id):
 
     # Kartı oluştur
     card = KanbanCard.objects.create(
-        project=ticket.project,
+        project=target_project,
         column=column,
         title=f"[{ticket.get_ticket_type_display()}] {ticket.title}",
         description=ticket.description,
@@ -2430,7 +2448,7 @@ def ticket_create_card_view(request, ticket_id):
 def ticket_add_attachment_view(request, ticket_id):
     """Talebe yeni dosya veya resim ekle."""
     ticket = get_object_or_404(ProjectTicket, id=ticket_id)
-    if not _can_view_project(request.user, ticket.project):
+    if ticket.project and not _can_view_project(request.user, ticket.project):
         return _forbidden(request)
 
     if request.method == "POST":
@@ -2466,11 +2484,14 @@ def ticket_add_attachment_view(request, ticket_id):
 def ticket_delete_attachment_view(request, ticket_id, attachment_id):
     """Eklenen bir dosyayı veya resmi sil."""
     ticket = get_object_or_404(ProjectTicket, id=ticket_id)
+    if ticket.project and not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+
     attachment = get_object_or_404(TicketAttachment, id=attachment_id, ticket=ticket)
 
     can_delete = (
         _is_admin(request.user)
-        or ticket.project.created_by_id == request.user.id
+        or (ticket.project and ticket.project.created_by_id == request.user.id)
         or attachment.uploaded_by_id == request.user.id
     )
     if not can_delete:

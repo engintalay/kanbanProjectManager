@@ -5,14 +5,10 @@
 <div class="page-head">
   <div>
     <h2>Yeni Hata / Geliştirme Talebi</h2>
-    <p class="text-muted">Projeniz için hata bildirin veya yeni özellik / iyileştirme isteği açın.</p>
+    <p class="text-muted">Kanban Project Manager uygulaması için hata bildirin veya yeni özellik / iyileştirme isteği açın.</p>
   </div>
   <div>
-    {% if project %}
-      <a href="{% url 'project_tickets' project.id %}" class="btn-ghost">← Proje Talepleri</a>
-    {% else %}
-      <a href="{% url 'ticket_list' %}" class="btn-ghost">← Tüm Talepler</a>
-    {% endif %}
+    <a href="{% url 'ticket_list' %}" class="btn-ghost">← Tüm Talepler</a>
   </div>
 </div>
 
@@ -23,22 +19,6 @@
     {% if form.non_field_errors %}
       <div class="alert alert-danger">
         {{ form.non_field_errors }}
-      </div>
-    {% endif %}
-
-    {% if not project %}
-    <div class="form-group mb-3">
-      <label for="{{ form.project.id_for_label }}">{{ form.project.label }} <span class="text-danger">*</span></label>
-      {{ form.project }}
-      {% if form.project.errors %}<div class="form-error">{{ form.project.errors }}</div>{% endif %}
-    </div>
-    {% else %}
-      {{ form.project }}
-      <div class="form-group mb-3">
-        <label>Proje:</label>
-        <div class="form-control-static">
-          <strong>{{ project.key }}</strong> — {{ project.name }}
-        </div>
       </div>
     {% endif %}
 
@@ -100,11 +80,7 @@
     </div>
 
     <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-      {% if project %}
-        <a href="{% url 'project_tickets' project.id %}" class="btn-ghost">İptal</a>
-      {% else %}
-        <a href="{% url 'ticket_list' %}" class="btn-ghost">İptal</a>
-      {% endif %}
+      <a href="{% url 'ticket_list' %}" class="btn-ghost">İptal</a>
       <button type="submit" class="btn-primary">Talebi Oluştur ve Kaydet</button>
     </div>
   </form>

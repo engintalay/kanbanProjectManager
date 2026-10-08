@@ -622,7 +622,9 @@ class ProjectTicket(models.Model):
         (STATUS_REJECTED, "Reddedildi"),
     ]
 
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="tickets")
+    project = models.ForeignKey(
+        Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets"
+    )
     ticket_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_BUG)
     title = models.CharField(max_length=300)
     description = models.TextField(blank=True, default="")
@@ -651,11 +653,13 @@ class ProjectTicket(models.Model):
         verbose_name_plural = "Hatalar ve Talepler"
 
     def __str__(self):
-        return f"[{self.project.key}-T{self.id}] {self.title}"
+        prefix = self.project.key if self.project else "KPM"
+        return f"[{prefix}-T{self.id}] {self.title}"
 
     @property
     def ticket_code(self):
-        return f"{self.project.key}-T{self.id}"
+        prefix = self.project.key if self.project else "KPM"
+        return f"{prefix}-T{self.id}"
 
     @property
     def is_bug(self):

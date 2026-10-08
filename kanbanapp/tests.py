@@ -1990,6 +1990,44 @@ class ProjectTicketAndMessagingTests(TestCase):
         self.assertTrue(comment.attachment_is_image)
         self.assertIn("ekran_goruntusu_chat_1", comment.attachment.name)
 
+    def test_create_ticket_without_project_for_app(self):
+        self.client.force_login(self.reporter_user)
+
+        # 1. Yeni talep ekranında proje seçimi alanı olmamalı
+        get_resp = self.client.get(reverse("ticket_create"))
+        self.assertEqual(get_resp.status_code, 200)
+        self.assertNotContains(get_resp, 'name="project"')
+        self.assertContains(get_resp, "Kanban Project Manager uygulaması için")
+
+        # 2. Proje alanı olmadan talep açılabilmeli
+        post_resp = self.client.post(
+            reverse("ticket_create"),
+            {
+                "ticket_type": ProjectTicket.TYPE_FEATURE,
+                "title": "Karanlık mod desteği eklensin",
+                "description": "Kanban Project Manager arayüzü için koyu tema isteği.",
+                "priority": ProjectTicket.PRIORITY_MEDIUM,
+            },
+            follow=True,
+        )
+        self.assertEqual(post_resp.status_code, 200)
+        ticket = ProjectTicket.objects.get(title="Karanlık mod desteği eklensin")
+        self.assertIsNone(ticket.project)
+        self.assertEqual(ticket.ticket_code, f"KPM-T{ticket.id}")
+        self.assertEqual(ticket.reporter, self.reporter_user)
+
+        # 3. Liste ekranında listelenmeli ve KPM rozeti görülmeli
+        list_resp = self.client.get(reverse("ticket_list"))
+        self.assertEqual(list_resp.status_code, 200)
+        self.assertContains(list_resp, "Karanlık mod desteği eklensin")
+        self.assertContains(list_resp, "KPM")
+
+        # 4. Detay sayfasında sorunsuz görüntülenmeli
+        detail_resp = self.client.get(reverse("ticket_detail", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(detail_resp.status_code, 200)
+        self.assertContains(detail_resp, "Kanban Project Manager")
+        self.assertContains(detail_resp, f"KPM-T{ticket.id}")
+
     def test_subtasks_inherit_and_sync_sprint(self):
         sprint = Sprint.objects.create(
             project=self.project,

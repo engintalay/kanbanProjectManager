@@ -350,13 +350,12 @@ class StatusMappingForm(forms.ModelForm):
 
 
 class ProjectTicketForm(forms.ModelForm):
-    """Hata veya geliştirme talebi oluşturma/düzenleme formu."""
+    """Kanban Project Manager uygulaması için hata veya geliştirme talebi oluşturma/düzenleme formu."""
 
     class Meta:
         model = ProjectTicket
-        fields = ["project", "ticket_type", "title", "description", "priority", "assignee"]
+        fields = ["ticket_type", "title", "description", "priority", "assignee"]
         labels = {
-            "project": "Proje",
             "ticket_type": "Talep Türü",
             "title": "Başlık / Konu",
             "description": "Detaylı Açıklama (Hata adımları, beklenen durum veya istek detayları)",
@@ -364,7 +363,6 @@ class ProjectTicketForm(forms.ModelForm):
             "assignee": "Atanan Geliştirici (Opsiyonel)",
         }
         widgets = {
-            "project": forms.Select(attrs={"class": "form-control"}),
             "ticket_type": forms.Select(attrs={"class": "form-control"}),
             "title": forms.TextInput(attrs={"class": "form-control", "placeholder": "Örn: Giriş yaparken hata alınıyor veya Yeni raporlama ekranı", "autofocus": True}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 5, "placeholder": "Ayrıntılı açıklama yazın..."}),
@@ -376,25 +374,7 @@ class ProjectTicketForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["assignee"].required = False
         self.fields["assignee"].empty_label = "--- Henüz Atanmadı ---"
-
-        # Proje kısıtlaması
-        if project:
-            self.fields["project"].queryset = Project.objects.filter(id=project.id)
-            self.fields["project"].initial = project
-            self.fields["project"].widget = forms.HiddenInput()
-            # Assignee listesini projeyle ilişkili kullanıcılara göre filtrele
-            from django.db.models import Q
-            member_ids = list(project.project_members.values_list("user_id", flat=True))
-            if project.created_by_id:
-                member_ids.append(project.created_by_id)
-            self.fields["assignee"].queryset = User.objects.filter(
-                Q(id__in=member_ids) | Q(project_id=project.id) | Q(role__level__in=[1, 2, 3])
-            ).distinct().order_by("username")
-        elif user:
-            from .views import _get_visible_projects
-            visible_projects = _get_visible_projects(user)
-            self.fields["project"].queryset = visible_projects
-            self.fields["assignee"].queryset = User.objects.filter(is_active=True).order_by("username")
+        self.fields["assignee"].queryset = User.objects.filter(is_active=True).order_by("username")
 
 
 class TicketCommentForm(forms.ModelForm):

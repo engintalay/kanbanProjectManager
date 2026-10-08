@@ -8,7 +8,9 @@
     <div>
       <div class="ticket-breadcrumbs">
         <a href="{% url 'ticket_list' %}">Talepler</a> &rsaquo;
+        {% if ticket.project %}
         <a href="{% url 'project_tickets' ticket.project.id %}">{{ ticket.project.key }}</a> &rsaquo;
+        {% endif %}
         <span class="text-muted">{{ ticket.ticket_code }}</span>
       </div>
       <h2 class="ticket-main-title">
@@ -36,9 +38,17 @@
       </div>
     </div>
     <div class="head-actions">
-      <a href="{% url 'project_tickets' ticket.project.id %}" class="btn-ghost">← Proje Talepleri</a>
-      {% if ticket.card %}
+      {% if ticket.project %}
+        <a href="{% url 'project_tickets' ticket.project.id %}" class="btn-ghost">← Proje Talepleri</a>
+      {% else %}
+        <a href="{% url 'ticket_list' %}" class="btn-ghost">← Tüm Talepler</a>
+      {% endif %}
+      {% if ticket.card and ticket.project %}
         <a href="{% url 'board' ticket.project.id %}#card-{{ ticket.card.id }}" class="btn-secondary" title="Kanban Panosundaki Kartı Aç">
+          📋 Panoda Gör
+        </a>
+      {% elif ticket.card and ticket.card.project %}
+        <a href="{% url 'board' ticket.card.project.id %}#card-{{ ticket.card.id }}" class="btn-secondary" title="Kanban Panosundaki Kartı Aç">
           📋 Panoda Gör
         </a>
       {% endif %}
@@ -415,9 +425,15 @@
             </div>
 
             <div class="mt-3">
-              <a href="{% url 'board' ticket.project.id %}#card-{{ ticket.card.id }}" class="btn-primary btn-block text-center" style="display: block;">
-                Pano Üzerinde Görüntüle
-              </a>
+              {% if ticket.card.project %}
+                <a href="{% url 'board' ticket.card.project.id %}#card-{{ ticket.card.id }}" class="btn-primary btn-block text-center" style="display: block;">
+                  Pano Üzerinde Görüntüle
+                </a>
+              {% elif ticket.project %}
+                <a href="{% url 'board' ticket.project.id %}#card-{{ ticket.card.id }}" class="btn-primary btn-block text-center" style="display: block;">
+                  Pano Üzerinde Görüntüle
+                </a>
+              {% endif %}
             </div>
           </div>
         {% else %}
@@ -427,6 +443,16 @@
             </p>
             <form method="post" action="{% url 'ticket_create_card' ticket.id %}">
               {% csrf_token %}
+              {% if not ticket.project and projects %}
+                <div style="margin-bottom: 8px;">
+                  <label style="font-size: 0.78rem; color: var(--muted); display: block; margin-bottom: 3px;">Kartın Ekleneceği Proje Panosu:</label>
+                  <select name="target_project_id" class="form-control" style="font-size: 0.82rem;" required>
+                    {% for p in projects %}
+                      <option value="{{ p.id }}">{{ p.key }} — {{ p.name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              {% endif %}
               <button type="submit" class="btn-primary btn-block">
                 ⚡ Panoda Kart Oluştur (Geliştirmeye Al)
               </button>
@@ -440,8 +466,14 @@
         <h4 class="sidebar-card-title">Bilgiler</h4>
         <div class="meta-info-list">
           <div class="meta-row">
-            <span class="meta-label">Proje:</span>
-            <span class="meta-val"><a href="{% url 'board' ticket.project.id %}">{{ ticket.project.name }} ({{ ticket.project.key }})</a></span>
+            <span class="meta-label">Uygulama / Proje:</span>
+            <span class="meta-val">
+              {% if ticket.project %}
+                <a href="{% url 'board' ticket.project.id %}">{{ ticket.project.name }} ({{ ticket.project.key }})</a>
+              {% else %}
+                <strong>Kanban Project Manager</strong>
+              {% endif %}
+            </span>
           </div>
           <div class="meta-row">
             <span class="meta-label">İşi Açan:</span>
