@@ -124,7 +124,7 @@ class StatusMappingAdmin(admin.ModelAdmin):
 
 @admin.register(Sprint)
 class SprintAdmin(admin.ModelAdmin):
-    list_display = ("name", "project", "status", "duration", "start_date", "total_difficulty", "default_capacity")
+    list_display = ("name", "project", "status", "capacity", "duration", "start_date", "total_difficulty", "default_capacity")
     list_filter = ("project", "status", "duration")
     search_fields = ("name", "project__key")
 

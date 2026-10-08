@@ -265,13 +265,20 @@ class KanbanCardForm(forms.ModelForm):
 class SprintForm(forms.ModelForm):
     class Meta:
         model = Sprint
-        fields = ["name", "start_date", "duration", "team_members", "status"]
+        fields = ["name", "capacity", "start_date", "duration", "team_members", "status"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control", "autofocus": True, "placeholder": "Sprint 1"}),
+            "capacity": forms.NumberInput(attrs={"class": "form-control", "min": "1", "placeholder": "Örn: 40, 60, 100..."}),
             "start_date": forms.DateInput(attrs={"type": "date", "class": "form-control"}),
             "duration": forms.Select(attrs={"class": "form-control"}),
             "team_members": forms.SelectMultiple(attrs={"class": "form-control"}),
             "status": forms.Select(attrs={"class": "form-control"}),
+        }
+        labels = {
+            "capacity": "Hedeflenen Kapasite (Zorluk Puanı)",
+        }
+        help_texts = {
+            "capacity": "Sprint süresinden ve haftasından bağımsız toplam puan hedefi. Boş bırakılırsa geçmiş ortalama baz alınır.",
         }
 
     def __init__(self, *args, project=None, **kwargs):

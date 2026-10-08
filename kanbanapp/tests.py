@@ -342,6 +342,48 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertEqual(kanban_resp.status_code, 200)
         self.assertIn(b"container-fluid", kanban_resp.content)
 
+    def test_sprint_custom_numerical_capacity(self):
+        from .models import Sprint
+        self.client.force_login(self.pm)
+
+        # 1. Create sprint with custom numerical capacity (independent of duration)
+        create_resp = self.client.post(
+            reverse("sprint_create", kwargs={"project_id": self.project.id}),
+            {"name": "Sprint Bağımsız Kapasite", "capacity": "25", "duration": "1_hafta", "status": "active"},
+        )
+        self.assertEqual(create_resp.status_code, 302)
+        sprint = Sprint.objects.get(name="Sprint Bağımsız Kapasite")
+        self.assertEqual(sprint.capacity, 25)
+        self.assertTrue(sprint.has_custom_capacity)
+        self.assertEqual(sprint.default_capacity, 25)
+
+        # 2. Add tasks with total difficulty 20 (20/25 = 80%)
+        card = KanbanCard.objects.create(
+            project=self.project, column=self.col_todo, title="Özel İş", difficulty_level=20, sprint=sprint
+        )
+        self.assertEqual(sprint.total_difficulty, 20)
+        self.assertEqual(sprint.capacity_percentage, 80)
+        self.assertFalse(sprint.is_under_capacity)
+        self.assertFalse(sprint.is_over_capacity)
+
+        # 3. Edit sprint capacity to 15 (now 20/15 = 133% -> over capacity)
+        edit_resp = self.client.post(
+            reverse("sprint_edit", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}),
+            {"name": "Sprint Bağımsız Kapasite", "capacity": "15", "duration": "4_hafta", "status": "active"},
+        )
+        self.assertEqual(edit_resp.status_code, 302)
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.capacity, 15)
+        self.assertEqual(sprint.default_capacity, 15)
+        self.assertTrue(sprint.is_over_capacity)
+
+        # 4. Check sprint board view reflects custom capacity and warning
+        board_resp = self.client.get(reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(board_resp.status_code, 200)
+        self.assertIn("Hedeflenen Kapasite: <strong>15</strong>", board_resp.content.decode("utf-8"))
+        self.assertIn("belirlenen kapasite hedefini", board_resp.content.decode("utf-8"))
+        self.assertIn("Kapasiteyi Değiştir", board_resp.content.decode("utf-8"))
+
     def test_card_move_between_columns(self):
         card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Movable Task")
         self.client.force_login(self.prog)

@@ -23,10 +23,15 @@
 <!-- Sprint Capacity Meter (PLAN.md §6.6) -->
 <div class="capacity-card">
   <div class="capacity-info">
-    <span>Sprint Toplam Zorluk Seviyesi: <strong>{{ sprint.total_difficulty }}</strong> / Hedeflenen Kapasite: <strong>{{ sprint.default_capacity }}</strong> (%{{ sprint.capacity_percentage }})</span>
-    <span class="badge {% if sprint.is_over_capacity %}badge-warn{% elif sprint.is_under_capacity %}badge-warn{% else %}badge-ok{% endif %}">
-      {% if sprint.is_over_capacity %}Kapasite Aşımı{% elif sprint.is_under_capacity %}Düşük Kapasite (<%75){% else %}Normal Seviye{% endif %}
-    </span>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <span>Sprint Toplam Zorluk Seviyesi: <strong>{{ sprint.total_difficulty }}</strong> / Hedeflenen Kapasite: <strong>{{ sprint.default_capacity }}</strong>{% if sprint.has_custom_capacity %} <span class="badge" style="font-size:0.68rem; background:rgba(59,130,246,0.15); color:var(--primary);" title="Serbest girilen sayısal kapasite">Özel</span>{% endif %} (%{{ sprint.capacity_percentage }})</span>
+      <span class="badge {% if sprint.is_over_capacity %}badge-warn{% elif sprint.is_under_capacity %}badge-warn{% else %}badge-ok{% endif %}">
+        {% if sprint.is_over_capacity %}Kapasite Aşımı{% elif sprint.is_under_capacity %}Düşük Kapasite (<%75){% else %}Normal Seviye{% endif %}
+      </span>
+    </div>
+    {% if can_manage_project %}
+    <a href="{% url 'sprint_edit' project.id sprint.id %}?next={{ request.get_full_path|urlencode }}" class="btn-ghost btn-xs" title="Sprint Kapasitesini ve Ayarlarını Düzenle">⚙️ Kapasiteyi Değiştir</a>
+    {% endif %}
   </div>
   <div class="progress-container">
     <div class="progress-bar {% if sprint.is_over_capacity %}progress-danger{% elif sprint.is_under_capacity %}progress-warn{% else %}progress-ok{% endif %}"
@@ -35,11 +40,11 @@
   </div>
   {% if sprint.is_over_capacity %}
   <div class="alert-box alert-danger" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
-    ⚠️ <strong>Aşım Uyarısı:</strong> Bu sprint, geçmiş sprint ortalama kapasitesini (%{{ sprint.capacity_percentage }}) aşmıştır.
+    ⚠️ <strong>Aşım Uyarısı:</strong> Bu sprint, {% if sprint.has_custom_capacity %}belirlenen kapasite hedefini{% else %}geçmiş sprint ortalama kapasitesini{% endif %} (%{{ sprint.capacity_percentage }}) aşmıştır.
   </div>
   {% elif sprint.is_under_capacity %}
   <div class="alert-box alert-warn" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
-    ℹ️ <strong>Boş Sprint Uyarısı:</strong> Bu sprint kapasitenin %75'inin altında kalmıştır.
+    ℹ️ <strong>Boş Sprint Uyarısı:</strong> Bu sprint {% if sprint.has_custom_capacity %}belirlenen kapasitenin{% else %}kapasitenin{% endif %} %75'inin altında kalmıştır.
   </div>
   {% endif %}
 </div>

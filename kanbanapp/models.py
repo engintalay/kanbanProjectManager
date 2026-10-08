@@ -298,6 +298,12 @@ class Sprint(models.Model):
     name = models.CharField(max_length=200)
     start_date = models.DateField(null=True, blank=True)
     duration = models.CharField(max_length=20, choices=DURATION_CHOICES, default=DURATION_2_WEEKS)
+    capacity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Kapasite (Puan)",
+        help_text="Sprint için hedeflenen toplam kapasite / hacim puanı (boş bırakılırsa geçmiş ortalama baz alınır)",
+    )
     team_members = models.ManyToManyField(User, blank=True, related_name="sprints")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PLANNING)
     position = models.IntegerField(default=0)
@@ -317,8 +323,15 @@ class Sprint(models.Model):
         return sum(c.difficulty_level or 0 for c in cards)
 
     @property
+    def has_custom_capacity(self):
+        """Returns True if this sprint has an explicitly set numerical capacity."""
+        return bool(self.capacity is not None and self.capacity > 0)
+
+    @property
     def default_capacity(self):
-        """Average difficulty of previous completed sprints in this project, or default 40."""
+        """Kapasite hedefi: Manuel kapasite girilmişse doğrudan o değer, girilmemişse geçmiş tamamlanan sprintlerin ortalaması veya 40."""
+        if self.capacity is not None and self.capacity > 0:
+            return self.capacity
         prev = Sprint.objects.filter(project=self.project, status=Sprint.STATUS_COMPLETED).exclude(id=self.id)
         if prev.exists():
             totals = [s.total_difficulty for s in prev if s.total_difficulty > 0]

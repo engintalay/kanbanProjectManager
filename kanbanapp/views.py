@@ -1906,6 +1906,7 @@ def sprint_create_view(request, project_id):
     if not _can_manage_project(request.user, project):
         return _forbidden(request)
 
+    next_url = request.GET.get("next") or request.POST.get("next")
     if request.method == "POST":
         form = SprintForm(request.POST, project=project)
         if form.is_valid():
@@ -1914,11 +1915,13 @@ def sprint_create_view(request, project_id):
             sprint.save()
             form.save_m2m()
             messages.success(request, f"'{sprint.name}' sprinti oluşturuldu.")
+            if next_url and next_url.startswith("/"):
+                return redirect(next_url)
             return redirect("sprints", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
         form = SprintForm(project=project)
-    return render(request, "kanbanapp/sprint_form.html", {"form": form, "project": project, "mode": "create"})
+    return render(request, "kanbanapp/sprint_form.html", {"form": form, "project": project, "mode": "create", "next": next_url})
 
 
 @login_required
@@ -1928,16 +1931,19 @@ def sprint_edit_view(request, project_id, sprint_id):
     if not _can_manage_project(request.user, project):
         return _forbidden(request)
 
+    next_url = request.GET.get("next") or request.POST.get("next")
     if request.method == "POST":
         form = SprintForm(request.POST, instance=sprint, project=project)
         if form.is_valid():
             form.save()
             messages.success(request, f"'{sprint.name}' sprinti güncellendi.")
+            if next_url and next_url.startswith("/"):
+                return redirect(next_url)
             return redirect("sprints", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
         form = SprintForm(instance=sprint, project=project)
-    return render(request, "kanbanapp/sprint_form.html", {"form": form, "project": project, "sprint": sprint, "mode": "edit"})
+    return render(request, "kanbanapp/sprint_form.html", {"form": form, "project": project, "sprint": sprint, "mode": "edit", "next": next_url})
 
 
 @login_required

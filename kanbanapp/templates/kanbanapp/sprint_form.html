@@ -8,31 +8,43 @@
 
   <form method="post" class="auth-form">
     {% csrf_token %}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <label>
       Sprint Adı:
       {{ form.name }}
+      {% for error in form.name.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ error }}</span>{% endfor %}
+    </label>
+    <label>
+      Hedeflenen Kapasite (Zorluk Puanı):
+      {{ form.capacity }}
+      <span class="form-text">Sprint süresinden ve haftadan bağımsız olarak bu sprint için toplam zorluk hacmini sayısal puan olarak belirleyebilirsiniz (Örn: 50, 75, 120). Boş bırakılırsa geçmiş tamamlanan sprintlerin ortalaması baz alınır.</span>
+      {% for error in form.capacity.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ error }}</span>{% endfor %}
     </label>
     <label>
       Başlangıç Tarihi:
       {{ form.start_date }}
+      {% for error in form.start_date.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ error }}</span>{% endfor %}
     </label>
     <label>
       Sprint Süresi:
       {{ form.duration }}
+      {% for error in form.duration.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ error }}</span>{% endfor %}
     </label>
     <label>
       Durum:
       {{ form.status }}
+      {% for error in form.status.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ error }}</span>{% endfor %}
     </label>
     <label>
       Ekip Üyeleri:
       {{ form.team_members }}
       <span class="form-text">Birden fazla seçmek için Ctrl (veya Cmd) tuşuna basılı tutun.</span>
+      {% for error in form.team_members.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ error }}</span>{% endfor %}
     </label>
 
     <div class="form-actions">
       <button type="submit" class="btn-primary">Kaydet</button>
-      <a href="{% url 'sprints' project.id %}" class="btn-secondary">İptal</a>
+      <a href="{% if next %}{{ next }}{% else %}{% url 'sprints' project.id %}{% endif %}" class="btn-secondary">İptal</a>
     </div>
   </form>
 </div>
