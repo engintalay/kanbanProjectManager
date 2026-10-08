@@ -25,7 +25,7 @@
   <div class="capacity-info">
     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       <span>Sprint Toplam Zorluk Seviyesi: <strong>{{ sprint.total_difficulty }}</strong> / Hedeflenen Kapasite: <strong>{{ sprint.default_capacity }}</strong>{% if sprint.has_custom_capacity %} <span class="badge" style="font-size:0.68rem; background:rgba(59,130,246,0.15); color:var(--primary);" title="Serbest girilen sayısal kapasite">Özel</span>{% endif %} (%{{ sprint.capacity_percentage }})</span>
-      <span class="badge {% if sprint.is_over_capacity %}badge-warn{% elif sprint.is_under_capacity %}badge-warn{% else %}badge-ok{% endif %}">
+      <span class="badge {% if sprint.is_over_capacity %}badge-warn{% elif sprint.is_under_capacity %}badge-warn{% else %}badge-primary{% endif %}" style="{% if not sprint.is_over_capacity and not sprint.is_under_capacity %}background:rgba(59,130,246,0.15); color:var(--primary);{% endif %}">
         {% if sprint.is_over_capacity %}Kapasite Aşımı{% elif sprint.is_under_capacity %}Düşük Kapasite (<%75){% else %}Normal Seviye{% endif %}
       </span>
     </div>
@@ -33,17 +33,50 @@
     <a href="{% url 'sprint_edit' project.id sprint.id %}?next={{ request.get_full_path|urlencode }}" class="btn-ghost btn-xs" title="Sprint Kapasitesini ve Ayarlarını Düzenle">⚙️ Kapasiteyi Değiştir</a>
     {% endif %}
   </div>
-  <div class="progress-container">
-    <div class="progress-bar {% if sprint.is_over_capacity %}progress-danger{% elif sprint.is_under_capacity %}progress-warn{% else %}progress-ok{% endif %}"
-         style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+
+  <!-- Doluluk Oranı ve Bitme Oranı Ayrı Göstergeleri (KPM-T3) -->
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-top:12px;">
+    <!-- 1. Doluluk Oranı (Mavi/Sarı/Kırmızı - Yeşil ASLA kullanılmaz) -->
+    <div class="meter-panel" style="background:var(--card-bg, #1e293b); padding:10px 14px; border-radius:8px; border:1px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.84rem; margin-bottom:6px;">
+        <span style="font-weight:600; color:var(--primary);">📦 Doluluk Oranı (Hacim / Kapasite):</span>
+        <span style="font-weight:700;">%{{ sprint.capacity_percentage }}</span>
+      </div>
+      <div class="progress-container" title="Doluluk: %{{ sprint.capacity_percentage }}">
+        <div class="progress-bar {{ sprint.load_progress_class }}"
+             style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+        </div>
+      </div>
+      <div style="font-size:0.75rem; color:var(--muted); margin-top:4px; display:flex; justify-content:space-between;">
+        <span>Planlanan: <strong>{{ sprint.total_difficulty }}</strong> puan</span>
+        <span>Hedef Kapasite: <strong>{{ sprint.default_capacity }}</strong> puan</span>
+      </div>
+    </div>
+
+    <!-- 2. Bitme Oranı (Yeşil - Tamamlanma Başarısı) -->
+    <div class="meter-panel" style="background:var(--card-bg, #1e293b); padding:10px 14px; border-radius:8px; border:1px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.84rem; margin-bottom:6px;">
+        <span style="font-weight:600; color:var(--ok);">✅ Bitme Oranı (Tamamlanan İlerleme):</span>
+        <span style="font-weight:700; color:var(--ok);">%{{ sprint.completion_percentage }}</span>
+      </div>
+      <div class="progress-container" title="Bitme Oranı: %{{ sprint.completion_percentage }}">
+        <div class="progress-bar progress-completion"
+             style="width: {% if sprint.completion_percentage > 100 %}100{% else %}{{ sprint.completion_percentage }}{% endif %}%;">
+        </div>
+      </div>
+      <div style="font-size:0.75rem; color:var(--muted); margin-top:4px; display:flex; justify-content:space-between;">
+        <span>Bitirilen: <strong>{{ sprint.completed_difficulty }}</strong> / {{ sprint.total_difficulty }} puan</span>
+        <span><strong>{{ sprint.completed_cards_count }}/{{ sprint.total_cards_count }}</strong> kart bitti</span>
+      </div>
     </div>
   </div>
+
   {% if sprint.is_over_capacity %}
-  <div class="alert-box alert-danger" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
+  <div class="alert-box alert-danger" style="margin-top:12px; margin-bottom:0; font-size:0.85rem;">
     ⚠️ <strong>Aşım Uyarısı:</strong> Bu sprint, {% if sprint.has_custom_capacity %}belirlenen kapasite hedefini{% else %}geçmiş sprint ortalama kapasitesini{% endif %} (%{{ sprint.capacity_percentage }}) aşmıştır.
   </div>
   {% elif sprint.is_under_capacity %}
-  <div class="alert-box alert-warn" style="margin-top:10px; margin-bottom:0; font-size:0.85rem;">
+  <div class="alert-box alert-warn" style="margin-top:12px; margin-bottom:0; font-size:0.85rem;">
     ℹ️ <strong>Boş Sprint Uyarısı:</strong> Bu sprint {% if sprint.has_custom_capacity %}belirlenen kapasitenin{% else %}kapasitenin{% endif %} %75'inin altında kalmıştır.
   </div>
   {% endif %}

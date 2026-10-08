@@ -93,12 +93,28 @@
           <strong>{{ sprint.project.key }} &mdash; {{ sprint.name }}</strong>
           <span class="badge badge-ok">Aktif</span>
         </div>
-        <div style="font-size:0.85rem; margin-bottom:6px;">
-          Zorluk: <strong>{{ sprint.total_difficulty }}</strong> / Kapasite: <strong>{{ sprint.default_capacity }}</strong> (%{{ sprint.capacity_percentage }})
-        </div>
-        <div class="progress-container">
-          <div class="progress-bar {% if sprint.is_over_capacity %}progress-danger{% elif sprint.is_under_capacity %}progress-warn{% else %}progress-ok{% endif %}"
-               style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:0.82rem;">
+          <div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+              <span style="color:var(--primary); font-weight:600;">📦 Doluluk:</span>
+              <span><strong>{{ sprint.total_difficulty }}</strong> / {{ sprint.default_capacity }} (%{{ sprint.capacity_percentage }})</span>
+            </div>
+            <div class="progress-container" style="height:8px;" title="Doluluk: %{{ sprint.capacity_percentage }}">
+              <div class="progress-bar {{ sprint.load_progress_class }}"
+                   style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+              </div>
+            </div>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+              <span style="color:var(--ok); font-weight:600;">✅ Bitme:</span>
+              <span><strong>{{ sprint.completed_difficulty }}</strong> / {{ sprint.total_difficulty }} (%{{ sprint.completion_percentage }})</span>
+            </div>
+            <div class="progress-container" style="height:8px;" title="Bitme: %{{ sprint.completion_percentage }}">
+              <div class="progress-bar progress-completion"
+                   style="width: {% if sprint.completion_percentage > 100 %}100{% else %}{{ sprint.completion_percentage }}{% endif %}%;">
+              </div>
+            </div>
           </div>
         </div>
         <div style="margin-top:10px; display:flex; justify-content:flex-end;">

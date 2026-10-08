@@ -129,10 +129,10 @@
     }
   });
 
-  // 2. Sprint Velocity Chart
+  // 2. Sprint Velocity Chart (KPM-T3)
   const rawSprints = [
     {% for s in sprint_data %}
-      { name: "{{ s.name|escapejs }}", diff: {{ s.total_difficulty }}, cap: {{ s.default_capacity }} },
+      { name: "{{ s.name|escapejs }}", diff: {{ s.total_difficulty }}, completed: {{ s.completed_difficulty|default:0 }}, cap: {{ s.default_capacity }} },
     {% endfor %}
   ];
 
@@ -143,12 +143,17 @@
       labels: rawSprints.map(s => s.name),
       datasets: [
         {
-          label: 'Toplam Zorluk',
-          data: rawSprints.map(s => s.diff),
-          backgroundColor: '#6366f1'
+          label: 'Tamamlanan (Bitme)',
+          data: rawSprints.map(s => s.completed),
+          backgroundColor: '#10b981' // Yeşil
         },
         {
-          label: 'Kapasite',
+          label: 'Planlanan (Doluluk)',
+          data: rawSprints.map(s => s.diff),
+          backgroundColor: '#3b82f6' // Mavi (Asla yeşil değil)
+        },
+        {
+          label: 'Hedef Kapasite',
           data: rawSprints.map(s => s.cap),
           backgroundColor: 'rgba(148, 163, 184, 0.4)'
         }

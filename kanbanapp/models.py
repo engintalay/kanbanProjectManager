@@ -354,6 +354,43 @@ class Sprint(models.Model):
     def is_over_capacity(self):
         return self.capacity_percentage > 100
 
+    @property
+    def completed_cards(self):
+        """Cards in this sprint whose column signifies completion."""
+        done_keywords = ("done", "tamamlandı", "tamamlandi", "bitti", "closed", "kapalı", "kapali", "resolved", "çözüldü", "cozuldu")
+        return [c for c in self.cards.select_related("column") if any(k in c.column.name.lower() for k in done_keywords)]
+
+    @property
+    def completed_cards_count(self):
+        return len(self.completed_cards)
+
+    @property
+    def total_cards_count(self):
+        return self.cards.count()
+
+    @property
+    def completed_difficulty(self):
+        """Sum of difficulty_level for completed cards in this sprint."""
+        return sum(c.difficulty_level or 0 for c in self.completed_cards)
+
+    @property
+    def completion_percentage(self):
+        """Bitme / Tamamlanma Oranı (0 - 100)."""
+        if self.total_difficulty > 0:
+            return round((self.completed_difficulty / self.total_difficulty) * 100)
+        if self.total_cards_count > 0:
+            return round((self.completed_cards_count / self.total_cards_count) * 100)
+        return 0
+
+    @property
+    def load_progress_class(self):
+        """Doluluk oranı için CSS sınıfı: Yeşil ASLA kullanılmaz (Mavi/Sarı/Kırmızı)."""
+        if self.is_over_capacity:
+            return "progress-load-danger"
+        elif self.is_under_capacity:
+            return "progress-load-warn"
+        return "progress-load-normal"
+
 
 class KanbanCard(models.Model):
     project = models.ForeignKey(

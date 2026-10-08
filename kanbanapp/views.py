@@ -2026,6 +2026,7 @@ def report_view(request, project_id):
         sprint_data.append({
             "name": s.name,
             "total_difficulty": s.total_difficulty,
+            "completed_difficulty": s.completed_difficulty,
             "default_capacity": s.default_capacity,
         })
 

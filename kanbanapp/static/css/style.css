@@ -624,6 +624,12 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
 .progress-ok { background: var(--ok); }
 .progress-warn { background: var(--warn); }
 .progress-danger { background: var(--danger); }
+/* Sprint Doluluk Oranı (Kapasite Yükü): Yeşil ASLA kullanılmaz */
+.progress-load-normal { background: #3b82f6; }
+.progress-load-warn { background: #f59e0b; }
+.progress-load-danger { background: #ef4444; }
+/* Sprint Bitme / Tamamlanma Oranı: Yeşil */
+.progress-completion { background: #10b981; }
 
 /* Blocked Alert */
 .alert-box {

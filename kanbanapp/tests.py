@@ -384,6 +384,64 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertIn("belirlenen kapasite hedefini", board_resp.content.decode("utf-8"))
         self.assertIn("Kapasiteyi Değiştir", board_resp.content.decode("utf-8"))
 
+    def test_sprint_load_and_completion_colors_and_metrics(self):
+        from .models import Sprint
+        self.client.force_login(self.pm)
+
+        sprint = Sprint.objects.create(
+            project=self.project,
+            name="Sprint Metrik Testi",
+            capacity=40,
+            duration="2_hafta",
+            status="active",
+        )
+        # Task 1: Devam eden iş (15 puan, To Do)
+        KanbanCard.objects.create(
+            project=self.project, column=self.col_todo, title="Yapılacak İş", difficulty_level=15, sprint=sprint
+        )
+        # Task 2: Tamamlanan iş (15 puan, Done)
+        KanbanCard.objects.create(
+            project=self.project, column=self.col_done, title="Tamamlanan İş", difficulty_level=15, sprint=sprint
+        )
+
+        # 1. Metrik Doğrulamaları
+        self.assertEqual(sprint.total_difficulty, 30)
+        self.assertEqual(sprint.completed_difficulty, 15)
+        self.assertEqual(sprint.capacity_percentage, 75)  # 30/40 = %75 doluluk
+        self.assertEqual(sprint.completion_percentage, 50)  # 15/30 = %50 bitme
+        self.assertEqual(sprint.completed_cards_count, 1)
+        self.assertEqual(sprint.total_cards_count, 2)
+
+        # 2. Renk Sınıfı: Doluluk için YEŞİL KULLANILMAMALI (Mavi olmalı)
+        self.assertEqual(sprint.load_progress_class, "progress-load-normal")
+        self.assertNotIn("ok", sprint.load_progress_class)
+
+        # 3. Sprint Panosu Ekranı (sprint_board) Kontrolü
+        board_resp = self.client.get(reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(board_resp.status_code, 200)
+        content_board = board_resp.content.decode("utf-8")
+        self.assertIn("Doluluk Oranı", content_board)
+        self.assertIn("Bitme Oranı", content_board)
+        self.assertIn("progress-load-normal", content_board)
+        self.assertIn("progress-completion", content_board)
+
+        # 4. Sprintler Listesi Ekranı (sprints) Kontrolü
+        sprints_resp = self.client.get(reverse("sprints", kwargs={"project_id": self.project.id}))
+        self.assertEqual(sprints_resp.status_code, 200)
+        content_sprints = sprints_resp.content.decode("utf-8")
+        self.assertIn("Doluluk Oranı", content_sprints)
+        self.assertIn("Bitme Oranı", content_sprints)
+        self.assertIn("progress-load-normal", content_sprints)
+        self.assertIn("progress-completion", content_sprints)
+
+        # 5. Dashboard Ekranı Kontrolü
+        dash_resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(dash_resp.status_code, 200)
+        content_dash = dash_resp.content.decode("utf-8")
+        self.assertIn("Doluluk:", content_dash)
+        self.assertIn("Bitme:", content_dash)
+        self.assertIn("progress-completion", content_dash)
+
     def test_card_move_between_columns(self):
         card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Movable Task")
         self.client.force_login(self.prog)

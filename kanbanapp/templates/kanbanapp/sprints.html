@@ -31,9 +31,32 @@
     </div>
   </div>
 
-  <div class="progress-container">
-    <div class="progress-bar {% if sprint.is_over_capacity %}progress-danger{% elif sprint.is_under_capacity %}progress-warn{% else %}progress-ok{% endif %}"
-         style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+  <!-- Doluluk ve Bitme Oranı Göstergeleri (KPM-T3) -->
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:12px;">
+    <!-- 1. Doluluk Oranı (Mavi/Sarı/Kırmızı - Yeşil ASLA kullanılmaz) -->
+    <div style="background:var(--card-bg, #1e293b); padding:8px 12px; border-radius:8px; border:1px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; margin-bottom:5px;">
+        <span style="color:var(--primary); font-weight:600;">📦 Doluluk Oranı:</span>
+        <span><strong>{{ sprint.total_difficulty }}</strong> / {{ sprint.default_capacity }} puan (%{{ sprint.capacity_percentage }})</span>
+      </div>
+      <div class="progress-container" title="Doluluk: %{{ sprint.capacity_percentage }}">
+        <div class="progress-bar {{ sprint.load_progress_class }}"
+             style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Bitme Oranı (Yeşil) -->
+    <div style="background:var(--card-bg, #1e293b); padding:8px 12px; border-radius:8px; border:1px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; margin-bottom:5px;">
+        <span style="color:var(--ok); font-weight:600;">✅ Bitme Oranı:</span>
+        <span><strong>{{ sprint.completed_difficulty }}</strong> / {{ sprint.total_difficulty }} puan (%{{ sprint.completion_percentage }})</span>
+      </div>
+      <div class="progress-container" title="Bitme Oranı: %{{ sprint.completion_percentage }}">
+        <div class="progress-bar progress-completion"
+             style="width: {% if sprint.completion_percentage > 100 %}100{% else %}{{ sprint.completion_percentage }}{% endif %}%;">
+        </div>
+      </div>
     </div>
   </div>
 
@@ -47,8 +70,8 @@
   </div>
   {% endif %}
 
-  <div style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-    <span class="muted" style="font-size:0.85rem;">{{ sprint.cards.count }} kart planlandı</span>
+  <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+    <span class="muted" style="font-size:0.85rem;">{{ sprint.completed_cards_count }}/{{ sprint.cards.count }} kart tamamlandı</span>
     <a href="{% url 'sprint_board' project.id sprint.id %}" class="btn-ghost">Sprint Panosunu Görüntüle →</a>
   </div>
 </div>
