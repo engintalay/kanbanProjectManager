@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}{{ ticket.ticket_code }}: {{ ticket.title }} — Kanban Manager{% endblock %}
 
 {% block content %}
@@ -38,6 +39,11 @@
       </div>
     </div>
     <div class="head-actions">
+      {% if can_edit_ticket %}
+        <a href="{% url 'ticket_edit' ticket.id %}" class="btn-primary" title="Talep Detaylarını Düzenle" style="display: inline-flex; align-items: center; gap: 6px;">
+          ✏️ Düzenle
+        </a>
+      {% endif %}
       {% if ticket.project %}
         <a href="{% url 'project_tickets' ticket.project.id %}" class="btn-ghost">← Proje Talepleri</a>
       {% else %}
@@ -97,10 +103,15 @@
     <div class="ticket-main-col">
       <!-- Açıklama Kartı -->
       <div class="card mb-4 ticket-desc-card">
-        <h3 class="card-title">Talep Açıklaması</h3>
+        <div class="card-head-flex" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 class="card-title" style="margin-bottom: 0;">Talep Açıklaması</h3>
+          {% if can_edit_ticket %}
+            <a href="{% url 'ticket_edit' ticket.id %}" class="btn-ghost btn-sm" title="Talep Detaylarını Düzenle">✏️ Detayları Düzenle</a>
+          {% endif %}
+        </div>
         <div class="ticket-description-text">
           {% if ticket.description %}
-            {{ ticket.description|linebreaks }}
+            {{ ticket.description|render_jira_markup }}
           {% else %}
             <p class="text-muted">Açıklama belirtilmemiş.</p>
           {% endif %}
@@ -109,7 +120,7 @@
         {% if ticket.resolution_notes %}
           <div class="resolution-notes-box mt-3">
             <strong>Çözüm / Kapatma Notu:</strong>
-            <div>{{ ticket.resolution_notes|linebreaks }}</div>
+            <div>{{ ticket.resolution_notes|render_jira_markup }}</div>
           </div>
         {% endif %}
       </div>

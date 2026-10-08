@@ -54,6 +54,7 @@ urlpatterns = [
     path("projects/<int:project_id>/tickets/", views.ticket_list_view, name="project_tickets"),
     path("projects/<int:project_id>/tickets/create/", views.ticket_create_view, name="project_ticket_create"),
     path("tickets/<int:ticket_id>/", views.ticket_detail_view, name="ticket_detail"),
+    path("tickets/<int:ticket_id>/edit/", views.ticket_edit_view, name="ticket_edit"),
     path("tickets/<int:ticket_id>/comment/", views.ticket_add_comment_view, name="ticket_add_comment"),
     path("tickets/<int:ticket_id>/status/", views.ticket_update_status_view, name="ticket_update_status"),
     path("tickets/<int:ticket_id>/assign/", views.ticket_assign_view, name="ticket_assign"),

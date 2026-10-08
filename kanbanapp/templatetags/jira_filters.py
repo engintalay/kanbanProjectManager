@@ -2,8 +2,28 @@ import html
 import re
 from django import template
 from django.utils.safestring import mark_safe
+from django.utils.text import Truncator
 
 register = template.Library()
+
+
+def sanitize_color(val: str) -> str:
+    """Validates and returns a safe CSS color string (hex, named, or rgb/rgba)."""
+    if not val:
+        return ""
+    val = val.strip()
+    if val.lower().startswith("color="):
+        val = val[6:].strip()
+    # Hex: #rgb, #rgba, #rrggbb, #rrggbbaa
+    if re.fullmatch(r"#[0-9a-fA-F]{3,8}", val):
+        return val
+    # Named colors: red, green, blue, etc.
+    if re.fullmatch(r"[a-zA-Z]{3,25}", val):
+        return val
+    # RGB/RGBA/HSL
+    if re.fullmatch(r"rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)", val, flags=re.IGNORECASE):
+        return val
+    return ""
 
 
 @register.filter(name="render_jira_markup")
@@ -90,6 +110,49 @@ def render_jira_markup(text):
 
     content = re.sub(r"\{quote\}(.*?)\{quote\}", repl_quote_block, content, flags=re.DOTALL | re.IGNORECASE)
 
+    # 6.5. Jira Colors: {color:#FF0000}text{color} or {color:red}text{/color}
+    def repl_color(m):
+        color_val = m.group(1) or ""
+        body = m.group(2)
+        safe_color = sanitize_color(color_val)
+        if not safe_color:
+            return body
+        lines = body.split("\n")
+        colored_lines = []
+        for line in lines:
+            if line.strip():
+                lead_ws = line[:len(line) - len(line.lstrip())]
+                trail_ws = line[len(line.rstrip()):]
+                stripped_content = line.strip()
+                colored_lines.append(f'{lead_ws}<span style="color: {safe_color};">{stripped_content}</span>{trail_ws}')
+            else:
+                colored_lines.append(line)
+        return "\n".join(colored_lines)
+
+    content = re.sub(
+        r"\{color:(?:color=)?([#a-zA-Z0-9(),\.\s]+)\}(.*?)(?:\{color\}|\{/color\})",
+        repl_color,
+        content,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    # Handle unclosed {color:...} up to next tag or end of line
+    def repl_unclosed_color(m):
+        color_val = m.group(1) or ""
+        body = m.group(2)
+        safe_color = sanitize_color(color_val)
+        if not safe_color or not body.strip():
+            return body
+        return f'<span style="color: {safe_color};">{body.strip()}</span>'
+
+    content = re.sub(
+        r"\{color:(?:color=)?([#a-zA-Z0-9(),\.\s]+)\}([^\{\}\n]+)",
+        repl_unclosed_color,
+        content,
+        flags=re.IGNORECASE,
+    )
+    # Clean up any leftover orphan color tags
+    content = re.sub(r"\{/?color(?::[^\}]*)?\}", "", content, flags=re.IGNORECASE)
+
     # 7. Tables: ||Header|| or |Cell|
     def repl_table(m):
         table_text = m.group(0)
@@ -153,13 +216,33 @@ def render_jira_markup(text):
     content = re.sub(r"\{\{([^\n{}]+)\}\}", r'<code class="jira-inline-code">\1</code>', content)
     content = re.sub(r"`([^`\n]+)`", r'<code class="jira-inline-code">\1</code>', content)
 
-    # 13. Text Formatting (Bold, Italic, Underline, Strikethrough)
+    # 13. Text Formatting (Bold, Italic, Underline, Strikethrough, Superscript, Subscript, Citation, Mentions, Emojis)
     content = re.sub(r"\*\*([^\n*]+)\*\*", r"<strong>\1</strong>", content)
     content = re.sub(r"(?<!\w)\*([^\n*]+)\*(?!\w)", r"<strong>\1</strong>", content)
     content = re.sub(r"(?<!\w)_([^\n_]+)_(?!\w)", r"<em>\1</em>", content)
     content = re.sub(r"(?<!\w)\+([^\n+]+)\+(?!\w)", r"<u>\1</u>", content)
     content = re.sub(r"~~([^\n~]+)~~", r"<del>\1</del>", content)
     content = re.sub(r"(?<!\w)-([^\n\-]+)-(?!\w)", r"<del>\1</del>", content)
+    content = re.sub(r"\^([^\n^]+)\^", r"<sup>\1</sup>", content)
+    content = re.sub(r"~([^\n~]+)~", r"<sub>\1</sub>", content)
+    content = re.sub(r"\?\?([^\n?]+)\?\?", r"<cite>\1</cite>", content)
+    content = re.sub(r"\[~([a-zA-Z0-9_.\-]+)\]", r'<span class="jira-mention">@\1</span>', content)
+
+    # 13.5 Jira Icons / Emojis
+    jira_emojis = [
+        (r"\(!\)", "⚠️"),
+        (r"\(i\)", "ℹ️"),
+        (r"\(\/\)", "✅"),
+        (r"\(x\)", "❌"),
+        (r"\(\?\)", "❓"),
+        (r"\(\*\)", "⭐"),
+        (r"\(\*r\)", "🔴"),
+        (r"\(\*g\)", "🟢"),
+        (r"\(\*y\)", "🟡"),
+        (r"\(\*b\)", "🔵"),
+    ]
+    for pattern, icon in jira_emojis:
+        content = re.sub(pattern, icon, content)
 
     # 14. Lists: * bullet or # numbered
     def repl_lists(text_block):
@@ -233,3 +316,80 @@ def render_jira_markup(text):
         content = content.replace(token, block_html)
 
     return mark_safe(content)
+
+
+@register.filter(name="render_jira_preview")
+def render_jira_preview(text, max_len=140):
+    """
+    Renders Jira text for card summaries, board cards, and lists:
+    - Formats colors ({color:#FF0000}text{color} -> <span style="color: #FF0000;">text</span>)
+    - Formats inline styles (bold, italic, code)
+    - Strips heavy blocks ({code}, {panel}, tables) into concise indicators
+    - Ensures no raw Jira formatting tags leak
+    - Safely truncates HTML without breaking tags
+    """
+    if not text or not str(text).strip():
+        return ""
+
+    content = html.escape(str(text).strip())
+
+    # 1. Clean heavy blocks into concise labels
+    content = re.sub(r"\{code(?::[^\}]*)?\}.*?\{code\}", " [Kod] ", content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r"\{noformat\}.*?\{noformat\}", " [Metin] ", content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r"```.*?```", " [Kod] ", content, flags=re.DOTALL)
+    content = re.sub(r"\{panel(?::[^\}]*)?\}(.*?)\{panel\}", r" \1 ", content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r"\{quote\}(.*?)\{quote\}", r' "\1" ', content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r"((?:^(?:\|\||\|).*(?:\r?\n|$))+)", " [Tablo] ", content, flags=re.MULTILINE)
+
+    # 2. Render Jira Colors: {color:#FF0000}text{color}
+    def repl_preview_color(m):
+        col = sanitize_color(m.group(1) or "")
+        body = m.group(2).strip()
+        if col and body:
+            return f'<span style="color: {col}; font-weight: 600;">{body}</span>'
+        return body
+
+    content = re.sub(
+        r"\{color:(?:color=)?([#a-zA-Z0-9(),\.\s]+)\}(.*?)(?:\{color\}|\{/color\})",
+        repl_preview_color,
+        content,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    # Strip any stray or orphan color tags
+    content = re.sub(r"\{/?color(?::[^\}]*)?\}", "", content, flags=re.IGNORECASE)
+
+    # 3. Text formatting
+    content = re.sub(r"\*\*([^\n*]+)\*\*", r"<strong>\1</strong>", content)
+    content = re.sub(r"(?<!\w)\*([^\n*]+)\*(?!\w)", r"<strong>\1</strong>", content)
+    content = re.sub(r"(?<!\w)_([^\n_]+)_(?!\w)", r"<em>\1</em>", content)
+    content = re.sub(r"(?<!\w)\+([^\n+]+)\+(?!\w)", r"<u>\1</u>", content)
+    content = re.sub(r"~~([^\n~]+)~~", r"<del>\1</del>", content)
+    content = re.sub(r"(?<!\w)-([^\n\-]+)-(?!\w)", r"<del>\1</del>", content)
+    content = re.sub(r"\{\{([^\n{}]+)\}\}", r"<code>\1</code>", content)
+    content = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", content)
+
+    # 4. Links: [label|url] -> label
+    content = re.sub(r"\[([^\]\|]+)\|[^\]]+\]", r"\1", content)
+    content = re.sub(r"\[([^\]]+)\](?!\()", r"\1", content)
+
+    # 5. Icons
+    jira_emojis = [
+        (r"\(!\)", "⚠️"),
+        (r"\(i\)", "ℹ️"),
+        (r"\(\/\)", "✅"),
+        (r"\(x\)", "❌"),
+        (r"\(\?\)", "❓"),
+        (r"\(\*\)", "⭐"),
+        (r"\(\*r\)", "🔴"),
+        (r"\(\*g\)", "🟢"),
+        (r"\(\*y\)", "🟡"),
+        (r"\(\*b\)", "🔵"),
+    ]
+    for pattern, icon in jira_emojis:
+        content = re.sub(pattern, icon, content)
+
+    # 6. Collapse excessive whitespace and newlines
+    content = re.sub(r"\s+", " ", content).strip()
+
+    truncated = Truncator(content).chars(int(max_len), html=True)
+    return mark_safe(truncated)

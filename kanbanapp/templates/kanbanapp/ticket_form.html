@@ -1,14 +1,18 @@
 {% extends "kanbanapp/base.html" %}
-{% block title %}Yeni Talep / Hata Bildir — Kanban Manager{% endblock %}
+{% block title %}{% if mode == 'edit' %}{{ ticket.ticket_code }}: Talebi Düzenle — Kanban Manager{% else %}Yeni Talep / Hata Bildir — Kanban Manager{% endif %}{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <h2>Yeni Hata / Geliştirme Talebi</h2>
-    <p class="text-muted">Kanban Project Manager uygulaması için hata bildirin veya yeni özellik / iyileştirme isteği açın.</p>
+    <h2>{% if mode == 'edit' %}Talebi Düzenle: {{ ticket.ticket_code }}{% else %}Yeni Hata / Geliştirme Talebi{% endif %}</h2>
+    <p class="text-muted">{% if mode == 'edit' %}{{ ticket.title }}{% else %}Kanban Project Manager uygulaması için hata bildirin veya yeni özellik / iyileştirme isteği açın.{% endif %}</p>
   </div>
   <div>
-    <a href="{% url 'ticket_list' %}" class="btn-ghost">← Tüm Talepler</a>
+    {% if mode == 'edit' %}
+      <a href="{% url 'ticket_detail' ticket.id %}" class="btn-ghost">← Talebe Dön</a>
+    {% else %}
+      <a href="{% url 'ticket_list' %}" class="btn-ghost">← Tüm Talepler</a>
+    {% endif %}
   </div>
 </div>
 
@@ -80,8 +84,13 @@
     </div>
 
     <div class="form-actions" style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
-      <a href="{% url 'ticket_list' %}" class="btn-ghost">İptal</a>
-      <button type="submit" class="btn-primary">Talebi Oluştur ve Kaydet</button>
+      {% if mode == 'edit' %}
+        <a href="{% url 'ticket_detail' ticket.id %}" class="btn-ghost">İptal</a>
+        <button type="submit" class="btn-primary">Değişiklikleri Kaydet</button>
+      {% else %}
+        <a href="{% url 'ticket_list' %}" class="btn-ghost">İptal</a>
+        <button type="submit" class="btn-primary">Talebi Oluştur ve Kaydet</button>
+      {% endif %}
     </div>
   </form>
 </div>

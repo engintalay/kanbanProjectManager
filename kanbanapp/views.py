@@ -2224,6 +2224,26 @@ def ticket_create_view(request, project_id=None):
     )
 
 
+def _can_edit_ticket(user, ticket):
+    """
+    Hata ve talep düzenleme yetkisi:
+    - Sistem Yöneticisi (Admin - Seviye 1)
+    - Proje Yöneticisi (Seviye 2 - Projeye erişimi olan veya genel talep)
+    - İşi açan kişi (ticket.reporter)
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if _is_admin(user):
+        return True
+    if ticket and ticket.reporter_id == user.id:
+        return True
+    if _is_project_manager(user) or _role_level(user) <= 2:
+        if not ticket or not ticket.project:
+            return True
+        return _user_has_project_access(user, ticket.project)
+    return False
+
+
 @login_required
 def ticket_detail_view(request, ticket_id):
     """Talep detay sayfası: Resim ve ekler, geliştirme takibi, işi açan-yapan mesajlaşması."""
@@ -2266,6 +2286,8 @@ def ticket_detail_view(request, ticket_id):
         or _role_level(request.user) <= 3
     )
 
+    can_edit_ticket = _can_edit_ticket(request.user, ticket)
+
     return render(
         request,
         "kanbanapp/ticket_detail.html",
@@ -2278,9 +2300,79 @@ def ticket_detail_view(request, ticket_id):
             "attachment_form": attachment_form,
             "assignable_users": assignable_users,
             "can_manage": can_manage,
+            "can_edit_ticket": can_edit_ticket,
             "projects": visible_projects,
             "is_reporter": ticket.reporter_id == request.user.id,
             "is_assignee": ticket.assignee_id == request.user.id,
+        },
+    )
+
+
+@login_required
+def ticket_edit_view(request, ticket_id):
+    """
+    Hata ve talepler ekranında açılan işlerin detaylarını düzenleme view'ı.
+    Yetki kuralı: admin, proje yöneticisi ve işi açan kişi tarafından düzenlenebilir.
+    """
+    ticket = get_object_or_404(
+        ProjectTicket.objects.select_related("project", "reporter", "assignee", "card"),
+        id=ticket_id,
+    )
+    if ticket.project and not _can_view_project(request.user, ticket.project):
+        return _forbidden(request)
+    if not _can_edit_ticket(request.user, ticket):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = ProjectTicketForm(request.POST, request.FILES, instance=ticket, user=request.user)
+        if form.is_valid():
+            updated_ticket = form.save()
+
+            # Bağlı kanban kartı varsa başlık ve açıklamasını güncelle
+            if updated_ticket.card:
+                updated_ticket.card.title = f"[{updated_ticket.get_ticket_type_display()}] {updated_ticket.title}"
+                updated_ticket.card.description = updated_ticket.description
+                if updated_ticket.assignee and not updated_ticket.card.assignee:
+                    updated_ticket.card.assignee = updated_ticket.assignee
+                updated_ticket.card.save()
+
+            # Yeni eklenen dosyalar varsa kaydet
+            files = request.FILES.getlist("attachments")
+            added_count = 0
+            for uploaded_file in files:
+                TicketAttachment.objects.create(
+                    ticket=updated_ticket,
+                    file=uploaded_file,
+                    filename=uploaded_file.name,
+                    uploaded_by=request.user,
+                )
+                added_count += 1
+
+            note_msg = "Talep detayları güncellendi."
+            if added_count > 0:
+                note_msg += f" ({added_count} adet yeni ek yüklendi)"
+
+            TicketComment.objects.create(
+                ticket=updated_ticket,
+                author=request.user,
+                message=note_msg,
+                is_system_note=True,
+            )
+
+            messages.success(request, f"'{updated_ticket.title}' talebi başarıyla güncellendi.")
+            return redirect("ticket_detail", ticket_id=updated_ticket.id)
+        messages.error(request, "Lütfen formdaki eksik veya hatalı alanları düzeltin.")
+    else:
+        form = ProjectTicketForm(instance=ticket, user=request.user)
+
+    return render(
+        request,
+        "kanbanapp/ticket_form.html",
+        {
+            "form": form,
+            "ticket": ticket,
+            "project": ticket.project,
+            "mode": "edit",
         },
     )
 

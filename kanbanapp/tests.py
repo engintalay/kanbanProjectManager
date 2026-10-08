@@ -2116,6 +2116,175 @@ class ProjectTicketAndMessagingTests(TestCase):
         self.assertContains(resp, "card-subtasks-panel")
         self.assertContains(resp, "subtask-parent-ref")
 
+    def test_ticket_edit_permissions_and_update(self):
+        ticket = ProjectTicket.objects.create(
+            project=self.project,
+            ticket_type=ProjectTicket.TYPE_BUG,
+            title="Orijinal Başlık",
+            description="Orijinal Açıklama",
+            reporter=self.reporter_user,
+            priority=ProjectTicket.PRIORITY_MEDIUM,
+            status=ProjectTicket.STATUS_OPEN,
+        )
+
+        # 1. Yetkisiz kullanıcı (başka bir programcı - ne admin ne PM ne de reporter)
+        other_user = User.objects.create_user(username="other_dev", password="p", email="other@e.com", role=self.prog_role)
+        from .models import ProjectMember
+        ProjectMember.objects.create(project=self.project, user=other_user)
+        self.client.force_login(other_user)
+        resp_other = self.client.get(reverse("ticket_edit", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(resp_other.status_code, 403)
+
+        resp_other_post = self.client.post(
+            reverse("ticket_edit", kwargs={"ticket_id": ticket.id}),
+            {"ticket_type": "bug", "title": "Hack Başlık", "priority": "high"},
+        )
+        self.assertEqual(resp_other_post.status_code, 403)
+
+        # Yetkisiz kullanıcı detay sayfasına erişebilir fakat düzenle butonunu göremez
+        resp_detail_unauth = self.client.get(reverse("ticket_detail", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(resp_detail_unauth.status_code, 200)
+        self.assertFalse(resp_detail_unauth.context.get("can_edit_ticket"))
+        self.assertNotContains(resp_detail_unauth, reverse("ticket_edit", kwargs={"ticket_id": ticket.id}))
+
+        # 2. İşi açan kullanıcı (reporter) düzenleyebilmeli
+        self.client.force_login(self.reporter_user)
+        resp_rep_get = self.client.get(reverse("ticket_edit", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(resp_rep_get.status_code, 200)
+        self.assertContains(resp_rep_get, "Talebi Düzenle")
+        self.assertContains(resp_rep_get, "Orijinal Başlık")
+
+        resp_rep_post = self.client.post(
+            reverse("ticket_edit", kwargs={"ticket_id": ticket.id}),
+            {
+                "ticket_type": ProjectTicket.TYPE_FEATURE,
+                "title": "Reporter Tarafından Güncellenen Başlık",
+                "description": "Yeni Açıklama",
+                "priority": ProjectTicket.PRIORITY_HIGH,
+                "assignee": self.dev_user.id,
+            },
+            follow=True,
+        )
+        self.assertEqual(resp_rep_post.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.title, "Reporter Tarafından Güncellenen Başlık")
+        self.assertEqual(ticket.description, "Yeni Açıklama")
+        self.assertEqual(ticket.ticket_type, ProjectTicket.TYPE_FEATURE)
+        self.assertEqual(ticket.priority, ProjectTicket.PRIORITY_HIGH)
+        self.assertEqual(ticket.assignee, self.dev_user)
+        self.assertTrue(ticket.comments.filter(is_system_note=True, message__contains="Talep detayları güncellendi").exists())
+
+        # Detay sayfasında düzenle butonu görünmeli
+        resp_detail_rep = self.client.get(reverse("ticket_detail", kwargs={"ticket_id": ticket.id}))
+        self.assertTrue(resp_detail_rep.context.get("can_edit_ticket"))
+        self.assertContains(resp_detail_rep, reverse("ticket_edit", kwargs={"ticket_id": ticket.id}))
+
+        # 3. Proje Yöneticisi (PM) düzenleyebilmeli
+        pm_user = User.objects.create_user(username="pm_user", password="p", email="pm@e.com", role=self.pm_role)
+        ProjectMember.objects.create(project=self.project, user=pm_user)
+        self.client.force_login(pm_user)
+        resp_pm_get = self.client.get(reverse("ticket_edit", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(resp_pm_get.status_code, 200)
+
+        resp_pm_post = self.client.post(
+            reverse("ticket_edit", kwargs={"ticket_id": ticket.id}),
+            {
+                "ticket_type": ProjectTicket.TYPE_FEATURE,
+                "title": "PM Tarafından Güncellenen Başlık",
+                "description": "PM Açıklama",
+                "priority": ProjectTicket.PRIORITY_URGENT,
+            },
+            follow=True,
+        )
+        self.assertEqual(resp_pm_post.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.title, "PM Tarafından Güncellenen Başlık")
+
+        # Projeye dahil olmayan başka bir PM bu projeye ait talebi düzenleyememeli
+        pm_other = User.objects.create_user(username="pm_other", password="p", email="pmo@e.com", role=self.pm_role)
+        self.client.force_login(pm_other)
+        resp_pm_other = self.client.get(reverse("ticket_edit", kwargs={"ticket_id": ticket.id}))
+        self.assertEqual(resp_pm_other.status_code, 403)
+
+        # 4. Admin düzenleyebilmeli ve bağlı kartı güncelleştirmeli
+        card = KanbanCard.objects.create(
+            project=self.project,
+            column=self.col_todo,
+            title="[İstek] PM Tarafından Güncellenen Başlık",
+            description="PM Açıklama",
+        )
+        ticket.card = card
+        ticket.save()
+
+        self.client.force_login(self.admin)
+        resp_admin_post = self.client.post(
+            reverse("ticket_edit", kwargs={"ticket_id": ticket.id}),
+            {
+                "ticket_type": ProjectTicket.TYPE_IMPROVEMENT,
+                "title": "Admin Son Başlık",
+                "description": "Admin Son Açıklama",
+                "priority": ProjectTicket.PRIORITY_LOW,
+            },
+            follow=True,
+        )
+        self.assertEqual(resp_admin_post.status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.title, "Admin Son Başlık")
+        card.refresh_from_db()
+        self.assertEqual(card.description, "Admin Son Açıklama")
+        self.assertIn("Admin Son Başlık", card.title)
+
+
+class JiraMarkupAndColorFormattingTests(TestCase):
+    def test_jira_markup_color_formatting(self):
+        from kanbanapp.templatetags.jira_filters import render_jira_markup, render_jira_preview, sanitize_color
+
+        # 1. sanitize_color kontrolleri
+        self.assertEqual(sanitize_color("#FF0000"), "#FF0000")
+        self.assertEqual(sanitize_color("#f00"), "#f00")
+        self.assertEqual(sanitize_color("red"), "red")
+        self.assertEqual(sanitize_color("color=#0052CC"), "#0052CC")
+        self.assertEqual(sanitize_color("javascript:alert(1)"), "")
+        self.assertEqual(sanitize_color(""), "")
+
+        # 2. Kullanıcının tam belirttiği örnek:
+        # {color:#FF0000}\n\nAşağıda belirtilenlerin ivedilikle yapılmasını rica ederim.{color}
+        sample_input = "{color:#FF0000}\n\nAşağıda belirtilenlerin ivedilikle yapılmasını rica ederim.{color}"
+        rendered = render_jira_markup(sample_input)
+
+        # {color:...} ve {color} etiketleri kesinlikle görünmemeli
+        self.assertNotIn("{color:#FF0000}", rendered)
+        self.assertNotIn("{color}", rendered)
+        self.assertNotIn("{/color}", rendered)
+
+        # Renk stili uygulanmış olmalı
+        self.assertIn('style="color: #FF0000;"', rendered)
+        self.assertIn("Aşağıda belirtilenlerin ivedilikle yapılmasını rica ederim.", rendered)
+
+        # 3. İsimlendirilmiş renk
+        named_input = "{color:blue}Mavi renkli metin{color}"
+        rendered_named = render_jira_markup(named_input)
+        self.assertNotIn("{color:blue}", rendered_named)
+        self.assertIn('style="color: blue;"', rendered_named)
+        self.assertIn("Mavi renkli metin", rendered_named)
+
+        # 4. Stray / bozuk unclosed tag temizliği
+        unclosed_input = "{color:#00ff00}Yeşil metin"
+        rendered_unclosed = render_jira_markup(unclosed_input)
+        self.assertNotIn("{color:#00ff00}", rendered_unclosed)
+        self.assertIn('style="color: #00ff00;"', rendered_unclosed)
+        self.assertIn("Yeşil metin", rendered_unclosed)
+
+        # 5. render_jira_preview kontrolü (kart özetleri ve listeler için)
+        preview_input = "{color:#FF0000}Acil Hata!{color} Lütfen hemen ilgilenin."
+        rendered_preview = render_jira_preview(preview_input, 100)
+        self.assertNotIn("{color:#FF0000}", rendered_preview)
+        self.assertNotIn("{color}", rendered_preview)
+        self.assertIn('style="color: #FF0000;', rendered_preview)
+        self.assertIn("Acil Hata!", rendered_preview)
+        self.assertIn("Lütfen hemen ilgilenin.", rendered_preview)
+
+
 
 
 

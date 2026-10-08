@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}{{ project.key }} — Kanban{% endblock %}
 {% block main_class %}container container-fluid{% endblock %}
 {% block content %}
@@ -156,7 +157,7 @@
           {% endif %}
         </div>
 
-        {% if card.description %}<div class="card-desc">{{ card.description|truncatechars:120 }}</div>{% endif %}
+        {% if card.description %}<div class="card-desc">{{ card.description|render_jira_preview:140 }}</div>{% endif %}
 
         {% if card.has_sub_tasks %}
         <div id="subtasks-{{ card.id }}" class="card-subtasks-panel is-hidden">

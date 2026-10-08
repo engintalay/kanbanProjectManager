@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
 {% block title %}Hata ve Geliştirme Talepleri — Kanban Manager{% endblock %}
 
 {% block content %}
@@ -139,7 +140,7 @@
               <strong>{{ t.title }}</strong>
             </a>
             {% if t.description %}
-              <div class="ticket-desc-snippet text-muted">{{ t.description|truncatechars:85 }}</div>
+              <div class="ticket-desc-snippet text-muted">{{ t.description|render_jira_preview:85 }}</div>
             {% endif %}
           </td>
           <td>
