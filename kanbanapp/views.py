@@ -1583,12 +1583,14 @@ def kanban_card_edit_view(request, project_id, card_id):
     if not _can_edit_cards(request.user, project):
         return _forbidden(request)
 
+    next_url = request.POST.get("next") or request.GET.get("next")
+
     if request.method == "POST":
         form = KanbanCardForm(request.POST, instance=card, project=project)
         if form.is_valid():
             form.save()
             messages.success(request, f"'{card.title}' kartı güncellendi.")
-            return redirect("board", project_id=project.id)
+            return redirect(next_url or "board", project_id=project.id)
     else:
         form = KanbanCardForm(instance=card, project=project)
 
@@ -1605,6 +1607,7 @@ def kanban_card_edit_view(request, project_id, card_id):
             "card": card,
             "comments": comments,
             "comment_form": comment_form,
+            "next_url": next_url,
         },
     )
 

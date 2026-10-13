@@ -14,7 +14,7 @@
 </div>
 
 {% for sprint in sprints %}
-<div class="capacity-card">
+<div class="capacity-card clickable-box" onclick="handleBoxClick(event, '{% url 'sprint_board' project.id sprint.id %}')" title="Sprint panosunu açmak için tıklayın">
   <div class="capacity-info">
     <div>
       <a href="{% url 'sprint_board' project.id sprint.id %}" style="font-size:1.15rem; font-weight:700;">{{ sprint.name }}</a>
@@ -84,4 +84,13 @@
 {% empty %}
 <p class="empty">Henüz sprint tanımlanmamış. {% if can_manage_project %}<a href="{% url 'sprint_create' project.id %}">Yeni bir sprint oluşturun.</a>{% endif %}</p>
 {% endfor %}
+
+<script>
+  function handleBoxClick(event, url) {
+    if (event.target.closest('a, button, input, select, textarea, form, label')) {
+      return;
+    }
+    window.location.href = url;
+  }
+</script>
 {% endblock %}

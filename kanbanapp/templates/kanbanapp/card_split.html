@@ -44,7 +44,7 @@
     <h2>Mevcut Alt Görevler ({{ sub_tasks.count }})</h2>
     <div style="display:flex; flex-direction:column; gap:12px;">
       {% for sub in sub_tasks %}
-      <div class="card">
+      <div class="card clickable-box" onclick="handleBoxClick(event, '{% url 'kanban_card_edit' project.id sub.id %}?next={{ request.get_full_path|urlencode }}')" title="Alt görevi düzenlemek için tıklayın">
         <div class="card-header">
           <div class="card-title">{{ sub.title|render_jira_inline }}</div>
           {% if sub.difficulty_level %}
@@ -69,4 +69,13 @@
     </div>
   </div>
 </div>
+
+<script>
+  function handleBoxClick(event, url) {
+    if (event.target.closest('a, button, input, select, textarea, form, label')) {
+      return;
+    }
+    window.location.href = url;
+  }
+</script>
 {% endblock %}

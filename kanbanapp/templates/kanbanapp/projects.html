@@ -9,7 +9,7 @@
 </div>
 <div class="projects-grid">
   {% for project in projects %}
-  <div class="project-card">
+  <div class="project-card clickable-box" onclick="handleBoxClick(event, '{% url 'board' project.id %}')" title="Panoyu açmak için tıklayın">
     <div class="project-key">{{ project.key }}</div>
     <div class="project-name">{{ project.name }}</div>
     <div class="project-meta">
@@ -47,4 +47,14 @@
   <p class="empty">Henüz proje yok.</p>
   {% endfor %}
 </div>
+
+<script>
+  function handleBoxClick(event, url) {
+    // If the click happened on an anchor, button, input, select, textarea or form, do not hijack it
+    if (event.target.closest('a, button, input, select, textarea, form, label')) {
+      return;
+    }
+    window.location.href = url;
+  }
+</script>
 {% endblock %}

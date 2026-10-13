@@ -7,7 +7,7 @@
   <!-- Page Header -->
   <div class="page-head" style="margin-bottom: 20px;">
     <div>
-      <a href="{% url 'board' project.id %}" class="back-link">← Panoya Dön</a>
+      <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'board' project.id %}{% endif %}" class="back-link">← Geri Dön</a>
       <div style="display:flex; align-items:center; gap:12px; margin-top:6px; flex-wrap:wrap;">
         {% if card.jira_key %}
         <span class="card-key" style="font-size:0.95rem; padding:4px 10px; border-radius:6px;">{{ card.jira_key }}</span>
@@ -26,6 +26,7 @@
 
   <form method="post" class="card-edit-form">
     {% csrf_token %}
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
     {% if form.is_extra %}{{ form.is_extra }}{% endif %}
 
     {% for error in form.non_field_errors %}
@@ -245,7 +246,7 @@
             🔄 Jira'dan Güncelle
           </a>
           {% endif %}
-          <a href="{% url 'board' project.id %}" class="btn-secondary">
+          <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'board' project.id %}{% endif %}" class="btn-secondary">
             İptal
           </a>
         </div>

@@ -127,7 +127,7 @@
     </div>
     <div class="board-column-body" data-column-id="{{ column.id }}" data-column-name="{{ column.name }}">
       {% for card in column.cards.all %}
-      <div class="card"
+      <div class="card clickable-box"
            {% if can_edit_cards %}draggable="true"{% endif %}
            data-card-id="{{ card.id }}"
            data-card-title="{{ card.title|strip_jira_markup|escape }}"
@@ -136,7 +136,9 @@
            data-jira-key="{{ card.jira_key|default:'' }}"
            data-sprint-id="{{ card.sprint_id|default:'' }}"
            data-is-subtask="{% if card.parent_card %}1{% else %}0{% endif %}"
-           data-has-subtasks="{% if card.has_sub_tasks %}1{% else %}0{% endif %}">
+           data-has-subtasks="{% if card.has_sub_tasks %}1{% else %}0{% endif %}"
+           data-edit-url="{% url 'kanban_card_edit' project.id card.id %}?next={{ request.get_full_path|urlencode }}"
+           title="Kartı düzenlemek için tıklayın">
         <div class="card-header">
           <div class="card-title">{{ card.title|render_jira_inline }}</div>
           {% if card.difficulty_level %}
@@ -187,7 +189,7 @@
           </div>
           <div class="subtasks-panel-list">
             {% for sub in card.sub_tasks.all %}
-            <div class="subtask-item-card">
+            <div class="subtask-item-card clickable-box" data-edit-url="{% url 'kanban_card_edit' project.id sub.id %}?next={{ request.get_full_path|urlencode }}" title="Alt görevi düzenlemek için tıklayın">
               <div class="subtask-item-top">
                 {% if sub.difficulty_level %}
                 <span class="diff-badge-sm" style="background-color: {{ sub.difficulty_color }};" title="{{ sub.difficulty_label }}">
@@ -514,6 +516,39 @@
         }
 
         document.getElementById('cardMoveModal').classList.add('active');
+      }
+    });
+  });
+
+  // Card & Subtask Click to Edit Navigation
+  let isCardDragging = false;
+  document.querySelectorAll('.card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', () => { isCardDragging = true; });
+    card.addEventListener('dragend', () => { setTimeout(() => { isCardDragging = false; }, 100); });
+  });
+
+  document.querySelectorAll('.card.clickable-box').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (isCardDragging) return;
+      if (e.target.closest('a, button, input, select, textarea, form, label, .subtask-item-card, .card-subtasks-panel')) {
+        return;
+      }
+      const editUrl = card.dataset.editUrl;
+      if (editUrl) {
+        window.location.href = editUrl;
+      }
+    });
+  });
+
+  document.querySelectorAll('.subtask-item-card.clickable-box').forEach(sub => {
+    sub.addEventListener('click', (e) => {
+      if (e.target.closest('a, button, input, select, textarea, form, label')) {
+        return;
+      }
+      e.stopPropagation();
+      const editUrl = sub.dataset.editUrl;
+      if (editUrl) {
+        window.location.href = editUrl;
       }
     });
   });

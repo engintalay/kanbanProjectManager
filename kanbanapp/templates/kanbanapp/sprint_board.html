@@ -144,7 +144,7 @@
     <div class="board-column-body" data-column-id="{{ column.id }}" data-column-name="{{ column.name }}">
       {% for card in column.cards.all %}
         {% if card.sprint_id == sprint.id %}
-        <div class="card"
+        <div class="card clickable-box"
              {% if can_edit_cards %}draggable="true"{% endif %}
              data-card-id="{{ card.id }}"
              data-card-title="{{ card.title|strip_jira_markup|escape }}"
@@ -152,7 +152,9 @@
              data-column-name="{{ column.name|escape }}"
              data-jira-key="{{ card.jira_key|default:'' }}"
              data-is-subtask="{% if card.parent_card or card.is_sub_task %}1{% else %}0{% endif %}"
-             data-has-subtasks="{{ card.has_sub_tasks|yesno:'1,0' }}">
+             data-has-subtasks="{{ card.has_sub_tasks|yesno:'1,0' }}"
+             data-edit-url="{% url 'kanban_card_edit' project.id card.id %}?next={{ request.get_full_path|urlencode }}"
+             title="Kartı düzenlemek için tıklayın">
           
           {% if card.parent_card %}
           <div class="subtask-parent-ref" title="Ana İş: {{ card.parent_card.title|strip_jira_markup|escape }}">
@@ -204,7 +206,7 @@
 
             <div class="subtasks-items-list">
               {% for sub in card.sub_tasks.all %}
-              <div class="subtask-item-card" id="subtask-{{ sub.id }}">
+              <div class="subtask-item-card clickable-box" id="subtask-{{ sub.id }}" data-edit-url="{% url 'kanban_card_edit' project.id sub.id %}?next={{ request.get_full_path|urlencode }}" title="Alt görevi düzenlemek için tıklayın">
                 <div class="subtask-item-main">
                   {% if sub.difficulty_level %}
                   <span class="diff-badge diff-badge-sm" style="background-color: {{ sub.difficulty_color }};" title="{{ sub.difficulty_label }}">
@@ -622,6 +624,39 @@
         }
 
         document.getElementById('cardMoveModal').classList.add('active');
+      }
+    });
+  });
+
+  // Card & Subtask Click to Edit Navigation
+  let isCardDragging = false;
+  document.querySelectorAll('.card[draggable="true"]').forEach(card => {
+    card.addEventListener('dragstart', () => { isCardDragging = true; });
+    card.addEventListener('dragend', () => { setTimeout(() => { isCardDragging = false; }, 100); });
+  });
+
+  document.querySelectorAll('.card.clickable-box').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (isCardDragging) return;
+      if (e.target.closest('a, button, input, select, textarea, form, label, .subtask-item-card, .card-subtasks-panel')) {
+        return;
+      }
+      const editUrl = card.dataset.editUrl;
+      if (editUrl) {
+        window.location.href = editUrl;
+      }
+    });
+  });
+
+  document.querySelectorAll('.subtask-item-card.clickable-box').forEach(sub => {
+    sub.addEventListener('click', (e) => {
+      if (e.target.closest('a, button, input, select, textarea, form, label')) {
+        return;
+      }
+      e.stopPropagation();
+      const editUrl = sub.dataset.editUrl;
+      if (editUrl) {
+        window.location.href = editUrl;
       }
     });
   });

@@ -13,7 +13,7 @@
     <h2>Bana Atanan Görevler ({{ my_cards|length }})</h2>
     <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:16px;">
       {% for card in my_cards %}
-      <div class="card">
+      <div class="card clickable-box" onclick="handleBoxClick(event, '{% url 'kanban_card_edit' card.project_id card.id %}?next={{ request.get_full_path|urlencode }}')" title="Kartı düzenlemek için tıklayın">
         <div class="card-header">
           <div class="card-title">{{ card.title|render_jira_inline }}</div>
           {% if card.difficulty_level %}
@@ -27,6 +27,7 @@
         </div>
         <div class="card-actions" style="margin-top:auto; padding-top:8px;">
           <a href="{% url 'board' card.project_id %}" class="btn-ghost" title="Panoda Gör">📋 Panoda Gör</a>
+          <a href="{% url 'kanban_card_edit' card.project_id card.id %}?next={{ request.get_full_path|urlencode }}" class="btn-ghost" title="Kartı Düzenle">Düzenle</a>
           <a href="{% url 'card_request_create' card.project_id card.id %}" class="btn-ghost" title="Talep Aç">📝 Talep Aç</a>
         </div>
       </div>
@@ -40,7 +41,7 @@
     <h2>Üstüme Alabileceğim Görevler (Atanmamış)</h2>
     <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:16px;">
       {% for card in available_cards %}
-      <div class="card">
+      <div class="card clickable-box" onclick="handleBoxClick(event, '{% url 'kanban_card_edit' card.project_id card.id %}?next={{ request.get_full_path|urlencode }}')" title="Kartı incelemek / düzenlemek için tıklayın">
         <div class="card-header">
           <div class="card-title">{{ card.title|render_jira_inline }}</div>
           {% if card.difficulty_level %}
@@ -96,7 +97,7 @@
     <h3 style="font-size:1rem; margin-bottom:10px; color:var(--ok);">🏃 Aktif Sprintler ({{ active_sprints|length }})</h3>
     <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
       {% for sprint in active_sprints %}
-      <div class="capacity-card" style="margin:0;">
+      <div class="capacity-card clickable-box" onclick="handleBoxClick(event, '{% url 'sprint_board' sprint.project_id sprint.id %}')" style="margin:0;" title="Sprint panosunu açmak için tıklayın">
         <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
           <strong>{{ sprint.project.key }} &mdash; {{ sprint.name }}</strong>
           <span class="badge badge-ok">Aktif</span>
@@ -138,7 +139,7 @@
     <h3 style="font-size:1rem; margin-bottom:10px; color:var(--primary);">📋 Planlama Aşamasındaki Sprintler ({{ planning_sprints|length }})</h3>
     <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
       {% for sprint in planning_sprints %}
-      <div class="capacity-card" style="margin:0; border-style:dashed;">
+      <div class="capacity-card clickable-box" onclick="handleBoxClick(event, '{% url 'sprint_board' sprint.project_id sprint.id %}')" style="margin:0; border-style:dashed;" title="Sprint panosunu açmak için tıklayın">
         <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
           <div>
             <strong>{{ sprint.project.key }} &mdash; {{ sprint.name }}</strong>
@@ -173,7 +174,7 @@
 <h2>Projeler</h2>
 <div class="projects-grid">
   {% for project in projects %}
-  <div class="project-card">
+  <div class="project-card clickable-box" onclick="handleBoxClick(event, '{% url 'board' project.id %}')" title="Panoyu açmak için tıklayın">
     <div class="project-key">{{ project.key }}</div>
     <div class="project-name">{{ project.name }}</div>
     <div class="project-meta">
@@ -192,5 +193,14 @@
   <p class="empty">Henüz erişebileceğiniz bir proje bulunmuyor.</p>
   {% endfor %}
 </div>
+
+<script>
+  function handleBoxClick(event, url) {
+    if (event.target.closest('a, button, input, select, textarea, form, label')) {
+      return;
+    }
+    window.location.href = url;
+  }
+</script>
 {% endblock %}
 
