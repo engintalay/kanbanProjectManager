@@ -300,9 +300,18 @@ def render_jira_markup(text):
     # 15. Paragraphs & Line Breaks
     lines = content.split("\n")
     processed = []
+    current_p_lines = []
+
+    def flush_p():
+        nonlocal current_p_lines
+        if current_p_lines:
+            joined = "<br>".join(current_p_lines)
+            processed.append(f'<p class="jira-p">{joined}</p>')
+            current_p_lines = []
+
     for line in lines:
         s = line.strip()
-        if (
+        is_structural = (
             s.startswith("<h") or s.startswith("</h") or
             s.startswith("<ul") or s.startswith("</ul") or
             s.startswith("<ol") or s.startswith("</ol") or
@@ -312,12 +321,15 @@ def render_jira_markup(text):
             s.startswith("<div") or s.startswith("</div") or
             s.startswith("<hr") or
             "__JIRA_BLOCK_" in s
-        ):
+        )
+        if is_structural:
+            flush_p()
             processed.append(line)
         elif s == "":
-            processed.append('<div class="jira-spacer"></div>')
+            flush_p()
         else:
-            processed.append(f'<p class="jira-p">{line}</p>')
+            current_p_lines.append(line)
+    flush_p()
 
     content = "\n".join(processed)
 

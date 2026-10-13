@@ -148,7 +148,7 @@
               </div>
 
               <!-- Yorum Metni -->
-              <div style="font-size: 0.88rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; word-break: break-word;">{{ c.comment|render_jira_markup }}</div>
+              <div class="card-comment-text" style="font-size: 0.88rem; color: var(--text); line-height: 1.5; word-break: break-word;">{{ c.comment|render_jira_markup }}</div>
             </div>
             {% empty %}
             <div style="padding: 14px; background: rgba(255,255,255,0.01); border: 1px dashed var(--border); border-radius: 8px; text-align: center; color: var(--muted); font-size: 0.85rem;">

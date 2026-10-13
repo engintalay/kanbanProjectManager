@@ -764,14 +764,30 @@ input:focus, select:focus { outline: none; border-color: var(--primary); }
   text-align: center;
 }
 
+p.jira-p {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+p.jira-p:last-child {
+  margin-bottom: 0;
+}
+
 .jira-description-container p.jira-p {
   margin: 0 0 12px;
 }
 .jira-description-container p.jira-p:last-child {
   margin-bottom: 0;
 }
-.jira-description-container .jira-spacer {
-  height: 12px;
+.card-comment-text p.jira-p,
+.chat-text p.jira-p {
+  margin: 0 0 8px;
+}
+.card-comment-text p.jira-p:last-child,
+.chat-text p.jira-p:last-child {
+  margin-bottom: 0;
+}
+.jira-spacer {
+  height: 10px;
 }
 .jira-description-container h1,
 .jira-description-container .jira-h1 {
