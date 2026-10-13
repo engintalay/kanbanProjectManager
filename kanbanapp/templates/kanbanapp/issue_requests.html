@@ -14,53 +14,53 @@
 <table class="data-table">
   <thead>
     <tr>
-      <th>Tarih</th>
+      <th style="width: 100px; white-space: nowrap;">Tarih</th>
       <th>Kart</th>
-      <th>Talep Eden</th>
-      <th>Tür</th>
-      <th>Gerekçe</th>
-      <th>İstenen Zorluk</th>
+      <th style="width: 130px; white-space: nowrap;">Talep Eden</th>
+      <th style="width: 110px; white-space: nowrap;">Tür</th>
+      <th style="width: 120px; white-space: nowrap;">Gerekçe</th>
+      <th style="width: 120px; white-space: nowrap;">İstenen Zorluk</th>
       <th>Açıklama</th>
-      <th>Durum</th>
-      <th>İşlem</th>
+      <th style="width: 110px; white-space: nowrap;">Durum</th>
+      <th style="width: 130px; white-space: nowrap;">İşlem</th>
     </tr>
   </thead>
   <tbody>
     {% for req in requests %}
     <tr>
-      <td class="muted">{{ req.created_at|date:"d M H:i" }}</td>
+      <td class="muted" style="white-space: nowrap;">{{ req.created_at|date:"d M H:i" }}</td>
       <td>
         <strong>{{ req.card.title|render_jira_inline }}</strong>
-        {% if req.card.jira_key %}<br><span class="card-key">{{ req.card.jira_key }}</span>{% endif %}
+        {% if req.card.jira_key %}<br><span class="card-key" style="white-space: nowrap;">{{ req.card.jira_key }}</span>{% endif %}
       </td>
-      <td>{{ req.requested_by.username }}</td>
-      <td><span class="badge">{{ req.get_type_display }}</span></td>
-      <td>{{ req.get_reason_display|default:"-" }}</td>
-      <td>
+      <td style="white-space: nowrap;">{{ req.requested_by.username }}</td>
+      <td style="white-space: nowrap;"><span class="badge" style="white-space: nowrap;">{{ req.get_type_display }}</span></td>
+      <td style="white-space: nowrap;">{{ req.get_reason_display|default:"-" }}</td>
+      <td style="white-space: nowrap;">
         {% if req.requested_difficulty %}
-        <span class="diff-badge" style="background:#4f46e5;">{{ req.requested_difficulty }}</span>
+        <span class="diff-badge" style="background:#4f46e5; white-space: nowrap;">{{ req.requested_difficulty }}</span>
         {% else %}-{% endif %}
       </td>
       <td>{% if req.description %}{{ req.description|render_jira_preview:140 }}{% else %}-{% endif %}</td>
-      <td>
-        <span class="badge {% if req.status == 'approved' %}badge-ok{% elif req.status == 'rejected' %}badge-warn{% endif %}">
+      <td style="white-space: nowrap;">
+        <span class="badge {% if req.status == 'approved' %}badge-ok{% elif req.status == 'rejected' %}badge-warn{% endif %}" style="white-space: nowrap;">
           {{ req.get_status_display }}
         </span>
       </td>
-      <td>
+      <td style="white-space: nowrap;">
         {% if req.status == 'pending' %}
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <form method="post" action="{% url 'issue_request_action' project.id req.id 'approve' %}">
             {% csrf_token %}
-            <button type="submit" class="btn-primary" style="padding:4px 8px; font-size:0.75rem;">Onayla</button>
+            <button type="submit" class="btn-primary" style="padding:4px 8px; font-size:0.75rem; white-space: nowrap;">Onayla</button>
           </form>
           <form method="post" action="{% url 'issue_request_action' project.id req.id 'reject' %}">
             {% csrf_token %}
-            <button type="submit" class="btn-danger" style="padding:4px 8px; font-size:0.75rem;">Reddet</button>
+            <button type="submit" class="btn-danger" style="padding:4px 8px; font-size:0.75rem; white-space: nowrap;">Reddet</button>
           </form>
         </div>
         {% else %}
-        <span class="muted" style="font-size:0.8rem;">İncelendi</span>
+        <span class="muted" style="font-size:0.8rem; white-space: nowrap;">İncelendi</span>
         {% endif %}
       </td>
     </tr>

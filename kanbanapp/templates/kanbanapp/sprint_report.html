@@ -77,24 +77,24 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th>Geliştirici</th>
-          <th>Toplam Kart Sayısı</th>
-          <th>Üstlenilen Zorluk (Puan)</th>
-          <th>Tamamlanan Zorluk (Puan)</th>
-          <th>Tamamlanma Oranı</th>
+          <th style="white-space: nowrap;">Geliştirici</th>
+          <th style="width: 150px; white-space: nowrap;">Toplam Kart Sayısı</th>
+          <th style="width: 170px; white-space: nowrap;">Üstlenilen Zorluk (Puan)</th>
+          <th style="width: 170px; white-space: nowrap;">Tamamlanan Zorluk (Puan)</th>
+          <th style="width: 140px; white-space: nowrap;">Tamamlanma Oranı</th>
         </tr>
       </thead>
       <tbody>
         {% for a in assignee_data %}
         <tr>
-          <td><strong>👤 {{ a.name }}</strong></td>
-          <td>{{ a.card_count }} kart</td>
-          <td><span class="diff-badge" style="background:#3b82f6;">{{ a.total_points }} puan</span></td>
-          <td><span class="diff-badge" style="background:#10b981;">{{ a.completed_points }} puan</span></td>
-          <td>
+          <td style="white-space: nowrap;"><strong>👤 {{ a.name }}</strong></td>
+          <td style="white-space: nowrap;">{{ a.card_count }} kart</td>
+          <td style="white-space: nowrap;"><span class="diff-badge" style="background:#3b82f6; white-space: nowrap;">{{ a.total_points }} puan</span></td>
+          <td style="white-space: nowrap;"><span class="diff-badge" style="background:#10b981; white-space: nowrap;">{{ a.completed_points }} puan</span></td>
+          <td style="white-space: nowrap;">
             {% if a.total_points > 0 %}
               {% widthratio a.completed_points a.total_points 100 as member_pct %}
-              <strong>%{{ member_pct }}</strong>
+              <strong style="white-space: nowrap;">%{{ member_pct }}</strong>
             {% else %}
               <span class="muted">-</span>
             {% endif %}
@@ -125,12 +125,12 @@
       <thead>
         <tr>
           <th>Kart</th>
-          <th>Atanan</th>
-          <th>Kolon</th>
-          <th>İlk Zorluk</th>
-          <th>Talep Edilen</th>
-          <th>Mevcut Zorluk</th>
-          <th>Sapma / Sonuç</th>
+          <th style="width: 140px; white-space: nowrap;">Atanan</th>
+          <th style="width: 110px; white-space: nowrap;">Kolon</th>
+          <th style="width: 120px; white-space: nowrap;">İlk Zorluk</th>
+          <th style="width: 120px; white-space: nowrap;">Talep Edilen</th>
+          <th style="width: 120px; white-space: nowrap;">Mevcut Zorluk</th>
+          <th style="width: 130px; white-space: nowrap;">Sapma / Sonuç</th>
         </tr>
       </thead>
       <tbody>
@@ -138,33 +138,33 @@
         <tr>
           <td>
             <strong>{{ card.title|render_jira_inline }}</strong>
-            {% if card.jira_key %}<br><span class="card-key">{{ card.jira_key }}</span>{% endif %}
+            {% if card.jira_key %}<br><span class="card-key" style="white-space: nowrap;">{{ card.jira_key }}</span>{% endif %}
           </td>
-          <td>{{ card.assignee.username|default:"-" }}</td>
-          <td><span class="badge">{{ card.column.name }}</span></td>
-          <td>
+          <td style="white-space: nowrap;">{{ card.assignee.username|default:"-" }}</td>
+          <td style="white-space: nowrap;"><span class="badge" style="white-space: nowrap;">{{ card.column.name }}</span></td>
+          <td style="white-space: nowrap;">
             {% if card.initial_difficulty_level %}
-            <span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.initial_difficulty_level }}</span>
+            <span class="diff-badge" style="background-color:{{ card.difficulty_color }}; white-space: nowrap;">{{ card.initial_difficulty_level }}</span>
             {% else %}-{% endif %}
           </td>
-          <td>
+          <td style="white-space: nowrap;">
             {% if card.requested_difficulty_level %}
-            <span class="diff-badge" style="background:#4f46e5;">{{ card.requested_difficulty_level }}</span>
+            <span class="diff-badge" style="background:#4f46e5; white-space: nowrap;">{{ card.requested_difficulty_level }}</span>
             {% else %}-{% endif %}
           </td>
-          <td>
+          <td style="white-space: nowrap;">
             {% if card.difficulty_level %}
-            <span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.difficulty_level }}</span>
+            <span class="diff-badge" style="background-color:{{ card.difficulty_color }}; white-space: nowrap;">{{ card.difficulty_level }}</span>
             {% else %}-{% endif %}
           </td>
-          <td>
+          <td style="white-space: nowrap;">
             {% if card.initial_difficulty_level and card.difficulty_level %}
               {% if card.difficulty_level > card.initial_difficulty_level %}
-                <span style="color:#ef4444; font-weight:700;">+{{ card.difficulty_level|add:"-"|add:card.initial_difficulty_level }} (Zorlaştı)</span>
+                <span style="color:#ef4444; font-weight:700; white-space: nowrap;">+{{ card.difficulty_level|add:"-"|add:card.initial_difficulty_level }} (Zorlaştı)</span>
               {% elif card.difficulty_level < card.initial_difficulty_level %}
-                <span style="color:#22c55e; font-weight:700;">Kolaylaştı</span>
+                <span style="color:#22c55e; font-weight:700; white-space: nowrap;">Kolaylaştı</span>
               {% else %}
-                <span class="muted">Değişmedi</span>
+                <span class="muted" style="white-space: nowrap;">Değişmedi</span>
               {% endif %}
             {% else %}
               <span class="muted">-</span>
