@@ -1,0 +1,31 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Yorumu Düzenle — {{ card.title }} — Kanban Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{{ next|default:'#' }}" class="back-link">← Karta Dön</a>
+    <h1>Değerlendirmeyi / Yorumu Düzenle</h1>
+    <span class="muted">{{ card.jira_key|default:card.title }} işi için yorumunuz</span>
+  </div>
+</div>
+
+<div class="auth-card" style="max-width: 640px; margin: 0 auto;">
+  <form method="post" class="auth-form">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    
+    <label>
+      <span style="font-weight: 600; margin-bottom: 6px; display: block;">Değerlendirme / Yorum</span>
+      {{ form.comment }}
+    </label>
+    {% for error in form.comment.errors %}
+      <div class="message message-error">{{ error }}</div>
+    {% endfor %}
+
+    <div class="form-actions" style="margin-top: 18px;">
+      <button type="submit" class="btn-primary">💾 Değişiklikleri Kaydet</button>
+      <a href="{{ next|default:'#' }}" class="btn-secondary">İptal</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

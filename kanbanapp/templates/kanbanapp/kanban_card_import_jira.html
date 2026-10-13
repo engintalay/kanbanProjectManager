@@ -20,7 +20,7 @@
       <label style="font-weight: 600; color: var(--text); font-size: 0.95rem;">
         🔍 Jira JQL Sorgusu
       </label>
-      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
         <input
           type="text"
           name="jql"
@@ -28,9 +28,22 @@
           value="{{ current_jql }}"
           class="form-control"
           placeholder='örn: project = "{{ project.key }}" AND assignee = currentUser()'
-          style="flex: 1; min-width: 320px; font-family: monospace; font-size: 0.92rem; padding: 10px 14px;"
+          style="flex: 1; min-width: 280px; font-family: monospace; font-size: 0.92rem; padding: 10px 14px;"
           autofocus
         >
+        <div style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px;" title="JQL ile getirilecek maksimum kayıt sayısı">
+          <label for="max-results-input" style="font-size: 0.82rem; color: var(--muted); margin: 0; white-space: nowrap;">Max Kayıt:</label>
+          <input
+            type="number"
+            name="max_results"
+            id="max-results-input"
+            value="{{ current_max_results }}"
+            min="1"
+            max="500"
+            class="form-control"
+            style="width: 75px; padding: 4px 6px; font-size: 0.88rem; text-align: center;"
+          >
+        </div>
         <button type="submit" class="btn-primary" style="padding: 10px 20px; font-size: 0.92rem;">
           🔍 Jira'da Sorgula
         </button>
@@ -39,6 +52,11 @@
       <!-- Quick JQL Shortcuts -->
       <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px;">
         <span style="font-size: 0.8rem; color: var(--muted);">Hızlı Filtreler:</span>
+        {% if default_jql %}
+        <button type="button" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px; border-color: var(--primary);" onclick="setJql('{{ default_jql|escapejs }}')">
+          ⭐ Proje Varsayılanı
+        </button>
+        {% endif %}
         <button type="button" class="btn-ghost" style="font-size: 0.75rem; padding: 3px 8px;" onclick="setJql('project = &quot;{{ project.key }}&quot;')">
           Tüm Açık İşler
         </button>
@@ -70,6 +88,7 @@
 <form method="post" action="{% url 'kanban_card_import_jira' project.id %}" id="import-form">
   {% csrf_token %}
   <input type="hidden" name="jql" value="{{ current_jql }}">
+  <input type="hidden" name="max_results" value="{{ current_max_results }}">
   <input type="hidden" name="jira_key" id="single-jira-key" value="">
 
   <!-- Common Card Attributes Panel -->
@@ -132,7 +151,27 @@
         </h2>
         <span style="font-size: 0.8rem; color: var(--muted);">İşleri tek tek "Panoya Ekle" butonuyla veya kutucukları seçip toplu olarak ekleyebilirsiniz.</span>
       </div>
-      <div>
+      <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+        <!-- Hızlı Arama Kutusu -->
+        <div style="position: relative; display: flex; align-items: center;">
+          <input
+            type="text"
+            id="table-quick-search"
+            class="form-control"
+            placeholder="🔎 Listede ara (anahtar, özet, kişi)..."
+            style="padding: 7px 12px; font-size: 0.84rem; min-width: 250px; border-radius: 8px;"
+            oninput="filterIssuesTable(this.value)"
+          >
+          <button
+            type="button"
+            id="btn-clear-search"
+            onclick="clearIssuesSearch()"
+            style="position: absolute; right: 8px; background: none; border: none; color: var(--muted); cursor: pointer; display: none; font-size: 0.85rem;"
+            title="Aramayı Temizle"
+          >
+            ✕
+          </button>
+        </div>
         <button type="submit" class="btn-primary" id="btn-batch-add" style="padding: 8px 16px; font-size: 0.88rem;">
           ➕ Seçilenleri Panoya Ekle
         </button>
@@ -157,7 +196,7 @@
         </thead>
         <tbody>
           {% for issue in issues %}
-          <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+          <tr class="issue-row" data-search="{{ issue.key|lower }} {{ issue.summary|lower }} {{ issue.assignee|default:''|lower }} {{ issue.status_key|default:''|lower }} {{ issue.sprint|default:''|lower }}" style="border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
             <td style="padding: 12px 14px; text-align: center;">
               <input type="checkbox" name="selected_keys" value="{{ issue.key }}" class="issue-checkbox" style="cursor: pointer;">
             </td>
@@ -251,6 +290,41 @@
   function addSingle(key) {
     document.getElementById('single-jira-key').value = key;
     document.getElementById('import-form').submit();
+  }
+
+  function filterIssuesTable(rawQuery) {
+    const q = (rawQuery || '').trim().toLowerCase();
+    const rows = document.querySelectorAll('.issue-row');
+    const clearBtn = document.getElementById('btn-clear-search');
+    let visibleCount = 0;
+
+    if (clearBtn) {
+      clearBtn.style.display = q ? 'block' : 'none';
+    }
+
+    rows.forEach(row => {
+      const searchData = row.getAttribute('data-search') || '';
+      if (!q || searchData.includes(q)) {
+        row.style.display = '';
+        visibleCount++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    const countElem = document.getElementById('issue-count');
+    if (countElem) {
+      countElem.textContent = visibleCount;
+    }
+  }
+
+  function clearIssuesSearch() {
+    const input = document.getElementById('table-quick-search');
+    if (input) {
+      input.value = '';
+      filterIssuesTable('');
+      input.focus();
+    }
   }
 </script>
 {% endblock %}

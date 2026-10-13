@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from .models import (
+    CardComment,
     IssueRequest,
     JiraConnection,
     JiraCustomStatus,
@@ -185,3 +186,11 @@ class ThemeAdmin(admin.ModelAdmin):
     list_display = ("name", "code", "is_default", "is_active", "primary_color", "bg_color", "card_bg", "text_color")
     list_filter = ("is_default", "is_active")
     search_fields = ("name", "code")
+
+
+@admin.register(CardComment)
+class CardCommentAdmin(admin.ModelAdmin):
+    list_display = ("card", "author", "created_at", "updated_at")
+    list_filter = ("card__project", "created_at")
+    search_fields = ("comment", "card__title", "card__jira_key", "author__username")
+

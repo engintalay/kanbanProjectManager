@@ -1,6 +1,7 @@
 from django import forms
 
 from .models import (
+    CardComment,
     FIBONACCI_DIFFICULTIES,
     IssueRequest,
     JiraConnection,
@@ -22,13 +23,15 @@ from .models import (
 class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
-        fields = ["name", "key", "description", "jira_connection", "sync_jira_status"]
+        fields = ["name", "key", "description", "jira_connection", "sync_jira_status", "default_jql", "jql_max_results"]
         labels = {
             "name": "Proje Adı",
             "key": "Proje Anahtarı (Key)",
             "description": "Açıklama",
             "jira_connection": "Jira Bağlantısı",
             "sync_jira_status": "Jira Statüsünü Aktar (Statü Senkronizasyonu)",
+            "default_jql": "Varsayılan JQL Sorgusu",
+            "jql_max_results": "Maksimum JQL Kayıt Sayısı (Limit)",
         }
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control", "autofocus": True}),
@@ -36,6 +39,8 @@ class ProjectForm(forms.ModelForm):
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
             "jira_connection": forms.Select(attrs={"class": "form-control"}),
             "sync_jira_status": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "default_jql": forms.TextInput(attrs={"class": "form-control", "placeholder": "Örn: project = \"KEY\" AND statusCategory != Done"}),
+            "jql_max_results": forms.NumberInput(attrs={"class": "form-control", "min": "1", "max": "500", "placeholder": "100"}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -44,11 +49,25 @@ class ProjectForm(forms.ModelForm):
         self.fields["jira_connection"].empty_label = "--- Jira Bağlantısı Seçin ---"
         self.fields["jira_connection"].help_text = "Projeye ait Jira sunucu bağlantısını seçin. Kartlar bu Jira üzerinden çekilecektir."
         self.fields["sync_jira_status"].help_text = "İşaret kaldırıldığında ('Jira statüsünü aktarma'), pano üzerindeki kart hareketleri Jira'ya aktarılmaz ve Jira yenilemelerinde kartların kolonları değiştirilmez."
+        self.fields["default_jql"].required = False
+        self.fields["default_jql"].help_text = "Yeni kart ekleme/arama ekranında otomatik çalıştırılacak varsayılan JQL sorgusu (boş bırakılırsa project = \"KEY\" kullanılır)."
+        self.fields["jql_max_results"].required = False
+        self.fields["jql_max_results"].initial = 100
+        self.fields["jql_max_results"].help_text = "JQL aramasında getirilecek maksimum kayıt sayısı (varsayılan: 100, max: 500)."
         # If new project and default connection exists, pre-select it
         if not self.instance.pk and not self.initial.get("jira_connection"):
             default_conn = JiraConnection.objects.filter(is_default=True).first() or JiraConnection.objects.first()
             if default_conn:
                 self.initial["jira_connection"] = default_conn.id
+
+    def clean_jql_max_results(self):
+        val = self.cleaned_data.get("jql_max_results")
+        if not val:
+            return 100
+        try:
+            return max(1, min(int(val), 500))
+        except (ValueError, TypeError):
+            return 100
 
     def clean_key(self):
         key = self.cleaned_data.get("key", "").strip()
@@ -409,6 +428,26 @@ class TicketCommentForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["attachment"].required = False
+
+
+class CardCommentForm(forms.ModelForm):
+    """Jira işi / Kanban kartı altına değerlendirme/yorum ekleme ve düzenleme formu."""
+
+    class Meta:
+        model = CardComment
+        fields = ["comment"]
+        labels = {
+            "comment": "Değerlendirme / Yorum",
+        }
+        widgets = {
+            "comment": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": "İşle ilgili teknik değerlendirme, not veya yorumunuzu yazın...",
+                }
+            ),
+        }
 
 
 class TicketStatusUpdateForm(forms.Form):

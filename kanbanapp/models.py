@@ -117,6 +117,18 @@ class Project(models.Model):
         verbose_name="Gizlenen Jira Statüleri",
         help_text="Bu proje için kullanılmayan ve gizlenen Jira statüleri.",
     )
+    default_jql = models.CharField(
+        max_length=500,
+        blank=True,
+        default="",
+        verbose_name="Varsayılan JQL Sorgusu",
+        help_text="Yeni kart ekleme/arama ekranında otomatik çalıştırılacak varsayılan JQL sorgusu. Boş bırakılırsa 'project = \"KEY\"' kullanılır.",
+    )
+    jql_max_results = models.PositiveIntegerField(
+        default=100,
+        verbose_name="Maksimum JQL Kayıt Sayısı",
+        help_text="JQL aramasında Jira'dan çekilecek maksimum kayıt sayısı (varsayılan: 100).",
+    )
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, related_name="created_projects",
         blank=True, null=True, default=None,
@@ -130,6 +142,21 @@ class Project(models.Model):
 
     def __str__(self):
         return f"{self.key} - {self.name}"
+
+    def get_default_jql(self):
+        query = (self.default_jql or "").strip()
+        if query:
+            return query
+        return f'project = "{self.key}"' if self.key else ""
+
+    def get_effective_max_results(self):
+        try:
+            val = int(self.jql_max_results)
+            if val > 0:
+                return min(val, 500)
+        except (ValueError, TypeError):
+            pass
+        return 100
 
     def has_member(self, user):
         if not user or not user.is_authenticated:
@@ -469,6 +496,39 @@ class KanbanCard(models.Model):
             sub_tasks_to_sync = self.sub_tasks.exclude(sprint_id=self.sprint_id)
             if sub_tasks_to_sync.exists():
                 sub_tasks_to_sync.update(sprint=self.sprint)
+
+
+class CardComment(models.Model):
+    """Jira işleri / Kanban kartları altında birden fazla değerlendirme ve yorum."""
+
+    card = models.ForeignKey(KanbanCard, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name="card_comments")
+    comment = models.TextField(verbose_name="Değerlendirme / Yorum")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        verbose_name = "Kart Değerlendirmesi / Yorumu"
+        verbose_name_plural = "Kart Değerlendirmeleri / Yorumları"
+
+    def __str__(self):
+        return f"{self.author.username} - {self.card.title} ({self.created_at:%Y-%m-%d %H:%M})"
+
+    def can_edit(self, user):
+        if not user or not user.is_authenticated:
+            return False
+        if getattr(user, "is_superuser", False):
+            return True
+        if self.author_id == user.id:
+            return True
+        # Yöneticiler (Admin veya Proje Yöneticisi: role_level <= 2)
+        if getattr(user, "role_level", 99) <= 2:
+            return True
+        return False
+
+    def can_delete(self, user):
+        return self.can_edit(user)
 
 
 class IssueRequest(models.Model):

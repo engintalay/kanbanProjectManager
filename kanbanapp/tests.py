@@ -2573,6 +2573,130 @@ class ThemeManagementTests(TestCase):
         self.assertIn(f"--primary: {self.light_theme.primary_color};", content)
 
 
+class ProjectJqlAndCardCommentsTests(TestCase):
+    def setUp(self):
+        from .models import ensure_default_roles
+        ensure_default_roles()
+        self.admin = User.objects.create_superuser(username="admin_jql", email="admin_jql@example.com", password="pass")
+        self.pm_user = User.objects.create_user(username="pm_user", email="pm_user@example.com", password="pass")
+        self.pm_role = Role.objects.get(level=2)
+        self.pm_user.role = self.pm_role
+        self.pm_user.save()
+
+        self.dev_user = User.objects.create_user(username="dev_user", email="dev_user@example.com", password="pass")
+        self.dev_role = Role.objects.get(level=3)
+        self.dev_user.role = self.dev_role
+        self.dev_user.save()
+
+        self.other_user = User.objects.create_user(username="other_user", email="other_user@example.com", password="pass")
+        self.other_user.role = self.dev_role
+        self.other_user.save()
+
+        self.conn = JiraConnection.objects.create(
+            name="Test Jira", host="https://jira.example.local", username="user", password="pwd", is_default=True
+        )
+        self.project = Project.objects.create(
+            name="JQL Project",
+            key="JQLPRJ",
+            jira_connection=self.conn,
+            default_jql='project = "JQLPRJ" AND statusCategory != Done',
+            jql_max_results=80,
+        )
+        self.column = KanbanColumn.objects.create(project=self.project, name="To Do", position=0)
+        self.project.project_members.create(user=self.pm_user)
+        self.project.project_members.create(user=self.dev_user)
+        self.project.project_members.create(user=self.other_user)
+        self.card = KanbanCard.objects.create(
+            project=self.project,
+            column=self.column,
+            title="Task 1",
+            jira_key="JQLPRJ-101",
+            assignee=self.dev_user,
+        )
+
+    def test_project_default_jql_and_max_results(self):
+        self.assertEqual(self.project.get_default_jql(), 'project = "JQLPRJ" AND statusCategory != Done')
+        self.assertEqual(self.project.get_effective_max_results(), 80)
+
+        # Fallback when default_jql is empty
+        empty_project = Project.objects.create(name="Empty JQL", key="EMPTYKEY")
+        self.assertEqual(empty_project.get_default_jql(), 'project = "EMPTYKEY"')
+        self.assertEqual(empty_project.get_effective_max_results(), 100)
+
+    def test_kanban_card_import_uses_project_default_jql_and_max_results(self):
+        from unittest.mock import patch
+        self.client.force_login(self.admin)
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=[]):
+            resp = self.client.get(reverse("kanban_card_import_jira", kwargs={"project_id": self.project.id}))
+            self.assertEqual(resp.status_code, 200)
+            content = resp.content.decode("utf-8")
+            self.assertIn('project = &quot;JQLPRJ&quot; AND statusCategory != Done', content)
+            self.assertIn('value="80"', content)
+            self.assertIn("table-quick-search", content)
+            self.assertIn("filterIssuesTable", content)
+
+    def test_card_comment_creation_and_permissions(self):
+        from .models import CardComment
+        self.client.force_login(self.dev_user)
+
+        # Developer adds comment
+        resp = self.client.post(
+            reverse("card_comment_add", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+            {"comment": "Geliştirme aşamasında backend API entegrasyonu tamamlandı."},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(CardComment.objects.filter(card=self.card).count(), 1)
+        comment = CardComment.objects.first()
+        self.assertEqual(comment.author, self.dev_user)
+        self.assertTrue(comment.can_edit(self.dev_user))
+        self.assertTrue(comment.can_delete(self.dev_user))
+
+        # Another developer cannot edit or delete it
+        self.assertFalse(comment.can_edit(self.other_user))
+        self.assertFalse(comment.can_delete(self.other_user))
+
+        # PM and Admin can edit and delete it
+        self.assertTrue(comment.can_edit(self.pm_user))
+        self.assertTrue(comment.can_delete(self.pm_user))
+        self.assertTrue(comment.can_edit(self.admin))
+        self.assertTrue(comment.can_delete(self.admin))
+
+    def test_card_comment_edit_and_delete_views(self):
+        from .models import CardComment
+        comment = CardComment.objects.create(
+            card=self.card,
+            author=self.dev_user,
+            comment="İlk yorum",
+        )
+
+        # Unrelated user cannot edit
+        self.client.force_login(self.other_user)
+        resp_bad = self.client.post(
+            reverse("card_comment_edit", kwargs={"project_id": self.project.id, "card_id": self.card.id, "comment_id": comment.id}),
+            {"comment": "Yetkisiz düzenleme"},
+        )
+        self.assertEqual(resp_bad.status_code, 403)
+
+        # Author can edit
+        self.client.force_login(self.dev_user)
+        resp_edit = self.client.post(
+            reverse("card_comment_edit", kwargs={"project_id": self.project.id, "card_id": self.card.id, "comment_id": comment.id}),
+            {"comment": "Güncellenmiş yorum"},
+        )
+        self.assertEqual(resp_edit.status_code, 302)
+        comment.refresh_from_db()
+        self.assertEqual(comment.comment, "Güncellenmiş yorum")
+
+        # PM can delete
+        self.client.force_login(self.pm_user)
+        resp_del = self.client.post(
+            reverse("card_comment_delete", kwargs={"project_id": self.project.id, "card_id": self.card.id, "comment_id": comment.id}),
+        )
+        self.assertEqual(resp_del.status_code, 302)
+        self.assertFalse(CardComment.objects.filter(id=comment.id).exists())
+
+
+
 
 
 

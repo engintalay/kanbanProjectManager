@@ -97,8 +97,86 @@
             💻 <span>Geliştirici Değerlendirmesi / Dahili Notlar</span>
           </label>
           {{ form.developer_assessment }}
-          <small class="form-text">Takım içi teknik notlar veya değerlendirmeler için kullanılabilir.</small>
+          <small class="form-text">Takım içi teknik özet veya değerlendirme notu.</small>
           {% for error in form.developer_assessment.errors %}<div class="message message-error">{{ error }}</div>{% endfor %}
+        </div>
+        {% endif %}
+
+        {% if card.id %}
+        <!-- Değerlendirme & Yorumlar Bölümü -->
+        <div style="margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <h3 style="margin: 0; font-size: 1.05rem; color: var(--text); display: flex; align-items: center; gap: 8px;">
+              💬 <span>Değerlendirmeler &amp; Yorumlar</span>
+              <span class="badge" style="font-size: 0.75rem; background: rgba(99, 102, 241, 0.2); color: #818cf8;">{{ comments|length }}</span>
+            </h3>
+          </div>
+
+          <!-- Yorum Listesi -->
+          <div class="card-comments-list" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 18px;">
+            {% for c in comments %}
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-weight: 600; font-size: 0.88rem; color: var(--text);">
+                    👤 {{ c.author.get_full_name|default:c.author.username }}
+                  </span>
+                  {% if c.author == card.assignee %}
+                  <span class="badge" style="font-size: 0.68rem; background: rgba(34, 197, 94, 0.15); color: #22c55e;">Atanan Programcı</span>
+                  {% endif %}
+                  <span style="font-size: 0.75rem; color: var(--muted);">
+                    {{ c.created_at|date:"d M Y, H:i" }}
+                    {% if c.updated_at > c.created_at %}(düzenlendi){% endif %}
+                  </span>
+                </div>
+
+                <!-- İşlemler: Ekleyen veya Yöneticiler (Düzenle / Sil) -->
+                {% if user.is_authenticated and c.author == user or role_level <= 2 or user.is_superuser %}
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <a href="{% url 'card_comment_edit' project.id card.id c.id %}?next={{ request.get_full_path|urlencode }}" class="btn-ghost" style="font-size: 0.74rem; padding: 2px 7px;" title="Yorumu Düzenle">
+                    ✏️ Düzenle
+                  </a>
+                  <form method="post" action="{% url 'card_comment_delete' project.id card.id c.id %}" style="display: inline;" onsubmit="return confirm('Bu değerlendirmeyi / yorumu silmek istediğinize emin misiniz?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="btn-ghost text-danger" style="font-size: 0.74rem; padding: 2px 7px; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" title="Yorumu Sil">
+                      🗑️ Sil
+                    </button>
+                  </form>
+                </div>
+                {% endif %}
+              </div>
+
+              <!-- Yorum Metni -->
+              <div style="font-size: 0.88rem; color: var(--text); line-height: 1.5; white-space: pre-wrap; word-break: break-word;">{{ c.comment|render_jira_markup }}</div>
+            </div>
+            {% empty %}
+            <div style="padding: 14px; background: rgba(255,255,255,0.01); border: 1px dashed var(--border); border-radius: 8px; text-align: center; color: var(--muted); font-size: 0.85rem;">
+              Bu iş için henüz eklenmiş bir değerlendirme veya yorum bulunmuyor.
+            </div>
+            {% endfor %}
+          </div>
+
+          <!-- Yeni Yorum Ekleme Formu -->
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 14px;">
+            <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 8px; color: var(--text);">
+              ➕ Yeni Değerlendirme / Yorum Ekle
+            </div>
+            <textarea
+              name="new_card_comment"
+              form="add-card-comment-form"
+              class="form-control"
+              rows="3"
+              placeholder="İş veya geliştirme süreci hakkında değerlendirmenizi veya yorumunuzu yazın..."
+              required
+              style="width: 100%; margin-bottom: 8px;"
+            ></textarea>
+            <div style="display: flex; justify-content: flex-end;">
+              <button type="submit" form="add-card-comment-form" class="btn-primary" style="font-size: 0.82rem; padding: 6px 14px;">
+                💬 Yorumu Kaydet
+              </button>
+            </div>
+          </div>
         </div>
         {% endif %}
       </div>
@@ -180,5 +258,11 @@
       </div>
     </div>
   </form>
+  {% if card.id %}
+  <form id="add-card-comment-form" method="post" action="{% url 'card_comment_add' project.id card.id %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  </form>
+  {% endif %}
 </div>
 {% endblock %}

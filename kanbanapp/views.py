@@ -7,10 +7,12 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from .forms import (
     IssueRequestForm,
     JiraConnectionForm,
+    CardCommentForm,
     KanbanCardForm,
     KanbanColumnForm,
     ProjectForm,
@@ -25,6 +27,7 @@ from .forms import (
 )
 from .middleware import role_level
 from .models import (
+    CardComment,
     FIBONACCI_DIFFICULTIES,
     IssueRequest,
     JiraConnection,
@@ -1219,10 +1222,20 @@ def kanban_card_import_jira_view(request, project_id):
         KanbanCard.objects.filter(project=project, jira_key__isnull=False).values_list("jira_key", flat=True)
     )
 
-    default_jql = f'project = "{project.key}"' if project.key else ""
+    default_jql = project.get_default_jql()
     user_jql = request.GET.get("jql", "").strip() or request.POST.get("jql", "").strip()
     search_jql = user_jql if user_jql else default_jql
     action = request.POST.get("action", "")
+
+    # Configurable max_results (defaults to project.get_effective_max_results() which defaults to 100)
+    raw_max_results = request.GET.get("max_results") or request.POST.get("max_results")
+    if raw_max_results:
+        try:
+            max_results = max(1, min(int(raw_max_results), 500))
+        except (ValueError, TypeError):
+            max_results = project.get_effective_max_results()
+    else:
+        max_results = project.get_effective_max_results()
 
     # Handle POST for adding card(s)
     if request.method == "POST" and action != "search":
@@ -1398,7 +1411,7 @@ def kanban_card_import_jira_view(request, project_id):
         try:
             jql_query = build_open_issues_jql(search_jql, project.key)
             try:
-                raw_issues = service.pull_project_issues(project, jql_query, max_results=100)
+                raw_issues = service.pull_project_issues(project, jql_query, max_results=max_results)
             except Exception as exc:
                 err_str = str(exc).lower()
                 if any(x in err_str for x in ["connection", "timeout", "unreachable", "dns", "refused", "name or service not known", "401", "403"]):
@@ -1406,7 +1419,7 @@ def kanban_card_import_jira_view(request, project_id):
                 logger.info("JQL primary query (%s) başarısız oldu: %s, fallback deneniyor", jql_query, exc)
                 fallback_jql = build_fallback_open_issues_jql(search_jql, project.key)
                 try:
-                    raw_issues = service.pull_project_issues(project, fallback_jql, max_results=100)
+                    raw_issues = service.pull_project_issues(project, fallback_jql, max_results=max_results)
                 except Exception as exc2:
                     err_str2 = str(exc2).lower()
                     if any(x in err_str2 for x in ["connection", "timeout", "unreachable", "dns", "refused", "name or service not known", "401", "403"]):
@@ -1414,7 +1427,7 @@ def kanban_card_import_jira_view(request, project_id):
                     logger.info("JQL fallback (%s) başarısız oldu: %s, yalın sorgu deneniyor", fallback_jql, exc2)
                     raw_jql = search_jql if search_jql else (f'project = "{project.key}"' if project.key else "")
                     if raw_jql:
-                        raw_issues = service.pull_project_issues(project, raw_jql, max_results=100)
+                        raw_issues = service.pull_project_issues(project, raw_jql, max_results=max_results)
                     else:
                         raise exc2
         except Exception as exc:
@@ -1465,6 +1478,7 @@ def kanban_card_import_jira_view(request, project_id):
             "issues": filtered_issues,
             "current_jql": search_jql,
             "default_jql": default_jql,
+            "current_max_results": max_results,
             "search_error": search_error,
             "existing_cards_count": len(existing_keys),
             "fibonacci_choices": FIBONACCI_DIFFICULTIES,
@@ -1558,10 +1572,24 @@ def kanban_card_edit_view(request, project_id, card_id):
             form.save()
             messages.success(request, f"'{card.title}' kartı güncellendi.")
             return redirect("board", project_id=project.id)
-        messages.error(request, "Formdaki hataları düzeltin.")
     else:
         form = KanbanCardForm(instance=card, project=project)
-    return render(request, "kanbanapp/kanban_card_form.html", {"form": form, "project": project, "mode": "edit", "card": card})
+
+    comments = card.comments.all().select_related("author").order_by("created_at")
+    comment_form = CardCommentForm()
+
+    return render(
+        request,
+        "kanbanapp/kanban_card_form.html",
+        {
+            "form": form,
+            "project": project,
+            "mode": "edit",
+            "card": card,
+            "comments": comments,
+            "comment_form": comment_form,
+        },
+    )
 
 
 @login_required
@@ -1577,6 +1605,83 @@ def kanban_card_delete_view(request, project_id, card_id):
         next_url = request.POST.get("next") or request.GET.get("next")
         return redirect(next_url or "board", project_id=project.id)
     return render(request, "kanbanapp/kanban_card_confirm_delete.html", {"card": card, "project": project})
+
+
+@login_required
+def card_comment_add_view(request, project_id, card_id):
+    """Jira işi / Kanban kartı altına yeni değerlendirme/yorum ekleme."""
+    project = get_object_or_404(Project, id=project_id)
+    card = get_object_or_404(KanbanCard, id=card_id, project=project)
+    if not _can_view_project(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        raw_comment = (request.POST.get("comment") or request.POST.get("new_card_comment") or "").strip()
+        if raw_comment:
+            comment = CardComment.objects.create(
+                card=card,
+                author=request.user,
+                comment=raw_comment,
+            )
+            messages.success(request, "Değerlendirmeniz / yorumunuz eklendi.")
+        else:
+            messages.error(request, "Yorum boş bırakılamaz.")
+
+    next_url = request.POST.get("next") or request.GET.get("next")
+    return redirect(next_url or "kanban_card_edit", project_id=project.id, card_id=card.id)
+
+
+@login_required
+def card_comment_edit_view(request, project_id, card_id, comment_id):
+    """Jira işi / Kanban kartı altındaki yorumu düzenleme (Ekleyen ya da yöneticiler)."""
+    project = get_object_or_404(Project, id=project_id)
+    card = get_object_or_404(KanbanCard, id=card_id, project=project)
+    comment = get_object_or_404(CardComment, id=comment_id, card=card)
+
+    if not comment.can_edit(request.user):
+        messages.error(request, "Bu değerlendirmeyi / yorumu düzenleme yetkiniz yok.")
+        return _forbidden(request)
+
+    next_url = request.POST.get("next") or request.GET.get("next") or reverse("kanban_card_edit", kwargs={"project_id": project.id, "card_id": card.id})
+
+    if request.method == "POST":
+        form = CardCommentForm(request.POST, instance=comment)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Yorum güncellendi.")
+            return redirect(next_url)
+        messages.error(request, "Lütfen geçerli bir yorum girin.")
+
+    return render(
+        request,
+        "kanbanapp/card_comment_form.html",
+        {
+            "project": project,
+            "card": card,
+            "comment": comment,
+            "form": CardCommentForm(instance=comment),
+            "next": next_url,
+        },
+    )
+
+
+@login_required
+def card_comment_delete_view(request, project_id, card_id, comment_id):
+    """Jira işi / Kanban kartı altındaki yorumu silme (Ekleyen ya da yöneticiler)."""
+    project = get_object_or_404(Project, id=project_id)
+    card = get_object_or_404(KanbanCard, id=card_id, project=project)
+    comment = get_object_or_404(CardComment, id=comment_id, card=card)
+
+    if not comment.can_delete(request.user):
+        messages.error(request, "Bu değerlendirmeyi / yorumu silme yetkiniz yok.")
+        return _forbidden(request)
+
+    if request.method == "POST":
+        comment.delete()
+        messages.success(request, "Yorum başarıyla silindi.")
+
+    next_url = request.POST.get("next") or request.GET.get("next")
+    return redirect(next_url or "kanban_card_edit", project_id=project.id, card_id=card.id)
 
 
 @login_required
