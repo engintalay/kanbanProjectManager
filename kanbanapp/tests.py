@@ -2449,6 +2449,131 @@ class JiraMarkupAndColorFormattingTests(TestCase):
         self.assertIn("[ACİL]", content)
 
 
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class ThemeManagementTests(TestCase):
+    def setUp(self):
+        self.admin_role = Role.objects.create(name="Admin", slug="admin", level=Role.LEVEL_ADMIN)
+        self.prog_role = Role.objects.create(name="Proje Programcısı", slug="prog", level=Role.LEVEL_PROGRAMMER)
+
+        self.admin_user = User.objects.create_superuser(username="theme_admin", password="p", email="tadmin@e.com", role=self.admin_role)
+        self.prog_user = User.objects.create_user(username="theme_dev", password="p", email="tdev@e.com", role=self.prog_role)
+
+        self.client = Client()
+
+        from .models import Theme, ensure_default_themes
+        ensure_default_themes()
+        self.dark_theme = Theme.objects.get(code="dark")
+        self.light_theme = Theme.objects.get(code="light")
+
+    def test_theme_list_access_permissions(self):
+        # 1. Non-admin forbidden
+        self.client.force_login(self.prog_user)
+        resp = self.client.get(reverse("theme_list"))
+        self.assertEqual(resp.status_code, 403)
+
+        # 2. Admin can view theme list
+        self.client.force_login(self.admin_user)
+        resp = self.client.get(reverse("theme_list"))
+        self.assertEqual(resp.status_code, 200)
+        content = resp.content.decode("utf-8")
+        self.assertIn("Karanlık (Varsayılan)", content)
+        self.assertIn("Açık Tema", content)
+        self.assertIn("Yeni Tema Ekle", content)
+
+    def test_admin_create_new_theme(self):
+        self.client.force_login(self.admin_user)
+        create_resp = self.client.post(
+            reverse("theme_create"),
+            {
+                "name": "Gün Batımı",
+                "code": "sunset",
+                "is_active": "1",
+                "bg_color": "#1a0b2e",
+                "bg_soft": "#2d124d",
+                "card_bg": "#381765",
+                "card_hover": "#4a1e84",
+                "border_color": "#5b24a3",
+                "text_color": "#fdf4ff",
+                "text_muted": "#f0abfc",
+                "primary_color": "#d946ef",
+                "primary_hover": "#c026d3",
+            },
+        )
+        self.assertEqual(create_resp.status_code, 302)
+        from .models import Theme
+        sunset = Theme.objects.get(code="sunset")
+        self.assertEqual(sunset.name, "Gün Batımı")
+        self.assertEqual(sunset.primary_color, "#d946ef")
+
+    def test_admin_edit_existing_theme(self):
+        self.client.force_login(self.admin_user)
+        edit_resp = self.client.post(
+            reverse("theme_edit", kwargs={"theme_id": self.light_theme.id}),
+            {
+                "name": "Açık Tema Düzenlenmiş",
+                "code": "light",
+                "is_active": "1",
+                "bg_color": "#ffffff",
+                "bg_soft": "#f8fafc",
+                "card_bg": "#ffffff",
+                "card_hover": "#f1f5f9",
+                "border_color": "#e2e8f0",
+                "text_color": "#000000",
+                "text_muted": "#475569",
+                "primary_color": "#2563eb",
+                "primary_hover": "#1d4ed8",
+            },
+        )
+        self.assertEqual(edit_resp.status_code, 302)
+        self.light_theme.refresh_from_db()
+        self.assertEqual(self.light_theme.name, "Açık Tema Düzenlenmiş")
+        self.assertEqual(self.light_theme.text_color, "#000000")
+
+    def test_set_default_theme_unsets_other_defaults(self):
+        self.client.force_login(self.admin_user)
+        self.assertTrue(self.dark_theme.is_default)
+        self.assertFalse(self.light_theme.is_default)
+
+        set_resp = self.client.post(reverse("theme_set_default", kwargs={"theme_id": self.light_theme.id}))
+        self.assertEqual(set_resp.status_code, 302)
+
+        self.dark_theme.refresh_from_db()
+        self.light_theme.refresh_from_db()
+        self.assertFalse(self.dark_theme.is_default)
+        self.assertTrue(self.light_theme.is_default)
+
+    def test_cannot_delete_default_theme(self):
+        self.client.force_login(self.admin_user)
+        del_resp = self.client.post(reverse("theme_delete", kwargs={"theme_id": self.dark_theme.id}))
+        self.assertEqual(del_resp.status_code, 302)
+        from .models import Theme
+        self.assertTrue(Theme.objects.filter(id=self.dark_theme.id).exists())
+
+    def test_delete_non_default_theme(self):
+        self.client.force_login(self.admin_user)
+        del_resp = self.client.post(reverse("theme_delete", kwargs={"theme_id": self.light_theme.id}))
+        self.assertEqual(del_resp.status_code, 302)
+        from .models import Theme
+        self.assertFalse(Theme.objects.filter(id=self.light_theme.id).exists())
+
+    def test_user_theme_selection_applies_styles_to_page(self):
+        self.client.force_login(self.prog_user)
+        select_resp = self.client.post(
+            reverse("theme_select"),
+            {"theme_id": self.light_theme.id, "next": reverse("dashboard")},
+        )
+        self.assertEqual(select_resp.status_code, 302)
+
+        # Dashboard contains the light theme css variables injected in active-theme-styles
+        dash_resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(dash_resp.status_code, 200)
+        content = dash_resp.content.decode("utf-8")
+        self.assertIn("active-theme-styles", content)
+        self.assertIn(f"--bg: {self.light_theme.bg_color};", content)
+        self.assertIn(f"--primary: {self.light_theme.primary_color};", content)
+
+
+
 
 
 

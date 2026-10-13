@@ -18,6 +18,7 @@ from .forms import (
     SprintForm,
     StatusMappingForm,
     SubTaskForm,
+    ThemeForm,
     TicketAttachmentForm,
     TicketCommentForm,
     TicketStatusUpdateForm,
@@ -38,6 +39,7 @@ from .models import (
     Role,
     Sprint,
     StatusMapping,
+    Theme,
     TicketAttachment,
     TicketComment,
 )
@@ -2603,5 +2605,125 @@ def ticket_delete_attachment_view(request, ticket_id, attachment_id):
         messages.success(request, f"'{fname}' eki silindi.")
 
     return redirect("ticket_detail", ticket_id=ticket.id)
+
+
+# ===========================================================================
+# Tema Yönetimi (Theme Management)
+# ===========================================================================
+
+@login_required
+def theme_list_view(request):
+    """Yöneticiler için tema listesi ve önizleme ekranı."""
+    if not _is_admin(request.user):
+        return _forbidden(request)
+
+    themes = Theme.objects.all().order_by("-is_default", "name")
+    return render(request, "kanbanapp/theme_list.html", {"themes": themes})
+
+
+@login_required
+def theme_create_view(request):
+    """Yeni tema oluşturma ekranı (Yönetici)."""
+    if not _is_admin(request.user):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        form = ThemeForm(request.POST)
+        if form.is_valid():
+            theme = form.save()
+            messages.success(request, f"'{theme.name}' teması başarıyla oluşturuldu.")
+            return redirect("theme_list")
+        messages.error(request, "Lütfen formdaki hataları düzeltin.")
+    else:
+        form = ThemeForm()
+
+    return render(
+        request,
+        "kanbanapp/theme_form.html",
+        {"form": form, "mode": "create"},
+    )
+
+
+@login_required
+def theme_edit_view(request, theme_id):
+    """Mevcut temayı düzenleme ekranı (Yönetici)."""
+    if not _is_admin(request.user):
+        return _forbidden(request)
+
+    theme = get_object_or_404(Theme, id=theme_id)
+
+    if request.method == "POST":
+        form = ThemeForm(request.POST, instance=theme)
+        if form.is_valid():
+            theme = form.save()
+            messages.success(request, f"'{theme.name}' teması güncellendi.")
+            return redirect("theme_list")
+        messages.error(request, "Lütfen formdaki hataları düzeltin.")
+    else:
+        form = ThemeForm(instance=theme)
+
+    return render(
+        request,
+        "kanbanapp/theme_form.html",
+        {"form": form, "theme": theme, "mode": "edit"},
+    )
+
+
+@login_required
+def theme_delete_view(request, theme_id):
+    """Temayı silme işlemi (Varsayılan tema silinemez)."""
+    if not _is_admin(request.user):
+        return _forbidden(request)
+
+    theme = get_object_or_404(Theme, id=theme_id)
+
+    if theme.is_default:
+        messages.error(request, "Varsayılan tema silinemez. Önce başka bir temayı varsayılan yapın.")
+        return redirect("theme_list")
+
+    if request.method == "POST":
+        tname = theme.name
+        theme.delete()
+        messages.success(request, f"'{tname}' teması silindi.")
+        return redirect("theme_list")
+
+    return render(request, "kanbanapp/theme_confirm_delete.html", {"theme": theme})
+
+
+@login_required
+def theme_set_default_view(request, theme_id):
+    """Temayı varsayılan tema yapma işlemi."""
+    if not _is_admin(request.user):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        theme = get_object_or_404(Theme, id=theme_id)
+        theme.is_default = True
+        theme.is_active = True
+        theme.save()
+        messages.success(request, f"'{theme.name}' başarıyla varsayılan tema yapıldı.")
+
+    return redirect("theme_list")
+
+
+def theme_select_view(request):
+    """Kullanıcının aktif temasını değiştirme işlemi."""
+    if request.method == "POST":
+        theme_id = request.POST.get("theme_id")
+        next_url = request.POST.get("next") or request.META.get("HTTP_REFERER") or "/"
+
+        if theme_id:
+            theme = get_object_or_404(Theme, id=theme_id, is_active=True)
+            request.session["active_theme_id"] = theme.id
+            if request.user.is_authenticated:
+                request.user.theme = theme
+                request.user.save(update_fields=["theme"])
+            messages.success(request, f"Tema '{theme.name}' olarak değiştirildi.")
+
+        if next_url and next_url.startswith("/"):
+            return redirect(next_url)
+        return redirect("dashboard")
+
+    return redirect("dashboard")
 
 

@@ -1,0 +1,16 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}Temayı Sil — {{ theme.name }}{% endblock %}
+{% block content %}
+<div class="auth-card" style="max-width: 520px;">
+  <a href="{% url 'theme_list' %}" class="back-link">← Temalara Dön</a>
+  <h1 style="color: var(--danger); margin-top:10px;">Temayı Sil</h1>
+  <p><strong>{{ theme.name }}</strong> (<code>{{ theme.code }}</code>) temasını silmek istediğinizden emin misiniz?</p>
+  <p class="muted" style="font-size:0.85rem;">Bu temayı tercih etmiş kullanıcılar otomatik olarak varsayılan temaya geçecektir.</p>
+
+  <form method="post" style="margin-top:20px; display:flex; gap:10px;">
+    {% csrf_token %}
+    <button type="submit" class="btn-danger">Evet, Temayı Sil</button>
+    <a href="{% url 'theme_list' %}" class="btn-secondary">İptal</a>
+  </form>
+</div>
+{% endblock %}

@@ -61,4 +61,11 @@ urlpatterns = [
     path("tickets/<int:ticket_id>/create-card/", views.ticket_create_card_view, name="ticket_create_card"),
     path("tickets/<int:ticket_id>/attachment/add/", views.ticket_add_attachment_view, name="ticket_add_attachment"),
     path("tickets/<int:ticket_id>/attachment/<int:attachment_id>/delete/", views.ticket_delete_attachment_view, name="ticket_delete_attachment"),
+    # Tema Yönetimi (Themes)
+    path("themes/", views.theme_list_view, name="theme_list"),
+    path("themes/create/", views.theme_create_view, name="theme_create"),
+    path("themes/<int:theme_id>/edit/", views.theme_edit_view, name="theme_edit"),
+    path("themes/<int:theme_id>/delete/", views.theme_delete_view, name="theme_delete"),
+    path("themes/<int:theme_id>/set-default/", views.theme_set_default_view, name="theme_set_default"),
+    path("themes/select/", views.theme_select_view, name="theme_select"),
 ]

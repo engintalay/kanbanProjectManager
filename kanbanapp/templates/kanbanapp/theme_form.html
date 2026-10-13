@@ -1,0 +1,252 @@
+{% extends "kanbanapp/base.html" %}
+{% block title %}{% if mode == 'create' %}Yeni Tema Oluştur{% else %}Temayı Düzenle: {{ theme.name }}{% endif %} — Kanban Manager{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'theme_list' %}" class="back-link">← Temalara Dön</a>
+    <h1>{% if mode == 'create' %}Yeni Tema Ekle{% else %}Temayı Düzenle: {{ theme.name }}{% endif %}</h1>
+    <p class="muted">Renkleri doğrudan seçebilir veya hex kodlarını (#rrggbb) girebilirsiniz. Değişiklikleri sağdaki kutuda anlık görebilirsiniz.</p>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap:24px; align-items:start; margin-top:20px;">
+  <!-- Form Kartı -->
+  <div class="card" style="padding:20px;">
+    <form method="post" id="themeForm">
+      {% csrf_token %}
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; margin-bottom:14px;">
+        <label>
+          <strong>Tema Adı:</strong>
+          {{ form.name }}
+          {% for err in form.name.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ err }}</span>{% endfor %}
+        </label>
+        <label>
+          <strong>Tema Kodu:</strong>
+          {{ form.code }}
+          {% for err in form.code.errors %}<span class="text-danger" style="font-size:0.8rem;">{{ err }}</span>{% endfor %}
+        </label>
+      </div>
+
+      <div style="display:flex; gap:20px; align-items:center; margin-bottom:20px; padding:10px 14px; background:var(--bg); border-radius:6px; border:1px solid var(--border);">
+        <label style="display:flex; align-items:center; gap:8px; margin:0; cursor:pointer;">
+          {{ form.is_active }}
+          <span>Aktif (Kullanıma Açık)</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; margin:0; cursor:pointer;">
+          {{ form.is_default }}
+          <span>⭐ Varsayılan Tema</span>
+        </label>
+      </div>
+
+      <h3 style="font-size:1rem; margin:16px 0 10px 0; border-bottom:1px solid var(--border); padding-bottom:6px;">Renk Ayarları</h3>
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <!-- Arka Plan -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Ana Arka Plan (--bg):</span>
+          <input type="color" id="picker_bg_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.bg_color }}</div>
+        </div>
+
+        <!-- Yumuşak Arka Plan -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Üst Bar / Yumuşak Zemin (--bg-soft):</span>
+          <input type="color" id="picker_bg_soft" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.bg_soft }}</div>
+        </div>
+
+        <!-- Kart Arka Planı -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Kart Arka Planı (--card):</span>
+          <input type="color" id="picker_card_bg" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.card_bg }}</div>
+        </div>
+
+        <!-- Kart Hover -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Kart Hover (--card-hover):</span>
+          <input type="color" id="picker_card_hover" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.card_hover }}</div>
+        </div>
+
+        <!-- Kenarlık Rengi -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Kenarlık / Çerçeve (--border):</span>
+          <input type="color" id="picker_border_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.border_color }}</div>
+        </div>
+
+        <!-- Metin Rengi -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Ana Metin Rengi (--text):</span>
+          <input type="color" id="picker_text_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.text_color }}</div>
+        </div>
+
+        <!-- Soluk Metin Rengi -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Soluk Metin Rengi (--muted):</span>
+          <input type="color" id="picker_text_muted" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.text_muted }}</div>
+        </div>
+
+        <!-- Birincil Renk -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Birincil Vurgu & Buton (--primary):</span>
+          <input type="color" id="picker_primary_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.primary_color }}</div>
+        </div>
+
+        <!-- Birincil Hover -->
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:0.88rem; flex:1;">Birincil Buton Hover (--primary-hover):</span>
+          <input type="color" id="picker_primary_hover" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
+          <div style="width:110px;">{{ form.primary_hover }}</div>
+        </div>
+      </div>
+
+      <div class="form-actions" style="margin-top:24px; display:flex; gap:10px;">
+        <button type="submit" class="btn-primary">💾 Kaydet</button>
+        <a href="{% url 'theme_list' %}" class="btn-secondary">İptal</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Canlı Önizleme Kutusu -->
+  <div style="position:sticky; top:80px;">
+    <h3 style="margin:0 0 10px 0; font-size:1.05rem;">👁️ Canlı Tema Önizlemesi</h3>
+    <div id="livePreviewContainer" style="padding:20px; border-radius:12px; transition:all .2s ease;">
+      <!-- Üst Bar Örneği -->
+      <div id="prevTopBar" style="padding:10px 16px; border-radius:8px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+        <span id="prevBrand" style="font-weight:700;">Kanban Manager</span>
+        <div style="display:flex; gap:8px; font-size:0.8rem;">
+          <span id="prevNavLink" style="font-weight:600;">Dashboard</span>
+          <span id="prevMutedLink">Projeler</span>
+        </div>
+      </div>
+
+      <!-- Kart Örneği -->
+      <div id="prevCard" style="padding:16px; border-radius:8px; margin-bottom:14px;">
+        <div id="prevCardTitle" style="font-weight:700; font-size:1.05rem; margin-bottom:6px;">Örnek Görev Kartı #104</div>
+        <p id="prevCardText" style="font-size:0.85rem; margin-bottom:12px;">Bu kartta seçtiğiniz temanın arka planı, metin rengi ve kenarlıkları canlı olarak test edilir.</p>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <button type="button" id="prevBtn" style="border:none; padding:6px 14px; border-radius:6px; font-weight:600; cursor:pointer;">
+            İşlem Butonu
+          </button>
+          <span id="prevMutedDate" style="font-size:0.75rem;">12 Eki 2026</span>
+        </div>
+      </div>
+
+      <!-- Ek Gösterge -->
+      <div id="prevSubCard" style="padding:12px; border-radius:8px; font-size:0.82rem; display:flex; justify-content:space-between; align-items:center;">
+        <span id="prevSubText">İlerleme Durumu: Tamamlandı</span>
+        <span id="prevBadge" style="padding:2px 8px; border-radius:4px; font-weight:600; font-size:0.75rem;">%85</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Canlı renk senkronizasyonu ve önizleme
+  const colorFields = [
+    'bg_color', 'bg_soft', 'card_bg', 'card_hover',
+    'border_color', 'text_color', 'text_muted',
+    'primary_color', 'primary_hover'
+  ];
+
+  function updateLivePreview() {
+    const vals = {};
+    colorFields.forEach(f => {
+      const input = document.querySelector(`[name="${f}"]`);
+      vals[f] = input ? input.value.trim() : '#000000';
+    });
+
+    const c = document.getElementById('livePreviewContainer');
+    if (c) {
+      c.style.background = vals.bg_color;
+      c.style.border = `2px solid ${vals.border_color}`;
+    }
+
+    const tb = document.getElementById('prevTopBar');
+    if (tb) {
+      tb.style.background = vals.bg_soft;
+      tb.style.border = `1px solid ${vals.border_color}`;
+    }
+
+    const brand = document.getElementById('prevBrand');
+    if (brand) brand.style.color = vals.text_color;
+
+    const navLink = document.getElementById('prevNavLink');
+    if (navLink) navLink.style.color = vals.primary_color;
+
+    const mutedLink = document.getElementById('prevMutedLink');
+    if (mutedLink) mutedLink.style.color = vals.text_muted;
+
+    const card = document.getElementById('prevCard');
+    if (card) {
+      card.style.background = vals.card_bg;
+      card.style.border = `1px solid ${vals.border_color}`;
+    }
+
+    const cardTitle = document.getElementById('prevCardTitle');
+    if (cardTitle) cardTitle.style.color = vals.text_color;
+
+    const cardText = document.getElementById('prevCardText');
+    if (cardText) cardText.style.color = vals.text_color;
+
+    const btn = document.getElementById('prevBtn');
+    if (btn) {
+      btn.style.background = vals.primary_color;
+      btn.style.color = '#ffffff';
+    }
+
+    const mutedDate = document.getElementById('prevMutedDate');
+    if (mutedDate) mutedDate.style.color = vals.text_muted;
+
+    const subCard = document.getElementById('prevSubCard');
+    if (subCard) {
+      subCard.style.background = vals.bg_soft;
+      subCard.style.border = `1px solid ${vals.border_color}`;
+    }
+
+    const subText = document.getElementById('prevSubText');
+    if (subText) subText.style.color = vals.text_muted;
+
+    const badge = document.getElementById('prevBadge');
+    if (badge) {
+      badge.style.background = vals.primary_color;
+      badge.style.color = '#ffffff';
+    }
+  }
+
+  // Input picker ve text eşleştirme
+  colorFields.forEach(f => {
+    const textInput = document.querySelector(`[name="${f}"]`);
+    const pickerInput = document.getElementById(`picker_${f}`);
+
+    if (textInput && pickerInput) {
+      // Başlangıç değeri
+      if (textInput.value && textInput.value.startsWith('#')) {
+        pickerInput.value = textInput.value.trim();
+      }
+
+      pickerInput.addEventListener('input', (e) => {
+        textInput.value = e.target.value;
+        updateLivePreview();
+      });
+
+      textInput.addEventListener('input', (e) => {
+        if (/^#[0-9a-fA-F]{6}$/.test(e.target.value.trim())) {
+          pickerInput.value = e.target.value.trim();
+        }
+        updateLivePreview();
+      });
+    }
+  });
+
+  // Sayfa yüklendiğinde çalıştır
+  document.addEventListener('DOMContentLoaded', updateLivePreview);
+  updateLivePreview();
+</script>
+{% endblock %}

@@ -70,6 +70,10 @@ class User(AbstractUser):
         "Project", on_delete=models.SET_NULL, related_name="members",
         blank=True, null=True, default=None,
     )
+    theme = models.ForeignKey(
+        "Theme", on_delete=models.SET_NULL, related_name="users",
+        blank=True, null=True, default=None,
+    )
     is_active = models.BooleanField(default=True)
     email = models.EmailField(unique=True)
 
@@ -839,3 +843,111 @@ class TicketComment(models.Model):
         import os
         ext = os.path.splitext(self.attachment.name)[1].lower()
         return ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"]
+
+
+class Theme(models.Model):
+    name = models.CharField(max_length=100, verbose_name="Tema Adı")
+    code = models.SlugField(max_length=50, unique=True, verbose_name="Tema Kodu")
+    is_active = models.BooleanField(default=True, verbose_name="Aktif")
+    is_default = models.BooleanField(default=False, verbose_name="Varsayılan Tema")
+
+    # CSS Variables (hex / rgba)
+    bg_color = models.CharField(max_length=30, default="#0f172a", verbose_name="Arka Plan (--bg)")
+    bg_soft = models.CharField(max_length=30, default="#1e293b", verbose_name="Yumuşak Arka Plan (--bg-soft)")
+    card_bg = models.CharField(max_length=30, default="#1e293b", verbose_name="Kart Arka Planı (--card)")
+    card_hover = models.CharField(max_length=30, default="#243449", verbose_name="Kart Hover (--card-hover)")
+    border_color = models.CharField(max_length=30, default="#334155", verbose_name="Kenarlık (--border)")
+    text_color = models.CharField(max_length=30, default="#e2e8f0", verbose_name="Metin Rengi (--text)")
+    text_muted = models.CharField(max_length=30, default="#94a3b8", verbose_name="Soluk Metin (--muted)")
+    primary_color = models.CharField(max_length=30, default="#6366f1", verbose_name="Birincil Renk (--primary)")
+    primary_hover = models.CharField(max_length=30, default="#4f46e5", verbose_name="Birincil Hover (--primary-hover)")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "name"]
+        verbose_name = "Tema"
+        verbose_name_plural = "Temalar"
+
+    def __str__(self):
+        return f"{self.name}{' (Varsayılan)' if self.is_default else ''}"
+
+    def save(self, *args, **kwargs):
+        if self.is_default:
+            Theme.objects.filter(is_default=True).exclude(pk=self.pk).update(is_default=False)
+        super().save(*args, **kwargs)
+
+
+DEFAULT_THEMES = [
+    {
+        "name": "Karanlık (Varsayılan)",
+        "code": "dark",
+        "is_active": True,
+        "is_default": True,
+        "bg_color": "#0f172a",
+        "bg_soft": "#1e293b",
+        "card_bg": "#1e293b",
+        "card_hover": "#243449",
+        "border_color": "#334155",
+        "text_color": "#e2e8f0",
+        "text_muted": "#94a3b8",
+        "primary_color": "#6366f1",
+        "primary_hover": "#4f46e5",
+    },
+    {
+        "name": "Açık Tema",
+        "code": "light",
+        "is_active": True,
+        "is_default": False,
+        "bg_color": "#f8fafc",
+        "bg_soft": "#f1f5f9",
+        "card_bg": "#ffffff",
+        "card_hover": "#f1f5f9",
+        "border_color": "#cbd5e1",
+        "text_color": "#0f172a",
+        "text_muted": "#64748b",
+        "primary_color": "#4f46e5",
+        "primary_hover": "#4338ca",
+    },
+    {
+        "name": "Gece Mavisi",
+        "code": "midnight",
+        "is_active": True,
+        "is_default": False,
+        "bg_color": "#0b1120",
+        "bg_soft": "#0f172a",
+        "card_bg": "#172554",
+        "card_hover": "#1e3a8a",
+        "border_color": "#1e3a8a",
+        "text_color": "#f8fafc",
+        "text_muted": "#93c5fd",
+        "primary_color": "#38bdf8",
+        "primary_hover": "#0284c7",
+    },
+    {
+        "name": "Zümrüt Yeşil",
+        "code": "emerald",
+        "is_active": True,
+        "is_default": False,
+        "bg_color": "#064e3b",
+        "bg_soft": "#065f46",
+        "card_bg": "#047857",
+        "card_hover": "#059669",
+        "border_color": "#059669",
+        "text_color": "#ecfdf5",
+        "text_muted": "#a7f3d0",
+        "primary_color": "#10b981",
+        "primary_hover": "#059669",
+    },
+]
+
+
+def ensure_default_themes():
+    """Ensure default themes exist in the database."""
+    for theme_data in DEFAULT_THEMES:
+        Theme.objects.get_or_create(
+            code=theme_data["code"],
+            defaults=theme_data,
+        )
+

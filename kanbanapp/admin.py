@@ -16,6 +16,7 @@ from .models import (
     Role,
     Sprint,
     StatusMapping,
+    Theme,
     TicketAttachment,
     TicketComment,
     User,
@@ -177,3 +178,10 @@ class TicketCommentAdmin(admin.ModelAdmin):
     list_display = ("ticket", "author", "is_system_note", "created_at")
     list_filter = ("is_system_note", "ticket__project")
     search_fields = ("message", "ticket__title")
+
+
+@admin.register(Theme)
+class ThemeAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "is_default", "is_active", "primary_color", "bg_color", "card_bg", "text_color")
+    list_filter = ("is_default", "is_active")
+    search_fields = ("name", "code")

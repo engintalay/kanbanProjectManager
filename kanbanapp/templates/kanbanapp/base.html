@@ -6,6 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Kanban Manager{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'css/style.css' %}">
+  {% if active_theme %}
+  <style id="active-theme-styles">
+    :root {
+      --bg: {{ active_theme.bg_color }};
+      --bg-soft: {{ active_theme.bg_soft }};
+      --card: {{ active_theme.card_bg }};
+      --card-hover: {{ active_theme.card_hover }};
+      --border: {{ active_theme.border_color }};
+      --text: {{ active_theme.text_color }};
+      --muted: {{ active_theme.text_muted }};
+      --primary: {{ active_theme.primary_color }};
+      --primary-hover: {{ active_theme.primary_hover }};
+    }
+  </style>
+  {% endif %}
 </head>
 <body>
   {% if user.is_authenticated %}
@@ -20,11 +35,25 @@
         <a href="{% url 'jira_connections' %}" class="{% if 'jira' in request.resolver_match.url_name %}active{% endif %}">Jira Bağlantıları</a>
         {% endif %}
         {% if is_admin %}
+        <a href="{% url 'theme_list' %}" class="{% if 'theme' in request.resolver_match.url_name %}active{% endif %}">Temalar</a>
         <a href="{% url 'register' %}" class="{% if request.resolver_match.url_name == 'register' %}active{% endif %}">Kullanıcı Ekle</a>
         <a href="{% url 'admin:index' %}" target="_blank">Admin Paneli</a>
         {% endif %}
       </nav>
       <div class="user-box">
+        {% if available_themes %}
+        <form method="post" action="{% url 'theme_select' %}" style="display:inline-flex; align-items:center; margin:0;">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          <select name="theme_id" onchange="this.form.submit()" class="theme-select-mini" title="Tema Değiştir" style="background:var(--bg-soft); color:var(--text); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.8rem; cursor:pointer;">
+            {% for t in available_themes %}
+              <option value="{{ t.id }}" {% if active_theme and active_theme.id == t.id %}selected{% endif %}>
+                🎨 {{ t.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </form>
+        {% endif %}
         <span>{{ user.get_full_name|default:user.username }}</span>
         <form method="post" action="{% url 'logout' %}" class="logout-form">
           {% csrf_token %}

@@ -12,6 +12,7 @@ from .models import (
     ProjectTicket,
     Sprint,
     StatusMapping,
+    Theme,
     TicketAttachment,
     TicketComment,
     User,
@@ -442,5 +443,57 @@ class TicketAttachmentForm(forms.ModelForm):
         }
         widgets = {
             "file": forms.FileInput(attrs={"class": "form-control"}),
+        }
+
+
+class ThemeForm(forms.ModelForm):
+    """Yönetici tarafından yeni tema ekleme veya düzenleme formu."""
+
+    class Meta:
+        model = Theme
+        fields = [
+            "name",
+            "code",
+            "is_active",
+            "is_default",
+            "bg_color",
+            "bg_soft",
+            "card_bg",
+            "card_hover",
+            "border_color",
+            "text_color",
+            "text_muted",
+            "primary_color",
+            "primary_hover",
+        ]
+        labels = {
+            "name": "Tema Adı",
+            "code": "Tema Kodu (Tekil)",
+            "is_active": "Aktif (Kullanıma Açık)",
+            "is_default": "Varsayılan Tema Olarak Belirle",
+            "bg_color": "Ana Sayfa Arka Planı (--bg)",
+            "bg_soft": "Üst Menü / Yumuşak Arka Plan (--bg-soft)",
+            "card_bg": "Pano & Kart Arka Planı (--card)",
+            "card_hover": "Kart Hover / Vurgu Arka Planı (--card-hover)",
+            "border_color": "Çerçeve / Kenarlık Rengi (--border)",
+            "text_color": "Ana Metin Rengi (--text)",
+            "text_muted": "Açıklama / Soluk Metin Rengi (--muted)",
+            "primary_color": "Birincil Vurgu & Buton Rengi (--primary)",
+            "primary_hover": "Birincil Hover Rengi (--primary-hover)",
+        }
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control", "placeholder": "Örn: Gün Batımı", "autofocus": True}),
+            "code": forms.TextInput(attrs={"class": "form-control", "placeholder": "Örn: sunset"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "is_default": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "bg_color": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#0f172a"}),
+            "bg_soft": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#1e293b"}),
+            "card_bg": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#1e293b"}),
+            "card_hover": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#243449"}),
+            "border_color": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#334155"}),
+            "text_color": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#e2e8f0"}),
+            "text_muted": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#94a3b8"}),
+            "primary_color": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#6366f1"}),
+            "primary_hover": forms.TextInput(attrs={"class": "form-control color-text", "placeholder": "#4f46e5"}),
         }
 
