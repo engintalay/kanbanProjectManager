@@ -369,10 +369,12 @@ def dashboard_view(request):
         available_cards = KanbanCard.objects.filter(
             project__in=projects, assignee__isnull=True
         ).select_related("project", "column")[:15]
-        active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE)
+        active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE).select_related("project")
+        planning_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_PLANNING).select_related("project")
     else:
-        # Admin / PM: Active sprints, pending requests, all visible projects
-        active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE)
+        # Admin / PM / Reporter: Active sprints, planning sprints, pending requests, all visible projects
+        active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE).select_related("project")
+        planning_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_PLANNING).select_related("project")
         pending_requests = IssueRequest.objects.filter(project__in=projects, status=IssueRequest.STATUS_PENDING)[:10]
 
     return render(
@@ -383,6 +385,7 @@ def dashboard_view(request):
             "my_cards": my_cards,
             "available_cards": available_cards,
             "active_sprints": active_sprints,
+            "planning_sprints": planning_sprints,
             "pending_requests": pending_requests,
             "role_level": level,
         },
@@ -417,21 +420,25 @@ def project_create_view(request):
     return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "create"})
 
 
+@login_required
 def project_edit_view(request, project_id):
     project = get_object_or_404(Project, id=project_id)
     if not _can_manage_project(request.user, project):
         return _forbidden(request)
 
+    next_url = request.GET.get("next") or request.POST.get("next")
     if request.method == "POST":
         form = ProjectForm(request.POST, instance=project)
         if form.is_valid():
             form.save()
             messages.success(request, f"{project.name} projesi güncellendi.")
+            if next_url and next_url.startswith("/"):
+                return redirect(next_url)
             return redirect("projects")
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
         form = ProjectForm(instance=project)
-    return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "edit", "project": project})
+    return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "edit", "project": project, "next": next_url})
 
 
 @login_required
@@ -684,6 +691,8 @@ def board_view(request, project_id):
     status_mappings = StatusMapping.objects.filter(project=project).order_by("position", "id")
     sprints = Sprint.objects.filter(project=project)
     active_sprint = sprints.filter(status=Sprint.STATUS_ACTIVE).first()
+    planning_sprints = sprints.filter(status=Sprint.STATUS_PLANNING)
+    planning_sprint = planning_sprints.first()
     pending_requests_count = IssueRequest.objects.filter(project=project, status=IssueRequest.STATUS_PENDING).count()
 
     selected_sprint_id = request.GET.get("sprint")
@@ -700,6 +709,8 @@ def board_view(request, project_id):
             "status_mappings": status_mappings,
             "sprints": sprints,
             "active_sprint": active_sprint,
+            "planning_sprint": planning_sprint,
+            "planning_sprints": planning_sprints,
             "selected_sprint": selected_sprint,
             "pending_requests_count": pending_requests_count,
             "can_manage_project": _can_manage_project(request.user, project),

@@ -16,7 +16,10 @@
     <span class="badge badge-warn" style="font-size: 0.75rem;">Jira Bağlantısı Yok</span>
     {% endif %}
     {% if active_sprint %}
-    <span class="muted" style="margin-left: 10px;">Aktif Sprint: <strong>{{ active_sprint.name }}</strong> (Toplam Zorluk: {{ active_sprint.total_difficulty }}) — <a href="{% url 'sprint_board' project.id active_sprint.id %}">Sprint Panosu →</a></span>
+    <span class="muted" style="margin-left: 10px;">🏃 Aktif Sprint: <strong>{{ active_sprint.name }}</strong> (Zorluk: {{ active_sprint.total_difficulty }}) — <a href="{% url 'sprint_board' project.id active_sprint.id %}" style="font-weight:600;">Sprint Panosu →</a></span>
+    {% endif %}
+    {% if planning_sprint %}
+    <span class="muted" style="margin-left: 10px;">📋 Planlanan: <strong>{{ planning_sprint.name }}</strong> (Zorluk: {{ planning_sprint.total_difficulty }}) — <a href="{% url 'sprint_board' project.id planning_sprint.id %}" style="font-weight:600;">Sprinti Yönet →</a></span>
     {% endif %}
   </div>
   <div class="head-actions">
@@ -24,6 +27,7 @@
     <a href="{% url 'kanban_card_import_jira' project.id %}" class="btn-primary">Yeni Kart Ekle (Jira)</a>
     {% endif %}
     {% if can_manage_project %}
+    <a href="{% url 'project_edit' project.id %}?next={{ request.get_full_path|urlencode }}" class="btn-ghost" title="Proje Ayarlarını Düzenle (Jira, JQL, Kayıt Limiti)">⚙️ Proje Ayarları</a>
     <a href="{% url 'kanban_column_create' project.id %}" class="btn-ghost">Kolon Ekle</a>
     {% endif %}
     <a href="{% url 'sprints' project.id %}" class="btn-ghost">Sprintler</a>
@@ -67,9 +71,24 @@
 
 <div class="board-filter-bar">
   <div class="board-filter-label">Kart Filtresi:</div>
-  <button type="button" class="board-filter-btn active" onclick="filterBoardCards('all', this)">Tümü (Ana + Alt Görevler)</button>
-  <button type="button" class="board-filter-btn" onclick="filterBoardCards('parents', this)">Sadece Ana İşler</button>
-  <button type="button" class="board-filter-btn" onclick="filterBoardCards('subtasks', this)">Sadece Alt Görevler</button>
+  <button type="button" class="board-filter-btn active" data-type-filter="all" onclick="filterBoardCards('all', this)">Tümü (Ana + Alt Görevler)</button>
+  <button type="button" class="board-filter-btn" data-type-filter="parents" onclick="filterBoardCards('parents', this)">Sadece Ana İşler</button>
+  <button type="button" class="board-filter-btn" data-type-filter="subtasks" onclick="filterBoardCards('subtasks', this)">Sadece Alt Görevler</button>
+
+  {% if sprints %}
+  <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+    <span style="font-weight:600; color:var(--muted); font-size:0.78rem;">Sprint:</span>
+    <select id="boardSprintFilterSelect" class="form-control" style="padding:3px 8px; font-size:0.8rem; width:auto; min-width:180px;" onchange="filterBoardBySprint(this.value)">
+      <option value="all">Tüm Kartlar (Sprint Filtresiz)</option>
+      <option value="no_sprint">Sprint Dışı (Backlog / Genel)</option>
+      {% for sp in sprints %}
+      <option value="{{ sp.id }}" {% if selected_sprint and selected_sprint.id == sp.id %}selected{% endif %}>
+        {% if sp.status == 'active' %}🏃{% elif sp.status == 'planning' %}📋{% else %}✅{% endif %} {{ sp.name }} ({{ sp.get_status_display }})
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
 </div>
 
 <div class="board">
@@ -115,6 +134,7 @@
            data-column-id="{{ column.id }}"
            data-column-name="{{ column.name|escape }}"
            data-jira-key="{{ card.jira_key|default:'' }}"
+           data-sprint-id="{{ card.sprint_id|default:'' }}"
            data-is-subtask="{% if card.parent_card %}1{% else %}0{% endif %}"
            data-has-subtasks="{% if card.has_sub_tasks %}1{% else %}0{% endif %}">
         <div class="card-header">
@@ -303,20 +323,52 @@
     if (arrow) arrow.textContent = panel.classList.contains('is-hidden') ? '▸' : '▾';
   }
 
+  let currentTypeFilter = 'all';
+  let currentSprintFilter = 'all';
+
+  function applyBoardCardFilters() {
+    document.querySelectorAll('.board .card').forEach(card => {
+      const isSub = card.getAttribute('data-is-subtask') === '1';
+      const cardSprintId = card.getAttribute('data-sprint-id') || '';
+
+      let typeMatches = true;
+      if (currentTypeFilter === 'parents') {
+        typeMatches = !isSub;
+      } else if (currentTypeFilter === 'subtasks') {
+        typeMatches = isSub;
+      }
+
+      let sprintMatches = true;
+      if (currentSprintFilter === 'no_sprint') {
+        sprintMatches = !cardSprintId;
+      } else if (currentSprintFilter !== 'all') {
+        sprintMatches = (cardSprintId === currentSprintFilter);
+      }
+
+      card.style.display = (typeMatches && sprintMatches) ? '' : 'none';
+    });
+  }
+
   function filterBoardCards(filterType, btn) {
     document.querySelectorAll('.board-filter-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
-    document.querySelectorAll('.board .card').forEach(card => {
-      const isSub = card.getAttribute('data-is-subtask') === '1';
-      if (filterType === 'all') {
-        card.style.display = '';
-      } else if (filterType === 'parents') {
-        card.style.display = isSub ? 'none' : '';
-      } else if (filterType === 'subtasks') {
-        card.style.display = isSub ? '' : 'none';
-      }
-    });
+    currentTypeFilter = filterType;
+    applyBoardCardFilters();
   }
+
+  function filterBoardBySprint(sprintVal) {
+    currentSprintFilter = sprintVal;
+    applyBoardCardFilters();
+  }
+
+  // Sayfa yüklendiğinde varsayılan sprint filtresi varsa uygula
+  document.addEventListener('DOMContentLoaded', function() {
+    const spSelect = document.getElementById('boardSprintFilterSelect');
+    if (spSelect && spSelect.value && spSelect.value !== 'all') {
+      currentSprintFilter = spSelect.value;
+      applyBoardCardFilters();
+    }
+  });
 
   let draggedCardEl = null;
   let originColumnId = null;

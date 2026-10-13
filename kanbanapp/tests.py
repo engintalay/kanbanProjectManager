@@ -2769,6 +2769,43 @@ class ProjectBoundSprintTests(TestCase):
         # card2 from project2 must NOT be in available_project_cards
         self.assertNotIn(self.card2, resp.context["available_project_cards"])
 
+    def test_planning_sprints_visible_on_dashboard_and_board(self):
+        # self.sprint1 default status is STATUS_PLANNING
+        self.assertEqual(self.sprint1.status, Sprint.STATUS_PLANNING)
+
+        # Dashboard view should show planning sprints
+        dash_resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(dash_resp.status_code, 200)
+        self.assertIn(self.sprint1, dash_resp.context["planning_sprints"])
+        self.assertContains(dash_resp, "Planlama Aşamasındaki Sprintler")
+        self.assertContains(dash_resp, self.sprint1.name)
+
+        # Board view should show planning sprint in header and select options
+        board_resp = self.client.get(reverse("board", kwargs={"project_id": self.project1.id}))
+        self.assertEqual(board_resp.status_code, 200)
+        self.assertEqual(board_resp.context["planning_sprint"], self.sprint1)
+        self.assertContains(board_resp, "Planlanan:")
+        self.assertContains(board_resp, self.sprint1.name)
+
+    def test_project_edit_allowed_for_manager(self):
+        edit_url = reverse("project_edit", kwargs={"project_id": self.project1.id})
+        # Admin can access
+        resp = self.client.get(edit_url)
+        self.assertEqual(resp.status_code, 200)
+
+        # Admin updates project settings
+        post_resp = self.client.post(edit_url, {
+            "name": "Proje 1 Güncel",
+            "key": "PR1",
+            "default_jql": "project = PR1 AND status != Done",
+            "jql_max_results": 75,
+        })
+        self.assertEqual(post_resp.status_code, 302)
+        self.project1.refresh_from_db()
+        self.assertEqual(self.project1.name, "Proje 1 Güncel")
+        self.assertEqual(self.project1.default_jql, "project = PR1 AND status != Done")
+        self.assertEqual(self.project1.jql_max_results, 75)
+
 
 
 

@@ -82,11 +82,19 @@
     </ul>
   </div>
   {% endif %}
+{% endif %}
 
-  {% if active_sprints %}
+  <!-- SPRINTLER (AKTİF & PLANLAMA) -->
+  {% if active_sprints or planning_sprints %}
   <div style="margin-bottom: 30px;">
-    <h2>Aktif Sprintler</h2>
-    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h2>Sprintler</h2>
+      <span class="muted" style="font-size:0.85rem;">Aktif ve planlama aşamasındaki sprintler</span>
+    </div>
+
+    {% if active_sprints %}
+    <h3 style="font-size:1rem; margin-bottom:10px; color:var(--ok);">🏃 Aktif Sprintler ({{ active_sprints|length }})</h3>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
       {% for sprint in active_sprints %}
       <div class="capacity-card" style="margin:0;">
         <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
@@ -117,16 +125,50 @@
             </div>
           </div>
         </div>
-        <div style="margin-top:10px; display:flex; justify-content:flex-end;">
+        <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+          <span class="muted" style="font-size:0.75rem;">{{ sprint.cards.count }} kart</span>
           <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost">Sprint Panosu →</a>
         </div>
       </div>
       {% endfor %}
     </div>
+    {% endif %}
+
+    {% if planning_sprints %}
+    <h3 style="font-size:1rem; margin-bottom:10px; color:var(--primary);">📋 Planlama Aşamasındaki Sprintler ({{ planning_sprints|length }})</h3>
+    <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
+      {% for sprint in planning_sprints %}
+      <div class="capacity-card" style="margin:0; border-style:dashed;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+          <div>
+            <strong>{{ sprint.project.key }} &mdash; {{ sprint.name }}</strong>
+            {% if sprint.start_date %}<span class="muted" style="font-size:0.75rem; display:block;">Başlangıç: {{ sprint.start_date|date:"d M Y" }}</span>{% endif %}
+          </div>
+          <span class="badge" style="background:rgba(59,130,246,0.15); color:var(--primary);">Planlama</span>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:0.82rem;">
+          <div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+              <span style="color:var(--primary); font-weight:600;">📦 Planlanan Zorluk:</span>
+              <span><strong>{{ sprint.total_difficulty }}</strong> / {{ sprint.default_capacity }} puan (%{{ sprint.capacity_percentage }})</span>
+            </div>
+            <div class="progress-container" style="height:8px;" title="Doluluk: %{{ sprint.capacity_percentage }}">
+              <div class="progress-bar {{ sprint.load_progress_class }}"
+                   style="width: {% if sprint.capacity_percentage > 100 %}100{% else %}{{ sprint.capacity_percentage }}{% endif %}%;">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+          <span class="muted" style="font-size:0.75rem;">{{ sprint.cards.count }} kart planlandı</span>
+          <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost">Sprinti Yönet / Pano →</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
   {% endif %}
-
-{% endif %}
 
 <h2>Projeler</h2>
 <div class="projects-grid">

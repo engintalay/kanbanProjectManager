@@ -18,7 +18,13 @@
   <div class="capacity-info">
     <div>
       <a href="{% url 'sprint_board' project.id sprint.id %}" style="font-size:1.15rem; font-weight:700;">{{ sprint.name }}</a>
-      <span class="badge" style="margin-left: 8px;">{{ sprint.get_status_display }}</span>
+      {% if sprint.status == 'active' %}
+      <span class="badge badge-ok" style="margin-left: 8px;">🏃 Aktif</span>
+      {% elif sprint.status == 'planning' %}
+      <span class="badge" style="margin-left: 8px; background:rgba(59,130,246,0.15); color:var(--primary);">📋 Planlama</span>
+      {% else %}
+      <span class="badge" style="margin-left: 8px; background:rgba(148,163,184,0.15); color:var(--muted);">✅ Tamamlandı</span>
+      {% endif %}
       <span class="muted" style="margin-left: 8px;">Süre: {{ sprint.get_duration_display }}</span>
       {% if sprint.start_date %}<span class="muted" style="margin-left: 8px;">Başlangıç: {{ sprint.start_date|date:"d M Y" }}</span>{% endif %}
     </div>
