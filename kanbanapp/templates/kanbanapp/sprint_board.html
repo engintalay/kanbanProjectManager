@@ -19,6 +19,7 @@
     {% if can_manage_project %}
     <a href="{% url 'sprint_edit' project.id sprint.id %}" class="btn-ghost">Sprinti Düzenle</a>
     {% endif %}
+    <a href="{% url 'sprint_report' project.id sprint.id %}" class="btn-ghost" title="Sprint İlerleme ve Verimlilik Raporu">📊 Sprint Raporu</a>
     <a href="{% url 'board' project.id %}" class="btn-ghost">Genel Pano</a>
   </div>
 </div>

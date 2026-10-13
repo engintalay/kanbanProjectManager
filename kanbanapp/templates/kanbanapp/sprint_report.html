@@ -1,0 +1,252 @@
+{% extends "kanbanapp/base.html" %}
+{% load jira_filters %}
+{% block title %}{{ sprint.name }} — Sprint Raporu{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{% url 'sprints' project.id %}" class="back-link">← {{ project.name }} Sprintleri</a>
+    <h1>{{ sprint.name }} &mdash; Sprint Raporu</h1>
+    <p class="muted">
+      Durum: <strong>{{ sprint.get_status_display }}</strong> |
+      Süre: {{ sprint.get_duration_display }}
+      {% if sprint.start_date %}| Başlangıç: {{ sprint.start_date|date:"d M Y" }}{% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    <a href="{% url 'sprint_board' project.id sprint.id %}" class="btn-secondary" title="Sprint Panosunu Görüntüle">📋 Sprint Panosu</a>
+    <a href="{% url 'export_sprint_cards_csv' project.id sprint.id %}" class="btn-primary" title="Sprint Kartlarını CSV İndir">📥 CSV Olarak İndir</a>
+  </div>
+</div>
+
+<!-- 1. Sprint Özet Kartları (Metrikler) -->
+<div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px;">
+  <div class="capacity-card" style="margin:0;">
+    <div style="font-size:0.82rem; color:var(--muted); font-weight:600; text-transform:uppercase;">📦 Toplam Zorluk Hacmi</div>
+    <div style="font-size:1.8rem; font-weight:700; color:var(--primary); margin:6px 0 2px;">{{ sprint.total_difficulty }} <span style="font-size:0.9rem; color:var(--muted);">puan</span></div>
+    <div style="font-size:0.78rem; color:var(--muted);">Hedef Kapasite: <strong>{{ sprint.default_capacity }}</strong> puan</div>
+  </div>
+
+  <div class="capacity-card" style="margin:0;">
+    <div style="font-size:0.82rem; color:var(--muted); font-weight:600; text-transform:uppercase;">✅ Tamamlanan İlerleme</div>
+    <div style="font-size:1.8rem; font-weight:700; color:var(--ok); margin:6px 0 2px;">{{ sprint.completed_difficulty }} <span style="font-size:0.9rem; color:var(--muted);">puan</span></div>
+    <div style="font-size:0.78rem; color:var(--muted);">Tamamlanma Oranı: <strong>%{{ sprint.completion_percentage }}</strong></div>
+  </div>
+
+  <div class="capacity-card" style="margin:0;">
+    <div style="font-size:0.82rem; color:var(--muted); font-weight:600; text-transform:uppercase;">📋 Kart Durumu</div>
+    <div style="font-size:1.8rem; font-weight:700; color:var(--text); margin:6px 0 2px;">{{ sprint.completed_cards_count }}/{{ sprint.total_cards_count }}</div>
+    <div style="font-size:0.78rem; color:var(--muted);">Kart tamamlandı</div>
+  </div>
+
+  <div class="capacity-card" style="margin:0;">
+    <div style="font-size:0.82rem; color:var(--muted); font-weight:600; text-transform:uppercase;">⚖️ Kapasite Durumu</div>
+    <div style="font-size:1.4rem; font-weight:700; margin:8px 0 4px;">
+      {% if sprint.is_over_capacity %}
+      <span style="color:var(--danger);">%{{ sprint.capacity_percentage }} Aşım</span>
+      {% elif sprint.is_under_capacity %}
+      <span style="color:var(--warn);">%{{ sprint.capacity_percentage }} Düşük (<%75)</span>
+      {% else %}
+      <span style="color:var(--primary);">%{{ sprint.capacity_percentage }} Normal</span>
+      {% endif %}
+    </div>
+    <div style="font-size:0.78rem; color:var(--muted);">
+      {% if sprint.has_custom_capacity %}Özel hedef kapasite{% else %}Geçmiş ortalama hedef{% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- 2. Grafikler Grid -->
+<div class="reports-charts-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:24px; margin-bottom:30px;">
+  <!-- Sprint Kolon / Statü Dağılımı -->
+  <div class="capacity-card" style="margin:0;">
+    <h3 style="margin-top:0;">Sprint Statü Dağılımı (Kolonlar)</h3>
+    <canvas id="statusChart" height="220"></canvas>
+  </div>
+
+  <!-- Kişi Bazlı İş Yükü ve Tamamlanma Dağılımı -->
+  <div class="capacity-card" style="margin:0;">
+    <h3 style="margin-top:0;">Geliştirici İş Yükü ve Tamamlanma (Puan)</h3>
+    <canvas id="assigneeChart" height="220"></canvas>
+  </div>
+</div>
+
+<!-- 3. Geliştirici Detay Dağılım Tablosu -->
+<div class="capacity-card" style="margin-bottom:24px;">
+  <h3 style="margin-top:0; margin-bottom:12px;">👥 Ekip Üyesi İş Yükü Özeti</h3>
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Geliştirici</th>
+          <th>Toplam Kart Sayısı</th>
+          <th>Üstlenilen Zorluk (Puan)</th>
+          <th>Tamamlanan Zorluk (Puan)</th>
+          <th>Tamamlanma Oranı</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in assignee_data %}
+        <tr>
+          <td><strong>👤 {{ a.name }}</strong></td>
+          <td>{{ a.card_count }} kart</td>
+          <td><span class="diff-badge" style="background:#3b82f6;">{{ a.total_points }} puan</span></td>
+          <td><span class="diff-badge" style="background:#10b981;">{{ a.completed_points }} puan</span></td>
+          <td>
+            {% if a.total_points > 0 %}
+              {% widthratio a.completed_points a.total_points 100 as member_pct %}
+              <strong>%{{ member_pct }}</strong>
+            {% else %}
+              <span class="muted">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="5" class="empty" style="text-align:center; padding:16px;">Sprintte atanmış geliştirici bulunmuyor.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 4. Zorluk Sapma Analizi (Yetkili Yöneticiler) -->
+{% if can_view_drift %}
+<div class="capacity-card" style="margin-bottom:24px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+    <div>
+      <h3 style="margin:0;">Zorluk Değişim & Sapma Raporu (Sprint İçi)</h3>
+      <span class="muted" style="font-size:0.85rem;">Sprint kartlarında talep edilen veya değişen zorluk puanları</span>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Kart</th>
+          <th>Atanan</th>
+          <th>Kolon</th>
+          <th>İlk Zorluk</th>
+          <th>Talep Edilen</th>
+          <th>Mevcut Zorluk</th>
+          <th>Sapma / Sonuç</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for card in drift_cards %}
+        <tr>
+          <td>
+            <strong>{{ card.title|render_jira_inline }}</strong>
+            {% if card.jira_key %}<br><span class="card-key">{{ card.jira_key }}</span>{% endif %}
+          </td>
+          <td>{{ card.assignee.username|default:"-" }}</td>
+          <td><span class="badge">{{ card.column.name }}</span></td>
+          <td>
+            {% if card.initial_difficulty_level %}
+            <span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.initial_difficulty_level }}</span>
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if card.requested_difficulty_level %}
+            <span class="diff-badge" style="background:#4f46e5;">{{ card.requested_difficulty_level }}</span>
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if card.difficulty_level %}
+            <span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.difficulty_level }}</span>
+            {% else %}-{% endif %}
+          </td>
+          <td>
+            {% if card.initial_difficulty_level and card.difficulty_level %}
+              {% if card.difficulty_level > card.initial_difficulty_level %}
+                <span style="color:#ef4444; font-weight:700;">+{{ card.difficulty_level|add:"-"|add:card.initial_difficulty_level }} (Zorlaştı)</span>
+              {% elif card.difficulty_level < card.initial_difficulty_level %}
+                <span style="color:#22c55e; font-weight:700;">Kolaylaştı</span>
+              {% else %}
+                <span class="muted">Değişmedi</span>
+              {% endif %}
+            {% else %}
+              <span class="muted">-</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="7" class="empty" style="text-align:center; padding:16px;">Bu sprintte zorluk sapması veya bekleyen talep bulunmuyor.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // 1. Sprint Kolon Dağılımı
+  const rawStatus = [
+    {% for s in status_data %}
+      { name: "{{ s.name|escapejs }}", count: {{ s.count }} },
+    {% endfor %}
+  ];
+
+  const ctxStatus = document.getElementById('statusChart').getContext('2d');
+  new Chart(ctxStatus, {
+    type: 'doughnut',
+    data: {
+      labels: rawStatus.map(s => s.name),
+      datasets: [{
+        data: rawStatus.map(s => s.count),
+        backgroundColor: ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'],
+        borderWidth: 1,
+        borderColor: '#334155'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
+      }
+    }
+  });
+
+  // 2. Geliştirici İş Yükü ve Tamamlanma Grafiği
+  const rawAssignees = [
+    {% for a in assignee_data %}
+      { name: "{{ a.name|escapejs }}", total: {{ a.total_points }}, completed: {{ a.completed_points }} },
+    {% endfor %}
+  ];
+
+  const ctxAssignee = document.getElementById('assigneeChart').getContext('2d');
+  new Chart(ctxAssignee, {
+    type: 'bar',
+    data: {
+      labels: rawAssignees.map(a => a.name),
+      datasets: [
+        {
+          label: 'Tamamlanan Zorluk',
+          data: rawAssignees.map(a => a.completed),
+          backgroundColor: '#10b981'
+        },
+        {
+          label: 'Toplam Üstlenilen Zorluk',
+          data: rawAssignees.map(a => a.total),
+          backgroundColor: '#3b82f6'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' }, beginAtZero: true }
+      },
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
+      }
+    }
+  });
+</script>
+{% endblock %}

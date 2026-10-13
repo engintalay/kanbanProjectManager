@@ -128,7 +128,10 @@
         </div>
         <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
           <span class="muted" style="font-size:0.75rem;">{{ sprint.cards.count }} kart</span>
-          <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost">Sprint Panosu →</a>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <a href="{% url 'sprint_report' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;" title="Sprint Raporu">📊 Rapor</a>
+            <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;">Sprint Panosu →</a>
+          </div>
         </div>
       </div>
       {% endfor %}
@@ -162,7 +165,10 @@
         </div>
         <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
           <span class="muted" style="font-size:0.75rem;">{{ sprint.cards.count }} kart planlandı</span>
-          <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost">Sprinti Yönet / Pano →</a>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <a href="{% url 'sprint_report' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;" title="Sprint Raporu">📊 Rapor</a>
+            <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;">Sprinti Yönet / Pano →</a>
+          </div>
         </div>
       </div>
       {% endfor %}

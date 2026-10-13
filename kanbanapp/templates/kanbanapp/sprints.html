@@ -78,7 +78,10 @@
 
   <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
     <span class="muted" style="font-size:0.85rem;">{{ sprint.completed_cards_count }}/{{ sprint.cards.count }} kart tamamlandı</span>
-    <a href="{% url 'sprint_board' project.id sprint.id %}" class="btn-ghost">Sprint Panosunu Görüntüle →</a>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <a href="{% url 'sprint_report' project.id sprint.id %}" class="btn-ghost" title="Sprint Raporu">📊 Rapor</a>
+      <a href="{% url 'sprint_board' project.id sprint.id %}" class="btn-ghost">Sprint Panosu →</a>
+    </div>
   </div>
 </div>
 {% empty %}

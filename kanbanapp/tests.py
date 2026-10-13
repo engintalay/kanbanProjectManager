@@ -530,6 +530,30 @@ class SprintAndCardWorkflowTests(TestCase):
         self.assertIn(b"Card 1", csv_resp.content)
         self.assertIn(b"SPR_cards.csv", csv_resp["Content-Disposition"].encode())
 
+    def test_sprint_report_view_and_csv_export(self):
+        from .models import Sprint
+        sprint = Sprint.objects.create(project=self.project, name="Sprint Alpha", capacity=30, status="active")
+        c1 = KanbanCard.objects.create(
+            project=self.project, sprint=sprint, column=self.col_todo, title="Sprint Card 1", difficulty_level=5, assignee=self.prog
+        )
+        c2 = KanbanCard.objects.create(
+            project=self.project, sprint=sprint, column=self.col_done, title="Sprint Card 2", difficulty_level=8, assignee=self.prog
+        )
+        self.client.force_login(self.pm)
+
+        report_resp = self.client.get(reverse("sprint_report", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(report_resp.status_code, 200)
+        self.assertIn(b"Sprint Raporu", report_resp.content)
+        self.assertIn(b"Sprint Alpha", report_resp.content)
+        self.assertIn(self.prog.username.encode(), report_resp.content)
+
+        csv_resp = self.client.get(reverse("export_sprint_cards_csv", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(csv_resp.status_code, 200)
+        self.assertEqual(csv_resp["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn(b"Sprint Card 1", csv_resp.content)
+        self.assertIn(b"Sprint Card 2", csv_resp.content)
+        self.assertIn(b"Sprint Alpha", csv_resp["Content-Disposition"].encode())
+
     def test_admin_and_app_static_files_served(self):
         admin_css = self.client.get("/static/admin/css/base.css")
         self.assertEqual(admin_css.status_code, 200)

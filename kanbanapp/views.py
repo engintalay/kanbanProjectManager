@@ -2259,6 +2259,106 @@ def report_view(request, project_id):
 
 
 @login_required
+def sprint_report_view(request, project_id, sprint_id):
+    """Sprint-specific reports & metrics view with charts and difficulty tracking."""
+    project = get_object_or_404(Project, id=project_id)
+    sprint = get_object_or_404(Sprint, id=sprint_id, project=project)
+    if not _can_view_project(request.user, project):
+        return _forbidden(request)
+
+    from django.db.models import Q
+
+    cards = sprint.cards.all()
+    columns = project.columns.all().order_by("position")
+
+    # Column / status breakdown for this sprint
+    status_data = []
+    for col in columns:
+        status_data.append({
+            "name": col.name,
+            "count": cards.filter(column=col).count(),
+        })
+
+    # Member / assignee workload breakdown
+    assignee_stats = {}
+    for card in cards.select_related("assignee", "column"):
+        name = card.assignee.get_full_name() or card.assignee.username if card.assignee else "Atanmamış"
+        if name not in assignee_stats:
+            assignee_stats[name] = {"total_points": 0, "completed_points": 0, "card_count": 0}
+        points = card.difficulty_level or 0
+        assignee_stats[name]["total_points"] += points
+        assignee_stats[name]["card_count"] += 1
+        if any(k in card.column.name.lower() for k in ("done", "tamamlandı", "tamamlandi", "bitti", "closed", "kapalı", "resolved")):
+            assignee_stats[name]["completed_points"] += points
+
+    assignee_data = [
+        {
+            "name": k,
+            "total_points": v["total_points"],
+            "completed_points": v["completed_points"],
+            "card_count": v["card_count"],
+        }
+        for k, v in assignee_stats.items()
+    ]
+
+    can_view_drift = _can_manage_project(request.user, project)
+    drift_cards = []
+    if can_view_drift:
+        drift_cards = cards.filter(
+            Q(requested_difficulty_level__isnull=False) | Q(initial_difficulty_level__isnull=False)
+        ).select_related("assignee", "column")
+
+    return render(
+        request,
+        "kanbanapp/sprint_report.html",
+        {
+            "project": project,
+            "sprint": sprint,
+            "status_data": status_data,
+            "assignee_data": assignee_data,
+            "drift_cards": drift_cards,
+            "can_view_drift": can_view_drift,
+            "total_cards": cards.count(),
+            "can_manage_project": _can_manage_project(request.user, project),
+        },
+    )
+
+
+@login_required
+def export_sprint_cards_csv(request, project_id, sprint_id):
+    """CSV export of cards in a specific sprint."""
+    import csv
+    from django.http import HttpResponse
+
+    project = get_object_or_404(Project, id=project_id)
+    sprint = get_object_or_404(Sprint, id=sprint_id, project=project)
+    if not _can_view_project(request.user, project):
+        return _forbidden(request)
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{project.key}_{sprint.name}_cards.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        "ID", "Jira Key", "Başlık", "Kolon", "Zorluk", "Atanan", "Sprint", "Oluşturulma"
+    ])
+
+    for card in sprint.cards.all().select_related("column", "assignee"):
+        writer.writerow([
+            card.id,
+            card.jira_key or "",
+            card.title,
+            card.column.name,
+            card.difficulty_level or "",
+            card.assignee.username if card.assignee else "",
+            sprint.name,
+            card.created_at.strftime("%Y-%m-%d %H:%M"),
+        ])
+
+    return response
+
+
+@login_required
 def export_cards_csv(request, project_id):
     """CSV export of cards (PLAN.md §10 Faz 4)."""
     import csv
