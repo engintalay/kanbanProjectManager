@@ -108,11 +108,11 @@
     <table class="data-table">
       <thead>
         <tr>
-          <th style="width: 100px;">Kod</th>
-          <th style="width: 130px;">Tür</th>
+          <th style="width: 110px; white-space: nowrap;">Kod</th>
+          <th style="width: 120px; white-space: nowrap;">Tür</th>
           <th>Başlık</th>
           <th style="width: 120px;">Proje</th>
-          <th style="width: 100px;">Öncelik</th>
+          <th style="width: 110px; white-space: nowrap;">Öncelik</th>
           <th style="width: 120px;">Durum</th>
           <th style="width: 140px;">İşi Açan</th>
           <th style="width: 140px;">İşi Yapan</th>
@@ -123,16 +123,16 @@
       <tbody>
         {% for t in tickets %}
         <tr class="ticket-row">
-          <td>
+          <td style="white-space: nowrap;">
             <a href="{% url 'ticket_detail' t.id %}" class="ticket-code-link">{{ t.ticket_code }}</a>
           </td>
-          <td>
+          <td style="white-space: nowrap;">
             {% if t.ticket_type == 'bug' %}
-              <span class="badge badge-bug">Hata</span>
+              <span class="badge badge-bug" style="white-space: nowrap;">Hata</span>
             {% elif t.ticket_type == 'feature' %}
-              <span class="badge badge-feature">Yeni İstek</span>
+              <span class="badge badge-feature" style="white-space: nowrap;">Yeni İstek</span>
             {% else %}
-              <span class="badge badge-improvement">İyileştirme</span>
+              <span class="badge badge-improvement" style="white-space: nowrap;">İyileştirme</span>
             {% endif %}
           </td>
           <td>
@@ -150,9 +150,11 @@
               <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3);">KPM</span>
             {% endif %}
           </td>
-          <td>
-            <span class="priority-dot" style="background-color: {{ t.priority_color }};"></span>
-            {{ t.get_priority_display }}
+          <td style="white-space: nowrap;">
+            <span style="display: inline-flex; align-items: center; white-space: nowrap;">
+              <span class="priority-dot" style="background-color: {{ t.priority_color }};"></span>
+              {{ t.get_priority_display }}
+            </span>
           </td>
           <td>
             <span class="status-pill" style="border-color: {{ t.status_color }}; color: {{ t.status_color }};">

@@ -1076,12 +1076,12 @@ p.jira-p:last-child {
 }
 .card.is-dragging {
   opacity: 0.35;
-  outline: 2px dashed #6366f1;
+  outline: 2px dashed var(--primary);
   transform: scale(0.98);
 }
 .board-column-body.drag-over {
   background: rgba(99, 102, 241, 0.12) !important;
-  outline: 2px dashed #6366f1;
+  outline: 2px dashed var(--primary);
   outline-offset: -2px;
   border-radius: 8px;
 }
@@ -1101,7 +1101,7 @@ p.jira-p:last-child {
   transition: color 0.15s, background 0.15s;
 }
 .col-drag-handle:hover {
-  color: #818cf8;
+  color: var(--primary);
   background: rgba(99, 102, 241, 0.12);
 }
 .col-drag-handle:active {
@@ -1109,7 +1109,7 @@ p.jira-p:last-child {
 }
 .board-column.is-col-dragging {
   opacity: 0.45;
-  outline: 2px dashed #6366f1;
+  outline: 2px dashed var(--primary);
   outline-offset: -2px;
   transform: scale(0.99);
 }
@@ -1301,10 +1301,10 @@ p.jira-p:last-child {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  background: #1e293b;
-  color: #f8fafc;
-  border: 1px solid #334155;
-  border-left: 4px solid #22c55e;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
   padding: 12px 20px;
   border-radius: 8px;
   font-size: 0.88rem;
@@ -2191,8 +2191,8 @@ p.jira-p:last-child {
 .card-subtasks-panel {
   margin-top: 8px;
   padding: 8px 10px;
-  background: rgba(15, 23, 42, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
@@ -2210,12 +2210,12 @@ p.jira-p:last-child {
   font-size: 0.75rem;
   color: var(--muted);
   padding-bottom: 4px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--border);
 }
 .subtasks-count-pill {
   font-size: 0.68rem;
   background: rgba(34, 197, 94, 0.12);
-  color: #4ade80;
+  color: var(--ok);
   border: 1px solid rgba(34, 197, 94, 0.3);
   padding: 1px 6px;
   border-radius: 8px;
@@ -2233,8 +2233,8 @@ p.jira-p:last-child {
   margin-top: 3px;
 }
 .subtask-item-card {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-radius: 5px;
   padding: 5px 8px;
   display: flex;
@@ -2244,8 +2244,8 @@ p.jira-p:last-child {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 .subtask-item-card:hover {
-  background: rgba(30, 41, 59, 0.9);
-  border-color: rgba(148, 163, 184, 0.25);
+  background: var(--card-hover);
+  border-color: var(--primary);
 }
 .subtask-item-main {
   display: flex;
@@ -2274,14 +2274,15 @@ p.jira-p:last-child {
   font-size: 0.7rem;
 }
 .subtask-assignee-chip {
-  color: #93c5fd;
-  background: rgba(59, 130, 246, 0.1);
+  color: var(--primary);
+  background: rgba(99, 102, 241, 0.1);
   padding: 1px 5px;
   border-radius: 4px;
 }
 .subtask-col-pill {
-  color: #cbd5e1;
-  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
   padding: 1px 5px;
   border-radius: 4px;
 }
@@ -2290,9 +2291,9 @@ p.jira-p:last-child {
   display: inline-flex;
 }
 .subtask-mini-select {
-  background: #0f172a;
-  color: #94a3b8;
-  border: 1px solid #334155;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 0.68rem;
   padding: 1px 4px;
@@ -2301,7 +2302,7 @@ p.jira-p:last-child {
 .subtask-mini-select:focus {
   outline: none;
   border-color: var(--primary);
-  color: #fff;
+  color: var(--text);
 }
 
 /* Alt Görev Kartı Referansı */
