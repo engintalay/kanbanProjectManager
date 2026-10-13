@@ -356,8 +356,8 @@
         {% if available_project_cards %}
         <div class="sprint-available-cards-list" style="display:flex; flex-direction:column; gap:8px;">
           {% for card in available_project_cards %}
-          <label class="sprint-card-option" style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--card); cursor:pointer; transition:border-color 0.15s ease;" data-card-search="{{ card.jira_key|default:''|lower }} {{ card.title|lower }} {% if card.assignee %}{{ card.assignee.username|lower }}{% endif %}">
-            <input type="checkbox" name="card_ids" value="{{ card.id }}" style="margin-top:4px;">
+          <label class="sprint-card-option" data-card-search="{{ card.jira_key|default:''|lower }} {{ card.title|lower }} {% if card.assignee %}{{ card.assignee.username|lower }}{% endif %}">
+            <input type="checkbox" name="card_ids" value="{{ card.id }}">
             <div style="flex:1;">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
                 {% if card.jira_key %}
@@ -376,9 +376,9 @@
                 <span>Durum: <strong>{{ card.column.name }}</strong></span>
                 <span>Sorumlu: <strong>{% if card.assignee %}👤 {{ card.assignee.username }}{% else %}Atanmadı{% endif %}</strong></span>
                 {% if card.sprint %}
-                <span class="badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-size:0.65rem;">Mevcut Sprint: {{ card.sprint.name }}</span>
+                <span class="badge" style="background:var(--bg-soft); color:var(--warn); border:1px solid var(--border); font-size:0.65rem;">Mevcut Sprint: {{ card.sprint.name }}</span>
                 {% else %}
-                <span class="badge" style="background:rgba(59,130,246,0.15); color:var(--primary); font-size:0.65rem;">Backlog / Genel</span>
+                <span class="badge" style="background:var(--bg-soft); color:var(--primary); border:1px solid var(--border); font-size:0.65rem;">Backlog / Genel</span>
                 {% endif %}
               </div>
             </div>

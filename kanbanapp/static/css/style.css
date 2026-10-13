@@ -1027,7 +1027,7 @@ p.jira-p:last-child {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-soft);
 }
 .drag-modal-header h3 {
   margin: 0;
@@ -1058,7 +1058,7 @@ p.jira-p:last-child {
 .drag-modal-footer {
   padding: 12px 18px;
   border-top: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-soft);
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -2368,4 +2368,35 @@ p.jira-p:last-child {
 .subtask-item-card.clickable-box:hover {
   background: var(--card-hover) !important;
   border-color: var(--primary) !important;
+}
+
+/* Sprint Add Card Modal Option Cards */
+.sprint-card-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.sprint-card-option:hover {
+  border-color: var(--primary);
+  background: var(--card-hover);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.sprint-card-option.is-checked,
+.sprint-card-option:has(input[type="checkbox"]:checked) {
+  border-color: var(--primary);
+  background: var(--card-hover);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.sprint-card-option input[type="checkbox"] {
+  accent-color: var(--primary);
+  margin-top: 4px;
+  cursor: pointer;
 }
