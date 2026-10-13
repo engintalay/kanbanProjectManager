@@ -39,68 +39,82 @@
         </label>
       </div>
 
-      <h3 style="font-size:1rem; margin:16px 0 10px 0; border-bottom:1px solid var(--border); padding-bottom:6px;">Renk Ayarları</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin:16px 0 10px 0; border-bottom:1px solid var(--border); padding-bottom:6px;">
+        <h3 style="font-size:1rem; margin:0;">Renk Ayarları</h3>
+        <button type="button" class="btn-ghost btn-xs" onclick="randomizeAllThemeColors()" title="Tüm tema renklerini uyumlu rastgele renklerle yenile" style="display:inline-flex; align-items:center; gap:5px; font-size:0.78rem; padding:4px 10px; border-color:var(--primary); color:var(--primary);">
+          🎲 Tüm Renkleri Rastgele Seç
+        </button>
+      </div>
 
       <div style="display:flex; flex-direction:column; gap:12px;">
         <!-- Arka Plan -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Ana Arka Plan (--bg):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('bg_color')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_bg_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.bg_color }}</div>
         </div>
 
         <!-- Yumuşak Arka Plan -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Üst Bar / Yumuşak Zemin (--bg-soft):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('bg_soft')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_bg_soft" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.bg_soft }}</div>
         </div>
 
         <!-- Kart Arka Planı -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Kart Arka Planı (--card):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('card_bg')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_card_bg" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.card_bg }}</div>
         </div>
 
         <!-- Kart Hover -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Kart Hover (--card-hover):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('card_hover')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_card_hover" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.card_hover }}</div>
         </div>
 
         <!-- Kenarlık Rengi -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Kenarlık / Çerçeve (--border):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('border_color')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_border_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.border_color }}</div>
         </div>
 
         <!-- Metin Rengi -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Ana Metin Rengi (--text):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('text_color')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_text_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.text_color }}</div>
         </div>
 
         <!-- Soluk Metin Rengi -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Soluk Metin Rengi (--muted):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('text_muted')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_text_muted" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.text_muted }}</div>
         </div>
 
         <!-- Birincil Renk -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Birincil Vurgu & Buton (--primary):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('primary_color')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_primary_color" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.primary_color }}</div>
         </div>
 
         <!-- Birincil Hover -->
-        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div class="color-picker-row" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
           <span style="font-size:0.88rem; flex:1;">Birincil Buton Hover (--primary-hover):</span>
+          <button type="button" class="btn-ghost btn-xs" style="padding:2px 7px; font-size:0.75rem;" onclick="randomizeSingleField('primary_hover')" title="Bu alana rastgele renk ver">🎲</button>
           <input type="color" id="picker_primary_hover" style="width:36px; height:32px; border:none; border-radius:4px; cursor:pointer; background:none;">
           <div style="width:110px;">{{ form.primary_hover }}</div>
         </div>
@@ -244,6 +258,76 @@
       });
     }
   });
+
+  function setFieldValue(field, hex) {
+    const textInput = document.querySelector(`[name="${field}"]`);
+    const pickerInput = document.getElementById(`picker_${field}`);
+    if (textInput) textInput.value = hex;
+    if (pickerInput) pickerInput.value = hex;
+  }
+
+  function randomHex() {
+    return '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+  }
+
+  function hslToHex(h, s, l) {
+    l /= 100;
+    const a = s * Math.min(l, 1 - l) / 100;
+    const f = n => {
+      const k = (n + h / 30) % 12;
+      const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      return Math.round(255 * color).toString(16).padStart(2, '0');
+    };
+    return `#${f(0)}${f(8)}${f(4)}`;
+  }
+
+  // Tekil alan için rastgele renk
+  function randomizeSingleField(field) {
+    const hex = randomHex();
+    setFieldValue(field, hex);
+    updateLivePreview();
+  }
+
+  // Tüm renkler için birbiriyle uyumlu (koyu/açık dengeli) rastgele tema paleti
+  function randomizeAllThemeColors() {
+    const isDark = Math.random() > 0.3; // %70 ihtimalle modern dark tema, %30 light
+    const baseHue = Math.floor(Math.random() * 360);
+    const primaryHue = (baseHue + Math.floor(Math.random() * 120)) % 360;
+
+    let palette = {};
+    if (isDark) {
+      // Modern Dark Palette
+      palette = {
+        bg_color: hslToHex(baseHue, 25, 7 + Math.floor(Math.random() * 5)),         // ~7-11% L
+        bg_soft: hslToHex(baseHue, 22, 12 + Math.floor(Math.random() * 4)),         // ~12-15% L
+        card_bg: hslToHex(baseHue, 20, 16 + Math.floor(Math.random() * 4)),         // ~16-19% L
+        card_hover: hslToHex(baseHue, 20, 21 + Math.floor(Math.random() * 4)),      // ~21-24% L
+        border_color: hslToHex(baseHue, 18, 25 + Math.floor(Math.random() * 6)),    // ~25-30% L
+        text_color: hslToHex(baseHue, 15, 93 + Math.floor(Math.random() * 4)),      // ~93-96% L
+        text_muted: hslToHex(baseHue, 10, 62 + Math.floor(Math.random() * 8)),      // ~62-69% L
+        primary_color: hslToHex(primaryHue, 75 + Math.floor(Math.random() * 20), 55),
+        primary_hover: hslToHex(primaryHue, 80 + Math.floor(Math.random() * 15), 45),
+      };
+    } else {
+      // Clean Light Palette
+      palette = {
+        bg_color: hslToHex(baseHue, 20, 96 + Math.floor(Math.random() * 3)),        // ~96-98% L
+        bg_soft: hslToHex(baseHue, 18, 92 + Math.floor(Math.random() * 3)),         // ~92-94% L
+        card_bg: '#ffffff',
+        card_hover: hslToHex(baseHue, 15, 95),
+        border_color: hslToHex(baseHue, 15, 82 + Math.floor(Math.random() * 5)),    // ~82-86% L
+        text_color: hslToHex(baseHue, 25, 12 + Math.floor(Math.random() * 6)),      // ~12-17% L
+        text_muted: hslToHex(baseHue, 12, 45 + Math.floor(Math.random() * 10)),     // ~45-54% L
+        primary_color: hslToHex(primaryHue, 75 + Math.floor(Math.random() * 20), 48),
+        primary_hover: hslToHex(primaryHue, 80 + Math.floor(Math.random() * 15), 40),
+      };
+    }
+
+    Object.keys(palette).forEach(f => {
+      setFieldValue(f, palette[f]);
+    });
+    updateLivePreview();
+  }
 
   // Sayfa yüklendiğinde çalıştır
   document.addEventListener('DOMContentLoaded', updateLivePreview);
