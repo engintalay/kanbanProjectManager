@@ -16,6 +16,8 @@
 <!-- 1. JQL Search Form -->
 <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 22px;">
   <form method="get" action="{% url 'kanban_card_import_jira' project.id %}" id="jql-search-form">
+    {% if selected_sprint_id %}<input type="hidden" name="sprint_id" value="{{ selected_sprint_id }}">{% endif %}
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
     <div style="display: flex; flex-direction: column; gap: 10px;">
       <label style="font-weight: 600; color: var(--text); font-size: 0.95rem;">
         🔍 Jira JQL Sorgusu
@@ -89,6 +91,7 @@
   {% csrf_token %}
   <input type="hidden" name="jql" value="{{ current_jql }}">
   <input type="hidden" name="max_results" value="{{ current_max_results }}">
+  {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
   <input type="hidden" name="jira_key" id="single-jira-key" value="">
 
   <!-- Common Card Attributes Panel -->
@@ -130,7 +133,7 @@
         <select name="sprint_id" class="form-control" style="width: 100%;">
           <option value="">Otomatik (Jira Sprinti ile eşleşirse)</option>
           {% for sp in sprints %}
-          <option value="{{ sp.id }}">{{ sp.name }} ({{ sp.get_status_display }})</option>
+          <option value="{{ sp.id }}" {% if selected_sprint_id == sp.id|stringformat:"s" %}selected{% endif %}>{{ sp.name }} ({{ sp.get_status_display }})</option>
           {% endfor %}
         </select>
       </label>

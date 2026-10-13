@@ -49,6 +49,8 @@ urlpatterns = [
     path("projects/<int:project_id>/sprints/<int:sprint_id>/edit/", views.sprint_edit_view, name="sprint_edit"),
     path("projects/<int:project_id>/sprints/<int:sprint_id>/delete/", views.sprint_delete_view, name="sprint_delete"),
     path("projects/<int:project_id>/sprints/<int:sprint_id>/board/", views.sprint_board_view, name="sprint_board"),
+    path("projects/<int:project_id>/sprints/<int:sprint_id>/add-card/", views.sprint_add_card_view, name="sprint_add_card"),
+    path("projects/<int:project_id>/sprints/<int:sprint_id>/remove-card/<int:card_id>/", views.sprint_remove_card_view, name="sprint_remove_card"),
     path("projects/<int:project_id>/reports/", views.report_view, name="project_reports"),
     path("projects/<int:project_id>/reports/export/", views.export_cards_csv, name="export_cards_csv"),
     # Hata ve Geliştirme Talepleri (Tickets / Issues)

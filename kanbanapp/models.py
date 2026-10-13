@@ -487,7 +487,16 @@ class KanbanCard(models.Model):
         done_keywords = ("done", "tamamlandı", "tamamlandi", "bitti", "closed", "kapalı", "kapali", "resolved", "çözüldü", "cozuldu")
         return sum(1 for s in self.sub_tasks.all() if any(k in s.column.name.lower() for k in done_keywords))
 
+    def clean(self):
+        super().clean()
+        if self.sprint and self.project_id and self.sprint.project_id != self.project_id:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Sprint kartın projesine ait olmalıdır.")
+
     def save(self, *args, **kwargs):
+        if self.sprint_id and self.project_id and self.sprint.project_id != self.project_id:
+            from django.core.exceptions import ValidationError
+            raise ValidationError("Sprint kartın projesine ait olmalıdır.")
         if self.parent_card_id:
             self.is_sub_task = True
         super().save(*args, **kwargs)

@@ -227,8 +227,11 @@ class KanbanCardForm(forms.ModelForm):
 
         # If adding to a sprint, zorluk derecesi zorunlu (PLAN.md §6.5)
         sprint = cleaned_data.get("sprint")
-        if sprint and not diff:
-            raise forms.ValidationError("Sprint'e eklenecek bir kartın zorluk derecesi (Fibonacci) girilmesi zorunludur.")
+        if sprint:
+            if proj and sprint.project_id != proj.id:
+                raise forms.ValidationError("Seçilen sprint bu projeye ait değildir.")
+            if not diff:
+                raise forms.ValidationError("Sprint'e eklenecek bir kartın zorluk derecesi (Fibonacci) girilmesi zorunludur.")
 
         return cleaned_data
 

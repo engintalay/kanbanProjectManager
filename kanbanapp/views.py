@@ -1226,6 +1226,8 @@ def kanban_card_import_jira_view(request, project_id):
     user_jql = request.GET.get("jql", "").strip() or request.POST.get("jql", "").strip()
     search_jql = user_jql if user_jql else default_jql
     action = request.POST.get("action", "")
+    next_url = request.GET.get("next") or request.POST.get("next")
+    selected_sprint_id = request.GET.get("sprint_id") or request.POST.get("sprint_id")
 
     # Configurable max_results (defaults to project.get_effective_max_results() which defaults to 100)
     raw_max_results = request.GET.get("max_results") or request.POST.get("max_results")
@@ -1400,6 +1402,8 @@ def kanban_card_import_jira_view(request, project_id):
         if updated_count > 0:
             messages.info(request, f"{updated_count} adet iş zaten panoda mevcuttu ve güncellendi.")
 
+        if next_url and next_url.startswith("/"):
+            return redirect(next_url)
         return redirect("board", project_id=project.id)
 
     # Search & Listing execution
@@ -1482,6 +1486,8 @@ def kanban_card_import_jira_view(request, project_id):
             "search_error": search_error,
             "existing_cards_count": len(existing_keys),
             "fibonacci_choices": FIBONACCI_DIFFICULTIES,
+            "selected_sprint_id": str(selected_sprint_id) if selected_sprint_id else "",
+            "next_url": next_url or "",
         },
     )
 
@@ -2094,6 +2100,13 @@ def sprint_board_view(request, project_id, sprint_id):
                         "blocked_by": [b.jira_key for b in incomplete_blocking],
                     })
 
+    # Available project cards that are not in this sprint (for adding from project backlog/other sprints)
+    from django.db.models import Q
+    available_project_cards = project.cards.filter(
+        Q(sprint__isnull=True) | ~Q(sprint=sprint),
+        is_sub_task=False
+    ).select_related("column", "assignee").order_by("position", "id")
+
     return render(
         request,
         "kanbanapp/sprint_board.html",
@@ -2102,10 +2115,82 @@ def sprint_board_view(request, project_id, sprint_id):
             "sprint": sprint,
             "columns": columns,
             "blocked_cards": blocked_cards,
+            "available_project_cards": available_project_cards,
             "can_manage_project": _can_manage_project(request.user, project),
             "can_edit_cards": _can_edit_cards(request.user, project),
         },
     )
+
+
+@login_required
+def sprint_add_card_view(request, project_id, sprint_id):
+    """Add existing card(s) from this project to the sprint."""
+    project = get_object_or_404(Project, id=project_id)
+    sprint = get_object_or_404(Sprint, id=sprint_id, project=project)
+    if not _can_edit_cards(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        card_id = request.POST.get("card_id")
+        card_ids = request.POST.getlist("card_ids")
+        if card_id and not card_ids:
+            card_ids = [card_id]
+
+        difficulty_level = request.POST.get("difficulty_level")
+        diff_val = int(difficulty_level) if difficulty_level and difficulty_level.isdigit() else None
+
+        added_count = 0
+        cards_qs = KanbanCard.objects.filter(project=project, id__in=card_ids)
+
+        for card in cards_qs:
+            # Enforce project match
+            if card.project_id != project.id:
+                continue
+
+            card.sprint = sprint
+            if diff_val:
+                card.difficulty_level = diff_val
+                if not card.initial_difficulty_level:
+                    card.initial_difficulty_level = diff_val
+            elif not card.difficulty_level:
+                # Sprints require a difficulty level if not set
+                messages.warning(request, f"'{card.title}' için zorluk seviyesi tanımlanmadığından sprinte eklenirken zorluk belirlenmesi önerilir.")
+
+            card.save()
+            added_count += 1
+
+        if added_count == 1:
+            messages.success(request, f"'{cards_qs.first().title}' sprint'e dahil edildi.")
+        elif added_count > 1:
+            messages.success(request, f"{added_count} adet kart sprint'e dahil edildi.")
+        else:
+            messages.error(request, "Eklenecek geçerli bir proje kartı bulunamadı.")
+
+    next_url = request.POST.get("next") or request.GET.get("next")
+    return redirect(next_url or "sprint_board", project_id=project.id, sprint_id=sprint.id)
+
+
+@login_required
+def sprint_remove_card_view(request, project_id, sprint_id, card_id):
+    """Remove a card from this sprint and return it to the project backlog/general board."""
+    project = get_object_or_404(Project, id=project_id)
+    sprint = get_object_or_404(Sprint, id=sprint_id, project=project)
+    card = get_object_or_404(KanbanCard, id=card_id, project=project)
+    if not _can_edit_cards(request.user, project):
+        return _forbidden(request)
+
+    if request.method == "POST":
+        if card.sprint_id == sprint.id:
+            card.sprint = None
+            card.save()
+            # Alt görevleri de sprintten çıkar
+            card.sub_tasks.update(sprint=None)
+            messages.success(request, f"'{card.title}' sprint'ten çıkarıldı ve proje geneline bırakıldı.")
+        else:
+            messages.info(request, "Kart bu sprintte yer almıyor.")
+
+    next_url = request.POST.get("next") or request.GET.get("next")
+    return redirect(next_url or "sprint_board", project_id=project.id, sprint_id=sprint.id)
 
 
 @login_required

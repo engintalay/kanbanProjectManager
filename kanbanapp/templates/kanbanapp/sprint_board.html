@@ -11,7 +11,10 @@
   </div>
   <div class="head-actions">
     {% if can_edit_cards %}
-    <a href="{% url 'kanban_card_create' project.id %}" class="btn-primary">Yeni Kart Ekle</a>
+    <button type="button" class="btn-primary" onclick="openSprintAddCardModal()">+ Projeden Kart Ekle</button>
+    {% if project.jira_connection %}
+    <a href="{% url 'kanban_card_import_jira' project.id %}?sprint_id={{ sprint.id }}&next={{ request.get_full_path|urlencode }}" class="btn-secondary" title="Jira'daki işleri doğrudan bu sprinte çek">+ Jira'dan Çek & Ekle</a>
+    {% endif %}
     {% endif %}
     {% if can_manage_project %}
     <a href="{% url 'sprint_edit' project.id sprint.id %}" class="btn-ghost">Sprinti Düzenle</a>
@@ -263,6 +266,11 @@
               <a href="{% url 'kanban_card_jira_refresh' project.id card.id %}?next={{ request.path|urlencode }}" class="btn-ghost" title="Jira'dan en güncel başlık, açıklama ve durumu çek">🔄 Jira</a>
               {% endif %}
               <a href="{% url 'kanban_card_edit' project.id card.id %}" class="btn-ghost" title="Kartı düzenle">Düzenle</a>
+              <form method="post" action="{% url 'sprint_remove_card' project.id sprint.id card.id %}" class="inline-block" style="display:inline;">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{% url 'sprint_board' project.id sprint.id %}">
+                <button type="submit" class="btn-ghost" title="Kartı bu sprintten çıkarıp genel panoya bırak" onclick="return confirm('Bu kartı sprintten çıkarmak istediğinizden emin misiniz? (Kart silinmez, projenin genel panosunda kalır)');">Sprint'ten Çıkar</button>
+              </form>
               <a href="{% url 'card_request_create' project.id card.id %}" class="btn-ghost" title="Zorluk veya atama değişikliği talep et">Talep Aç</a>
               {% endif %}
               {% if can_manage_project %}
@@ -321,7 +329,131 @@
   </div>
 </div>
 
+<!-- Add Card From Project Modal (Strictly Project-Bound Sprints) -->
+<div class="drag-modal-backdrop" id="sprintAddCardModal">
+  <div class="drag-modal" style="max-width: 680px; width: 92%;">
+    <div class="drag-modal-header">
+      <h3><span>📂</span> Projeden Kart Ekle &mdash; {{ sprint.name }}</h3>
+      <button type="button" class="drag-modal-close" onclick="closeSprintAddCardModal()">&times;</button>
+    </div>
+    <form method="post" id="sprintAddCardForm" action="{% url 'sprint_add_card' project.id sprint.id %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{% url 'sprint_board' project.id sprint.id %}">
+
+      <div class="drag-modal-body" style="max-height: 70vh; overflow-y: auto;">
+        <p style="margin-top: 0; margin-bottom: 12px; font-size: 0.88rem; color: var(--muted);">
+          Bu sprint için yalnızca <strong>{{ project.name }}</strong> projesine ait olan işler seçilebilir. Dışarıdan veya başka projelerden iş eklenemez.
+        </p>
+
+        <!-- Arama Filtresi -->
+        <div style="margin-bottom: 12px;">
+          <input type="text" id="sprintModalSearchInput" class="form-control" placeholder="🔍 Proje kartlarında hızlı ara (Jira No, Başlık, Sorumlu)..." oninput="filterSprintAvailableCards(this.value)">
+        </div>
+
+        {% if available_project_cards %}
+        <div class="sprint-available-cards-list" style="display:flex; flex-direction:column; gap:8px;">
+          {% for card in available_project_cards %}
+          <label class="sprint-card-option" style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--card-bg, #1e293b); cursor:pointer; transition:border-color 0.15s ease;" data-card-search="{{ card.jira_key|default:''|lower }} {{ card.title|lower }} {% if card.assignee %}{{ card.assignee.username|lower }}{% endif %}">
+            <input type="checkbox" name="card_ids" value="{{ card.id }}" style="margin-top:4px;">
+            <div style="flex:1;">
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+                {% if card.jira_key %}
+                <span class="card-key" style="font-size:0.75rem;">{{ card.jira_key }}</span>
+                {% endif %}
+                <span style="font-weight:600; font-size:0.9rem; color:var(--text, #f8fafc);">{{ card.title|render_jira_inline }}</span>
+                {% if card.difficulty_level %}
+                <span class="diff-badge diff-badge-sm" style="background-color:{{ card.difficulty_color }};" title="{{ card.difficulty_label }}">
+                  {{ card.difficulty_level }}
+                </span>
+                {% else %}
+                <span class="badge badge-warn" style="font-size:0.65rem;" title="Sprintte zorluk seviyesi gereklidir">Zorluk Yok</span>
+                {% endif %}
+              </div>
+              <div style="display:flex; align-items:center; gap:10px; font-size:0.75rem; color:var(--muted);">
+                <span>Durum: <strong>{{ card.column.name }}</strong></span>
+                <span>Sorumlu: <strong>{% if card.assignee %}👤 {{ card.assignee.username }}{% else %}Atanmadı{% endif %}</strong></span>
+                {% if card.sprint %}
+                <span class="badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; font-size:0.65rem;">Mevcut Sprint: {{ card.sprint.name }}</span>
+                {% else %}
+                <span class="badge" style="background:rgba(59,130,246,0.15); color:var(--primary); font-size:0.65rem;">Backlog / Genel</span>
+                {% endif %}
+              </div>
+            </div>
+          </label>
+          {% endfor %}
+        </div>
+        <div id="noMatchingAvailableCards" style="display:none; text-align:center; padding:16px; color:var(--muted); font-size:0.85rem;">
+          Aramanızla eşleşen açık proje kartı bulunamadı.
+        </div>
+        {% else %}
+        <div class="alert-box alert-warn" style="margin-bottom:0;">
+          ℹ️ Bu projede sprint dışı atanabilecek kart bulunamadı.
+          {% if project.jira_connection %}
+          <div style="margin-top:8px;">
+            <a href="{% url 'kanban_card_import_jira' project.id %}?sprint_id={{ sprint.id }}&next={{ request.get_full_path|urlencode }}" class="btn-primary btn-xs">
+              Jira'dan Yeni İş Çek & Sprint'e Dahil Et
+            </a>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="drag-modal-footer">
+        <button type="button" class="btn-ghost" onclick="closeSprintAddCardModal()">Vazgeç</button>
+        {% if available_project_cards %}
+        <button type="submit" class="btn-primary">Seçilenleri Sprint'e Ekle</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+  function openSprintAddCardModal() {
+    const m = document.getElementById('sprintAddCardModal');
+    if (m) {
+      m.classList.add('active');
+      const search = document.getElementById('sprintModalSearchInput');
+      if (search) {
+        search.value = '';
+        filterSprintAvailableCards('');
+        setTimeout(() => search.focus(), 50);
+      }
+    }
+  }
+
+  function closeSprintAddCardModal() {
+    const m = document.getElementById('sprintAddCardModal');
+    if (m) m.classList.remove('active');
+  }
+
+  function filterSprintAvailableCards(term) {
+    const q = (term || '').trim().toLowerCase();
+    const items = document.querySelectorAll('.sprint-card-option');
+    let visibleCount = 0;
+    items.forEach(el => {
+      const text = el.getAttribute('data-card-search') || '';
+      if (!q || text.includes(q)) {
+        el.style.display = 'flex';
+        visibleCount++;
+      } else {
+        el.style.display = 'none';
+      }
+    });
+    const emptyMsg = document.getElementById('noMatchingAvailableCards');
+    if (emptyMsg) {
+      emptyMsg.style.display = (visibleCount === 0 && items.length > 0) ? 'block' : 'none';
+    }
+  }
+
+  const sprintAddBackdrop = document.getElementById('sprintAddCardModal');
+  if (sprintAddBackdrop) {
+    sprintAddBackdrop.addEventListener('click', function(e) {
+      if (e.target === sprintAddBackdrop) closeSprintAddCardModal();
+    });
+  }
+
   function toggleSubtasks(e, panelId) {
     if (e) e.stopPropagation();
     const panel = document.getElementById(panelId);

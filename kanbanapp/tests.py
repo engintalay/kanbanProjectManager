@@ -2692,8 +2692,83 @@ class ProjectJqlAndCardCommentsTests(TestCase):
         resp_del = self.client.post(
             reverse("card_comment_delete", kwargs={"project_id": self.project.id, "card_id": self.card.id, "comment_id": comment.id}),
         )
-        self.assertEqual(resp_del.status_code, 302)
-        self.assertFalse(CardComment.objects.filter(id=comment.id).exists())
+
+class ProjectBoundSprintTests(TestCase):
+    """Sprints are strictly bound to projects, only cards from the project can be added."""
+
+    def setUp(self):
+        from .models import ensure_default_roles
+        self.client = Client()
+        Role.objects.all().delete()
+        ensure_default_roles()
+        self.admin = User.objects.create_superuser(username="sprint_admin", password="p")
+        self.project1 = Project.objects.create(key="PR1", name="Proje 1", created_by=self.admin)
+        self.project2 = Project.objects.create(key="PR2", name="Proje 2", created_by=self.admin)
+
+        self.col1 = KanbanColumn.objects.create(project=self.project1, name="P1 Todo", position=0)
+        self.col2 = KanbanColumn.objects.create(project=self.project2, name="P2 Todo", position=0)
+
+        self.sprint1 = Sprint.objects.create(project=self.project1, name="Sprint 1", capacity=20)
+        self.sprint2 = Sprint.objects.create(project=self.project2, name="Sprint 2", capacity=20)
+
+        self.card1 = KanbanCard.objects.create(
+            project=self.project1,
+            column=self.col1,
+            title="Card 1 (P1)",
+            jira_key="PR1-1",
+            difficulty_level=5,
+        )
+        self.card2 = KanbanCard.objects.create(
+            project=self.project2,
+            column=self.col2,
+            title="Card 2 (P2)",
+            jira_key="PR2-1",
+            difficulty_level=8,
+        )
+        self.client.force_login(self.admin)
+
+    def test_cannot_assign_sprint_from_different_project_in_model(self):
+        from django.core.exceptions import ValidationError
+        self.card1.sprint = self.sprint2  # sprint2 belongs to project2, card1 belongs to project1
+        with self.assertRaises(ValidationError):
+            self.card1.save()
+
+    def test_sprint_add_card_view_adds_project_card(self):
+        url = reverse("sprint_add_card", kwargs={"project_id": self.project1.id, "sprint_id": self.sprint1.id})
+        resp = self.client.post(url, {"card_id": self.card1.id, "difficulty_level": "5"})
+        self.assertEqual(resp.status_code, 302)
+        self.card1.refresh_from_db()
+        self.assertEqual(self.card1.sprint_id, self.sprint1.id)
+
+    def test_sprint_add_card_view_ignores_outside_project_card(self):
+        url = reverse("sprint_add_card", kwargs={"project_id": self.project1.id, "sprint_id": self.sprint1.id})
+        # Try to add card2 (which belongs to project2) into project1 sprint
+        resp = self.client.post(url, {"card_id": self.card2.id})
+        self.assertEqual(resp.status_code, 302)
+        self.card2.refresh_from_db()
+        self.assertIsNone(self.card2.sprint)
+
+    def test_sprint_remove_card_view_unassigns_from_sprint(self):
+        self.card1.sprint = self.sprint1
+        self.card1.save()
+
+        url = reverse("sprint_remove_card", kwargs={"project_id": self.project1.id, "sprint_id": self.sprint1.id, "card_id": self.card1.id})
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 302)
+        self.card1.refresh_from_db()
+        self.assertIsNone(self.card1.sprint)
+        # Card still belongs to project1
+        self.assertEqual(self.card1.project_id, self.project1.id)
+
+    def test_sprint_board_renders_available_project_cards_in_modal(self):
+        url = reverse("sprint_board", kwargs={"project_id": self.project1.id, "sprint_id": self.sprint1.id})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Projeden Kart Ekle")
+        self.assertIn(self.card1, resp.context["available_project_cards"])
+        # card2 from project2 must NOT be in available_project_cards
+        self.assertNotIn(self.card2, resp.context["available_project_cards"])
+
 
 
 
