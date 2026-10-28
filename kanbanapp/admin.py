@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from .models import (
+    ActivityLog,
     CardComment,
     IssueRequest,
     JiraConnection,
@@ -28,6 +29,14 @@ class RoleAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "level", "description")
     ordering = ("level",)
     search_fields = ("name", "slug")
+
+
+@admin.register(ActivityLog)
+class ActivityLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "actor", "verb", "project", "text")
+    list_filter = ("verb", "project")
+    search_fields = ("text",)
+    readonly_fields = ("created_at",)
 
 
 class UserProjectMemberInline(admin.TabularInline):

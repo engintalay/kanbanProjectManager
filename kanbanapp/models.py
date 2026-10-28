@@ -1,8 +1,41 @@
+from datetime import date, timedelta
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
 
 from .fields import EncryptedCharField
+
+# Kolon adında geçiyorsa kart "tamamlanmış" sayılır (backfill: eski kodda da aynı liste kullanılıyordu).
+DONE_KEYWORDS = (
+    "done", "tamamlandı", "tamamlandi", "bitti", "closed",
+    "kapalı", "kapali", "resolved", "çözüldü", "cozuldu",
+)
+
+
+def is_done_status(column_name: str) -> bool:
+    """Verilen kolon adı tamamlanmayı ifade ediyor mu?"""
+    name = (column_name or "").lower()
+    return any(keyword in name for keyword in DONE_KEYWORDS)
+
+
+def classify_card_counts(cards, first_column_id):
+    """Kartları (toplam, tamamlanan, devam eden, yapılacak) olarak sınıflandırır.
+
+    - Tamamlanan: kolon adı "done" anahtar kelimesi içeriyor.
+    - Yapılacak: projenin ilk kolonunda (genelde backlog) ve tamamlanmamış.
+    - Devam eden: ikisi dışında kalanlar.
+    """
+    total = done = doing = todo = 0
+    for card in cards:
+        total += 1
+        if is_done_status(card.column.name):
+            done += 1
+        elif card.column_id == first_column_id:
+            todo += 1
+        else:
+            doing += 1
+    return total, done, doing, todo
 
 
 class Role(models.Model):
@@ -158,6 +191,21 @@ class Project(models.Model):
             pass
         return 100
 
+    @property
+    def first_column_id(self):
+        """Panodaki ilk kolonun (yapılacak havuzu) id'si."""
+        col = self.columns.order_by("position", "id").first()
+        return col.id if col else None
+
+    @property
+    def card_counts(self):
+        """(toplam, tamamlanan, devam eden, yapılacak) kart sayıları."""
+        return classify_card_counts(self.cards.select_related("column"), self.first_column_id)
+
+    @property
+    def active_sprints_count(self):
+        return self.sprints.filter(status=Sprint.STATUS_ACTIVE).count()
+
     def has_member(self, user):
         if not user or not user.is_authenticated:
             return False
@@ -294,6 +342,14 @@ class Sprint(models.Model):
         (DURATION_FREE, "Serbest"),
     ]
 
+    DURATION_WEEKS = {
+        DURATION_1_WEEK: 7,
+        DURATION_2_WEEKS: 14,
+        DURATION_3_WEEKS: 21,
+        DURATION_4_WEEKS: 28,
+        DURATION_FREE: None,
+    }
+
     STATUS_PLANNING = "planning"
     STATUS_ACTIVE = "active"
     STATUS_COMPLETED = "completed"
@@ -365,10 +421,39 @@ class Sprint(models.Model):
         return self.capacity_percentage > 100
 
     @property
+    def end_date(self):
+        """Başlangıç + süre. 'Serbest' sürede veya başlangıç yoksa None."""
+        if not self.start_date:
+            return None
+        days = self.DURATION_WEEKS.get(self.duration)
+        if days is None:
+            return None
+        return self.start_date + timedelta(days=days)
+
+    @property
+    def days_left(self):
+        """Bitiş gününe kalan gün. Negatif değer gecikmeyi gösterir."""
+        end = self.end_date
+        if not end or self.status == self.STATUS_COMPLETED:
+            return None
+        return (end - date.today()).days
+
+    @property
+    def is_overdue(self):
+        """Aktif sprint için bitiş tarihi geçmiş ve işler bitmemişse gecikmiş sayılır."""
+        days = self.days_left
+        return self.status == self.STATUS_ACTIVE and days is not None and days < 0
+
+    @property
+    def card_counts(self):
+        """(toplam, tamamlanan, devam eden, yapılacak) kart sayıları."""
+        first_column_id = self.project.first_column_id
+        return classify_card_counts(self.cards.select_related("column"), first_column_id)
+
+    @property
     def completed_cards(self):
         """Cards in this sprint whose column signifies completion."""
-        done_keywords = ("done", "tamamlandı", "tamamlandi", "bitti", "closed", "kapalı", "kapali", "resolved", "çözüldü", "cozuldu")
-        return [c for c in self.cards.select_related("column") if any(k in c.column.name.lower() for k in done_keywords)]
+        return [c for c in self.cards.select_related("column") if is_done_status(c.column.name)]
 
     @property
     def completed_cards_count(self):
@@ -463,8 +548,7 @@ class KanbanCard(models.Model):
 
     @property
     def completed_sub_tasks_count(self):
-        done_keywords = ("done", "tamamlandı", "tamamlandi", "bitti", "closed", "kapalı", "kapali", "resolved", "çözüldü", "cozuldu")
-        return sum(1 for s in self.sub_tasks.all() if any(k in s.column.name.lower() for k in done_keywords))
+        return sum(1 for s in self.sub_tasks.all() if is_done_status(s.column.name))
 
     def clean(self):
         super().clean()
@@ -998,4 +1082,66 @@ def ensure_default_themes():
             code=theme_data["code"],
             defaults=theme_data,
         )
+
+
+class ActivityLog(models.Model):
+    """Dashboard'daki "Son Aktiviteler" akışı için kayıt (ticket #5)."""
+
+    VERB_SPRINT_CREATED = "sprint_created"
+    VERB_SPRINT_STATUS = "sprint_status"
+    VERB_CARD_CREATED = "card_created"
+    VERB_CARD_DONE = "card_done"
+    VERB_CARD_MOVED = "card_moved"
+    VERB_CARD_ASSIGNED = "card_assigned"
+    VERB_COMMENT = "comment"
+    VERB_REQUEST = "request"
+    VERB_REQUEST_ACTION = "request_action"
+    VERB_TICKET = "ticket"
+    VERB_TICKET_STATUS = "ticket_status"
+
+    VERB_CHOICES = [
+        (VERB_SPRINT_CREATED, "Sprint oluşturuldu"),
+        (VERB_SPRINT_STATUS, "Sprint durumu değişti"),
+        (VERB_CARD_CREATED, "Kart oluşturuldu"),
+        (VERB_CARD_DONE, "İş tamamlandı"),
+        (VERB_CARD_MOVED, "Kart taşındı"),
+        (VERB_CARD_ASSIGNED, "Kart atandı"),
+        (VERB_COMMENT, "Yorum"),
+        (VERB_REQUEST, "Talep açıldı"),
+        (VERB_REQUEST_ACTION, "Talep kararı"),
+        (VERB_TICKET, "Hata/talep açıldı"),
+        (VERB_TICKET_STATUS, "Hata/talep durumu"),
+    ]
+
+    project = models.ForeignKey(
+        Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="activities"
+    )
+    actor = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="activities"
+    )
+    verb = models.CharField(max_length=30, choices=VERB_CHOICES, blank=True, default="")
+    text = models.CharField(max_length=400)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"[{self.verb}] {self.text}"
+
+    @property
+    def actor_name(self):
+        if not self.actor:
+            return "Sistem"
+        return self.actor.get_full_name() or self.actor.username
+
+
+def log_activity(actor, text, project=None, verb=""):
+    """Tek satırlık aktivite kaydı; akışı beslemek için view'lardan çağrılır."""
+    return ActivityLog.objects.create(
+        project=project,
+        actor=actor,
+        verb=verb,
+        text=str(text)[:400],
+    )
 

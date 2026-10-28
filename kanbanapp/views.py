@@ -27,6 +27,7 @@ from .forms import (
 )
 from .middleware import role_level
 from .models import (
+    ActivityLog,
     CardComment,
     FIBONACCI_DIFFICULTIES,
     IssueRequest,
@@ -45,6 +46,9 @@ from .models import (
     Theme,
     TicketAttachment,
     TicketComment,
+    classify_card_counts,
+    is_done_status,
+    log_activity,
 )
 from .services import JiraService
 
@@ -351,6 +355,41 @@ def _can_edit_cards(user, project):
     return False
 
 
+def _dashboard_summary(projects):
+    """Ticket #4: üst özet alanının sayıları (görünen projeler üzerinden)."""
+    project_list = list(projects)
+    total = done = doing = todo = overdue = active_sprints = 0
+
+    for project in project_list:
+        p_total, p_done, p_doing, p_todo = classify_card_counts(
+            project.cards.select_related("column"), project.first_column_id
+        )
+        total += p_total
+        done += p_done
+        doing += p_doing
+        todo += p_todo
+        active_sprints += project.sprints.filter(status=Sprint.STATUS_ACTIVE).count()
+
+    # Geciken iş: aktif sprintinin bitiş tarihi geçmiş, kartı henüz tamamlanmamış
+    sprint_cards = KanbanCard.objects.filter(
+        project__in=project_list,
+        sprint__status=Sprint.STATUS_ACTIVE,
+        sprint__start_date__isnull=False,
+    ).select_related("column", "sprint")
+    for card in sprint_cards:
+        if card.sprint.is_overdue and not is_done_status(card.column.name):
+            overdue += 1
+
+    return {
+        "total": total,
+        "active_sprints": active_sprints,
+        "done": done,
+        "doing": doing,
+        "todo": todo,
+        "overdue": overdue,
+    }
+
+
 @login_required
 def dashboard_view(request):
     """Personalized role-based dashboard (PLAN.md §8)."""
@@ -362,6 +401,10 @@ def dashboard_view(request):
     available_cards = []
     pending_requests = []
     active_sprints = []
+    summary = _dashboard_summary(projects)
+    activities = ActivityLog.objects.filter(project__in=list(projects)).select_related(
+        "actor", "project"
+    )[:10]
 
     if level == 3:
         # Programmer: My assigned cards + available unassigned cards (PLAN.md §8)
@@ -388,6 +431,8 @@ def dashboard_view(request):
             "planning_sprints": planning_sprints,
             "pending_requests": pending_requests,
             "role_level": level,
+            "summary": summary,
+            "activities": activities,
         },
     )
 
@@ -1190,6 +1235,12 @@ def kanban_card_create_view(request, project_id):
             card = form.save(commit=False)
             card.project = project
             card.save()
+            log_activity(
+                request.user,
+                f"'{card.title}' kartını oluşturdu.",
+                project=project,
+                verb=ActivityLog.VERB_CARD_CREATED,
+            )
             messages.success(request, f"'{card.title}' kartı oluşturuldu.")
             return redirect("board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
@@ -1643,6 +1694,12 @@ def card_comment_add_view(request, project_id, card_id):
                 author=request.user,
                 comment=raw_comment,
             )
+            log_activity(
+                request.user,
+                f"'{card.title}' kartına yorum yaptı.",
+                project=project,
+                verb=ActivityLog.VERB_COMMENT,
+            )
             messages.success(request, "Değerlendirmeniz / yorumunuz eklendi.")
         else:
             messages.error(request, "Yorum boş bırakılamaz.")
@@ -1722,6 +1779,14 @@ def kanban_card_move_view(request, project_id, card_id):
         if target_pos is not None and str(target_pos).isdigit():
             card.position = int(target_pos)
         card.save()
+
+        if not is_done_status(old_column.name) and is_done_status(target_column.name):
+            log_activity(
+                request.user,
+                f"'{card.title}' işini tamamladı ({target_column.name}).",
+                project=project,
+                verb=ActivityLog.VERB_CARD_DONE,
+            )
 
         # Jira Transition (READ-WRITE) if card is linked and mapping exists
         skip_jira = (
@@ -1866,6 +1931,12 @@ def kanban_card_assign_view(request, project_id, card_id):
             if not card.assignee:
                 card.assignee = request.user
                 card.save()
+                log_activity(
+                    request.user,
+                    f"'{card.title}' işini üstüne aldı.",
+                    project=project,
+                    verb=ActivityLog.VERB_CARD_ASSIGNED,
+                )
                 messages.success(request, f"'{card.title}' işini üstünüze aldınız.")
             elif card.assignee == request.user:
                 messages.error(request, "İşi aldıysanız bırakamazsınız. Bırakma yetkisi sadece yöneticiye aittir.")
@@ -1882,6 +1953,12 @@ def kanban_card_assign_view(request, project_id, card_id):
                 card.assignee = None
                 messages.success(request, "Kart ataması kaldırıldı.")
             card.save()
+            log_activity(
+                request.user,
+                f"'{card.title}' kartını {card.assignee.username if card.assignee else 'atamasız'} olarak güncelledi.",
+                project=project,
+                verb=ActivityLog.VERB_CARD_ASSIGNED,
+            )
 
     return redirect("board", project_id=project.id)
 
@@ -1903,6 +1980,12 @@ def card_request_create_view(request, project_id, card_id):
             req_obj.requested_by = request.user
             req_obj.status = IssueRequest.STATUS_PENDING
             req_obj.save()
+            log_activity(
+                request.user,
+                f"'{card.title}' kartı için {req_obj.get_type_display().lower()} talebi açtı.",
+                project=project,
+                verb=ActivityLog.VERB_REQUEST,
+            )
             messages.success(request, "Talebiniz proje yöneticisine iletildi.")
             return redirect("board", project_id=project.id)
         messages.error(request, "Formdaki hataları düzeltin.")
@@ -1944,6 +2027,12 @@ def issue_request_action_view(request, project_id, request_id, action):
             req_obj.status = IssueRequest.STATUS_APPROVED
             req_obj.assigned_to = request.user
             req_obj.save()
+            log_activity(
+                request.user,
+                f"'{req_obj.card.title}' talebini onayladı.",
+                project=project,
+                verb=ActivityLog.VERB_REQUEST_ACTION,
+            )
 
             card = req_obj.card
             if req_obj.type == IssueRequest.TYPE_DIFFICULTY and req_obj.requested_difficulty:
@@ -1963,6 +2052,12 @@ def issue_request_action_view(request, project_id, request_id, action):
             req_obj.status = IssueRequest.STATUS_REJECTED
             req_obj.assigned_to = request.user
             req_obj.save()
+            log_activity(
+                request.user,
+                f"'{req_obj.card.title}' talebini reddetti.",
+                project=project,
+                verb=ActivityLog.VERB_REQUEST_ACTION,
+            )
             messages.info(request, "Talep reddedildi.")
 
     return redirect("issue_requests", project_id=project.id)
@@ -2041,6 +2136,12 @@ def sprint_create_view(request, project_id):
             sprint.project = project
             sprint.save()
             form.save_m2m()
+            log_activity(
+                request.user,
+                f"'{sprint.name}' sprintini oluşturdu.",
+                project=project,
+                verb=ActivityLog.VERB_SPRINT_CREATED,
+            )
             messages.success(request, f"'{sprint.name}' sprinti oluşturuldu.")
             if next_url and next_url.startswith("/"):
                 return redirect(next_url)
@@ -2060,9 +2161,23 @@ def sprint_edit_view(request, project_id, sprint_id):
 
     next_url = request.GET.get("next") or request.POST.get("next")
     if request.method == "POST":
+        old_status = sprint.status
         form = SprintForm(request.POST, instance=sprint, project=project)
         if form.is_valid():
             form.save()
+            if sprint.status != old_status:
+                if sprint.status == Sprint.STATUS_ACTIVE:
+                    status_text = "sprinti başlattı (aktifleştirdi)"
+                elif sprint.status == Sprint.STATUS_COMPLETED:
+                    status_text = "sprinti tamamladı"
+                else:
+                    status_text = f"sprint durumunu '{sprint.get_status_display()}' olarak değiştirdi"
+                log_activity(
+                    request.user,
+                    f"'{sprint.name}' {status_text}.",
+                    project=project,
+                    verb=ActivityLog.VERB_SPRINT_STATUS,
+                )
             messages.success(request, f"'{sprint.name}' sprinti güncellendi.")
             if next_url and next_url.startswith("/"):
                 return redirect(next_url)
@@ -2519,6 +2634,12 @@ def ticket_create_view(request, project_id=None):
                 message=f"Talep başarıyla oluşturuldu: {type_label}",
                 is_system_note=True,
             )
+            log_activity(
+                request.user,
+                f"{type_label} açtı: '{ticket.title}'",
+                project=project,
+                verb=ActivityLog.VERB_TICKET,
+            )
 
             messages.success(request, f"'{ticket.title}' talebi başarıyla oluşturuldu.")
             return redirect("ticket_detail", ticket_id=ticket.id)
@@ -2704,6 +2825,12 @@ def ticket_add_comment_view(request, ticket_id):
             comment.ticket = ticket
             comment.author = request.user
             comment.save()
+            log_activity(
+                request.user,
+                f"'{ticket.title}' talebine yorum yaptı.",
+                project=ticket.project,
+                verb=ActivityLog.VERB_COMMENT,
+            )
             messages.success(request, "Mesajınız iletildi.")
         else:
             messages.error(request, "Mesaj gönderilemedi, lütfen içeriği kontrol edin.")
@@ -2738,6 +2865,12 @@ def ticket_update_status_view(request, ticket_id):
                 author=request.user,
                 message=note_text,
                 is_system_note=True,
+            )
+            log_activity(
+                request.user,
+                f"'{ticket.title}' talebinin durumunu '{old_status_display}' → '{ticket.get_status_display()}' yaptı.",
+                project=ticket.project,
+                verb=ActivityLog.VERB_TICKET_STATUS,
             )
             messages.success(request, f"Talep durumu '{ticket.get_status_display()}' olarak güncellendi.")
         else:

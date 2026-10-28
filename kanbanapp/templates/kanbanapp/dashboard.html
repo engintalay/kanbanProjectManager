@@ -7,6 +7,30 @@
   <p class="muted">Rolünüz: <strong>{{ user.role.name|default:"Admin" }}</strong></p>
 </div>
 
+<!-- ÖZET ALANI (ticket #4) -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:26px;">
+  <div class="capacity-card" style="margin:0; padding:14px 10px; text-align:center;">
+    <div style="font-size:1.7rem; font-weight:700; color:var(--primary);">{{ summary.total }}</div>
+    <div class="muted" style="font-size:.8rem; margin-top:2px;">Toplam İş</div>
+  </div>
+  <div class="capacity-card" style="margin:0; padding:14px 10px; text-align:center;">
+    <div style="font-size:1.7rem; font-weight:700;">{{ summary.active_sprints }}</div>
+    <div class="muted" style="font-size:.8rem; margin-top:2px;">Aktif Sprint</div>
+  </div>
+  <div class="capacity-card" style="margin:0; padding:14px 10px; text-align:center;">
+    <div style="font-size:1.7rem; font-weight:700; color:var(--ok);">{{ summary.done }}</div>
+    <div class="muted" style="font-size:.8rem; margin-top:2px;">Tamamlanan İş</div>
+  </div>
+  <div class="capacity-card" style="margin:0; padding:14px 10px; text-align:center;">
+    <div style="font-size:1.7rem; font-weight:700; color:var(--warn);">{{ summary.doing }}</div>
+    <div class="muted" style="font-size:.8rem; margin-top:2px;">Devam Eden İş</div>
+  </div>
+  <div class="capacity-card" style="margin:0; padding:14px 10px; text-align:center;">
+    <div style="font-size:1.7rem; font-weight:700; color:{% if summary.overdue %}var(--danger){% else %}var(--muted){% endif %};">{{ summary.overdue }}</div>
+    <div class="muted" style="font-size:.8rem; margin-top:2px;">Geciken İş</div>
+  </div>
+</div>
+
 {% if role_level == 3 %}
   <!-- PROGRAMMER DASHBOARD (PLAN.md §8) -->
   <div style="margin-bottom: 30px;">
@@ -102,6 +126,18 @@
           <strong>{{ sprint.project.key }} &mdash; {{ sprint.name }}</strong>
           <span class="badge badge-ok">Aktif</span>
         </div>
+        {% if sprint.start_date or sprint.end_date %}
+        <div class="muted" style="font-size:0.75rem; margin-bottom:6px;">
+          📅 {{ sprint.start_date|date:"d.m.Y"|default:"?" }} &ndash; {{ sprint.end_date|date:"d.m.Y"|default:"serbest" }}
+          {% if sprint.days_left is not None %}
+            {% if sprint.days_left >= 0 %}
+              &middot; ⏱ <strong style="color:var(--primary);">{{ sprint.days_left }} gün kaldı</strong>
+            {% else %}
+              &middot; ⏳ <strong style="color:var(--danger);">{{ sprint.days_left }} gün gecikti</strong>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% endif %}
         <div style="display:flex; flex-direction:column; gap:8px; font-size:0.82rem;">
           <div>
             <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
@@ -127,7 +163,7 @@
           </div>
         </div>
         <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
-          <span class="muted" style="font-size:0.75rem;">{{ sprint.cards.count }} kart</span>
+          <span class="muted" style="font-size:0.75rem;">Toplam <strong>{{ sprint.card_counts.0 }}</strong> &middot; ✅ {{ sprint.card_counts.1 }} &middot; 🔵 {{ sprint.card_counts.2 }} &middot; 📋 {{ sprint.card_counts.3 }}</span>
           <div style="display:flex; gap:6px; align-items:center;">
             <a href="{% url 'sprint_report' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;" title="Sprint Raporu">📊 Rapor</a>
             <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;">Sprint Panosu →</a>
@@ -146,7 +182,13 @@
         <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
           <div>
             <strong>{{ sprint.project.key }} &mdash; {{ sprint.name }}</strong>
-            {% if sprint.start_date %}<span class="muted" style="font-size:0.75rem; display:block;">Başlangıç: {{ sprint.start_date|date:"d M Y" }}</span>{% endif %}
+            {% if sprint.start_date or sprint.end_date %}
+            <span class="muted" style="font-size:0.75rem; display:block;">📅 {{ sprint.start_date|date:"d.m.Y"|default:"?" }} &ndash; {{ sprint.end_date|date:"d.m.Y"|default:"serbest" }}
+              {% if sprint.days_left is not None %}
+                {% if sprint.days_left >= 0 %}&middot; ⏱ {{ sprint.days_left }} gün kaldı{% else %}&middot; ⏳ <strong style="color:var(--danger);">{{ sprint.days_left }} gün gecikti</strong>{% endif %}
+              {% endif %}
+            </span>
+            {% endif %}
           </div>
           <span class="badge" style="background:rgba(59,130,246,0.15); color:var(--primary);">Planlama</span>
         </div>
@@ -164,7 +206,7 @@
           </div>
         </div>
         <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
-          <span class="muted" style="font-size:0.75rem;">{{ sprint.cards.count }} kart planlandı</span>
+          <span class="muted" style="font-size:0.75rem;">Toplam <strong>{{ sprint.card_counts.0 }}</strong> kart planlandı &middot; ✅ {{ sprint.card_counts.1 }} &middot; 🔵 {{ sprint.card_counts.2 }} &middot; 📋 {{ sprint.card_counts.3 }}</span>
           <div style="display:flex; gap:6px; align-items:center;">
             <a href="{% url 'sprint_report' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;" title="Sprint Raporu">📊 Rapor</a>
             <a href="{% url 'sprint_board' sprint.project_id sprint.id %}" class="btn-ghost" style="padding:2px 8px; font-size:0.75rem;">Sprinti Yönet / Pano →</a>
@@ -177,6 +219,27 @@
   </div>
   {% endif %}
 
+<!-- SON AKTİVİTELER (ticket #5) -->
+{% if activities %}
+<div style="margin-bottom: 30px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <h2>Son Aktiviteler</h2>
+    <span class="muted" style="font-size:0.85rem;">Son {{ activities|length }} kayıt</span>
+  </div>
+  <div class="capacity-card" style="margin:0; padding:4px 0;">
+    <ul style="list-style:none; margin:0; padding:0;">
+      {% for a in activities %}
+      <li style="display:flex; gap:12px; align-items:baseline; padding:9px 16px; border-bottom:1px solid var(--border); font-size:0.88rem; flex-wrap:wrap;">
+        <span class="muted" style="white-space:nowrap; min-width:105px;">{{ a.created_at|date:"d.m.Y H:i" }}</span>
+        <span><strong>{{ a.actor_name }}</strong> {{ a.text }}</span>
+        {% if a.project %}<span class="badge" style="background:rgba(59,130,246,0.15); color:var(--primary);">{{ a.project.key }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
 <h2>Projeler</h2>
 <div class="projects-grid">
   {% for project in projects %}
@@ -184,8 +247,8 @@
     <div class="project-key">{{ project.key }}</div>
     <div class="project-name">{{ project.name }}</div>
     <div class="project-meta">
-      <span>{{ project.cards.count }} kart</span>
-      <span>{{ project.columns.count }} kolon</span>
+      <span title="Toplam / Tamamlanan / Devam Eden / Yapılacak">📊 {{ project.card_counts.0 }} iş &middot; ✅ {{ project.card_counts.1 }} &middot; 🔵 {{ project.card_counts.2 }} &middot; 📋 {{ project.card_counts.3 }}</span>
+      <span>🏃 {{ project.active_sprints_count }} aktif sprint</span>
       {% if project.jira_connection %}<span class="badge badge-ok">Jira</span>{% endif %}
     </div>
     <div class="project-actions">

@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
+    ActivityLog,
     JiraConnection,
     JiraIssue,
     JiraStatus,
@@ -2829,6 +2830,135 @@ class ProjectBoundSprintTests(TestCase):
         self.assertEqual(self.project1.name, "Proje 1 Güncel")
         self.assertEqual(self.project1.default_jql, "project = PR1 AND status != Done")
         self.assertEqual(self.project1.jql_max_results, 75)
+
+
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class DashboardSummarySprintDatesAndActivityTests(TestCase):
+    """Ticket #4, #5, #6, #7 — dashboard özeti, aktivite akışı, sprint tarihleri, kart sayaçları."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(username="dadmin", password="pass12345")
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.project = Project.objects.create(key="DSH", name="Dashboard Test", created_by=self.user)
+        self.todo = KanbanColumn.objects.create(project=self.project, name="To Do", status_type="custom", position=0)
+        self.doing = KanbanColumn.objects.create(project=self.project, name="In Progress", status_type="custom", position=1)
+        self.done = KanbanColumn.objects.create(project=self.project, name="Done", status_type="custom", position=2)
+
+    def _make_card(self, title, column):
+        return KanbanCard.objects.create(project=self.project, column=column, title=title, is_extra=True)
+
+    # --- Ticket #6: sprint tarihleri ---
+    def test_sprint_end_date_days_left_and_overdue(self):
+        start = datetime.date.today() - datetime.timedelta(days=20)
+        sprint = Sprint.objects.create(
+            project=self.project, name="S-Overdue",
+            start_date=start, duration=Sprint.DURATION_2_WEEKS,
+            status=Sprint.STATUS_ACTIVE,
+        )
+        self.assertEqual(sprint.end_date, start + datetime.timedelta(days=14))
+        self.assertEqual(sprint.days_left, (sprint.end_date - datetime.date.today()).days)
+        self.assertTrue(sprint.is_overdue)
+        self.assertLess(sprint.days_left, 0)
+
+        free_sprint = Sprint.objects.create(
+            project=self.project, name="S-Free",
+            start_date=start, duration=Sprint.DURATION_FREE,
+            status=Sprint.STATUS_ACTIVE,
+        )
+        self.assertIsNone(free_sprint.end_date)
+        self.assertIsNone(free_sprint.days_left)
+        self.assertFalse(free_sprint.is_overdue)
+
+        no_date = Sprint.objects.create(project=self.project, name="S-NoDate", status=Sprint.STATUS_ACTIVE)
+        self.assertIsNone(no_date.end_date)
+        self.assertIsNone(no_date.days_left)
+
+    # --- Ticket #7: kart sayaçları ---
+    def test_project_and_sprint_card_counts(self):
+        self._make_card("Yapılacak iş", self.todo)
+        self._make_card("Devam eden iş", self.doing)
+        self._make_card("Tamamlanan iş", self.done)
+        self._make_card("Tamamlanmış ek iş", self.done)
+
+        sprint = Sprint.objects.create(project=self.project, name="S-Counts", status=Sprint.STATUS_ACTIVE)
+        KanbanCard.objects.filter(project=self.project).update(sprint=sprint)
+
+        total, done, doing, todo = self.project.card_counts
+        self.assertEqual(total, 4)
+        self.assertEqual(done, 2)
+        self.assertEqual(doing, 1)
+        self.assertEqual(todo, 1)
+
+        self.assertEqual(sprint.card_counts, (4, 2, 1, 1))
+        self.assertEqual(self.project.active_sprints_count, 1)
+
+    # --- Ticket #4: dashboard özeti ---
+    def test_dashboard_summary_values(self):
+        self._make_card("todo-1", self.todo)
+        self._make_card("doing-1", self.doing)
+        self._make_card("done-1", self.done)
+
+        # Geciken: aktif sprintin bitişi geçmiş + iş tamamlanmamış
+        overdue_sprint = Sprint.objects.create(
+            project=self.project, name="Gecikmiş",
+            start_date=datetime.date.today() - datetime.timedelta(days=30),
+            duration=Sprint.DURATION_1_WEEK, status=Sprint.STATUS_ACTIVE,
+        )
+        KanbanCard.objects.filter(title="doing-1").update(sprint=overdue_sprint)
+
+        resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(resp.status_code, 200)
+        summary = resp.context["summary"]
+        self.assertEqual(summary["total"], 3)
+        self.assertEqual(summary["done"], 1)
+        self.assertEqual(summary["doing"], 1)
+        self.assertEqual(summary["todo"], 1)
+        self.assertEqual(summary["active_sprints"], 1)
+        self.assertEqual(summary["overdue"], 1)
+        self.assertContains(resp, "Geciken İş")
+        self.assertContains(resp, "Toplam İş")
+
+    # --- Ticket #5: aktivite akışı ---
+    def test_sprint_status_change_is_logged_and_shown(self):
+        sprint = Sprint.objects.create(project=self.project, name="S-Log", status=Sprint.STATUS_PLANNING)
+        resp = self.client.post(
+            reverse("sprint_edit", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}),
+            {"name": "S-Log", "duration": Sprint.DURATION_2_WEEKS, "status": Sprint.STATUS_ACTIVE},
+        )
+        self.assertEqual(resp.status_code, 302)
+        sprint.refresh_from_db()
+        self.assertEqual(sprint.status, Sprint.STATUS_ACTIVE)
+
+        log = ActivityLog.objects.filter(verb=ActivityLog.VERB_SPRINT_STATUS).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.actor, self.user)
+        self.assertIn("başlattı", log.text)
+
+        dash = self.client.get(reverse("dashboard"))
+        self.assertContains(dash, "Son Aktiviteler")
+        self.assertContains(dash, "S-Log")
+
+    def test_card_completion_and_ticket_create_are_logged(self):
+        card = self._make_card("Bitirilecek iş", self.doing)
+        resp = self.client.post(
+            reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": card.id}),
+            {"column_id": self.done.id},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(
+            ActivityLog.objects.filter(verb=ActivityLog.VERB_CARD_DONE, text__contains="Bitirilecek iş").exists()
+        )
+
+        tresp = self.client.post(
+            reverse("ticket_create"),
+            {"ticket_type": "bug", "title": "Dashboard özet hatalı", "description": "detay", "priority": "high"},
+        )
+        self.assertEqual(tresp.status_code, 302)
+        self.assertTrue(ActivityLog.objects.filter(verb=ActivityLog.VERB_TICKET).exists())
+
+        dash = self.client.get(reverse("dashboard"))
+        self.assertContains(dash, "tamamladı")
 
 
 

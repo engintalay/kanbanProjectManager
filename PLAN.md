@@ -134,6 +134,9 @@ Deploy: Docker Compose — **üç servis** (`nginx` + `web`/Gunicorn + `postgres
 
 - **Temalar** — admin CRUD, header'dan kullanıcı seçimi, CSS değişkenleri (`base.html`).
 - **Hata & Talepler** — global/proje ticket, yorum, ek, durum, atama, ticket → kanban kart.
+- **Dashboard özeti & son aktiviteler** — üst özet şeridi (toplam iş / aktif sprint / tamamlanan / devam eden / geciken) + `ActivityLog` tabanlı saatli akış (ticket #4, #5).
+- **Sprint tarihleri** — `start_date` + süre → `end_date` / `days_left` / `is_overdue`, kartlarda "kalan gün / gecikme" rozeti (ticket #6).
+- **Kart sayaçları** — proje ve sprint kartlarında toplam / tamamlanan / devam eden / yapılacak dağılımı (`classify_card_counts`) (ticket #7).
 - **Jira wiki markup** — `kanbanapp/templatetags/jira_filters.py`.
 - **Favicon** — `kanbanapp/static/favicon.ico`.
 
