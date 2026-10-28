@@ -16,5 +16,5 @@
 - Shell hangs on `pkill` / background server. Run test client with inline `timeout 25`.
 
 ## Project
-- Django skeleton (Faz 1) done + pushed. Faz 2+ in progress.
+- Faz 1–4 done + pushed. Faz 5 (doküman senkronu/cilalama) in progress.
 - Full plan: `PLAN.md`.

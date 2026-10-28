@@ -215,27 +215,6 @@ class JiraStatus(models.Model):
         return self.name
 
 
-class JiraCustomStatus(models.Model):
-    """A custom status defined within this application (per project)."""
-
-    project = models.ForeignKey(
-        Project, on_delete=models.CASCADE, related_name="custom_statuses"
-    )
-    name = models.CharField(max_length=200)
-    color = models.JSONField(default=dict, blank=True)
-    position = models.IntegerField(default=0)
-    parent_status = models.ForeignKey(
-        JiraStatus, on_delete=models.SET_NULL, related_name="custom_children",
-        null=True, blank=True, default=None,
-    )
-
-    class Meta:
-        ordering = ["position", "name"]
-
-    def __str__(self):
-        return self.name
-
-
 class KanbanColumn(models.Model):
     """A column (status) on the kanban board.
 

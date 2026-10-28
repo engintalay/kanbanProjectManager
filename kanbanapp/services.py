@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 
-from .models import JiraConnection, JiraStatus, JiraCustomStatus
+from .models import JiraConnection, JiraStatus
 
 logger = logging.getLogger(__name__)
 

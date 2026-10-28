@@ -4,3 +4,4 @@ cryptography>=42.0
 requests>=2.31
 jira>=3.5.0
 python-dateutil>=2.8
+gunicorn>=22.0

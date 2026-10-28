@@ -1,12 +1,12 @@
 # Kanban Proje Yönetim Sistemi
 
-Yerel ağda (LAN) çalışan, **Python + Django** tabanlı, tek containerda deploy edilen web uygulaması. Jira Server / Data Center REST API'sine bağlanarak issue'ları okur (`READ-ONLY`), durum ve atama gibi durumları uygulama içinden yönetir. Kanban kartları uygulamanın kendi veritabanında takip edilir.
+Yerel ağda (LAN) çalışan, **Python + Django** tabanlı, tek containerda deploy edilen web uygulaması. Jira Server / Data Center REST API'sine bağlanarak issue'ları okur, durum geçişi ve atama gibi yazma işlemlerini uygulama içinden yönetir. Kanban kartları uygulamanın kendi veritabanında takip edilir.
 
 ## Özellikler
 
 - **5 seviye hiyerarşik rol** — Admin → Proje Yöneticisi → Proje Programcısı → Raportör → İzleyici.
 - **Kendi auth sistemi** — admin-only kullanıcı kaydı, özel middleware ile seviye bazlı yetkilendirme (`@role_required`).
-- **Jira entegrasyonu** (`READ-ONLY`) — issue bilgilerini çeker; durum/atama gibi yaz işlemleri uygulamanın eşleme tablosu üzerinden yönetilir.
+- **Jira entegrasyonu** — issue bilgilerini okur; durum geçişi ve atama gibi yaz işlemleri uygulamanın eşleme tablosu üzerinden Jira'ya yazılır.
 - **Şifreli Jira credential yönetimi** — `EncryptedCharField` (Fernet) ile veritabanında şifreli saklanır.
 - **Uygulama içi sprint yönetimi** — Jira tarafında sprint oluşturulmaz/güncellenmez; tamamen uygulama içinde yapılır.
 - **Docker + Nginx + Postgres** — tek containerda, kolay LAN deploy.
@@ -17,8 +17,8 @@ Yerel ağda (LAN) çalışan, **Python + Django** tabanlı, tek containerda depl
 |--------|-------|
 | Backend | Django 5.2 (Python 3.13) |
 | Veritabanı | PostgreSQL (Docker/LAN) / SQLite (yerel) |
-| Frontend | Django Templates + HTMX + Chart.js (gelecek fazlar) |
-| Jira | `jira` resmi SDK + `requests` (READ-ONLY) |
+| Frontend | Django Templates + inline JS + Chart.js |
+| Jira | `jira` resmi SDK + `requests` (READ + durum geçişi) |
 | Deploy | Docker Compose (Gunicorn + Nginx + Postgres) |
 
 ## Proje Yapısı
@@ -118,7 +118,7 @@ Yerel ağda (LAN) çalışan, **Python + Django** tabanlı, tek containerda depl
 
 Kullanıcı kaydı **sadece Admin** tarafından yapılabilir. Yetki seviyesi, `RoleLevelMiddleware` her isteğe `request.role_level` olarak aktarır; `@role_required(level)` dekoratörü ile korunan yollar tanımlanır.
 
-## Jira Entegrasyonu (`READ-ONLY`)
+## Jira Entegrasyonu (READ + durum geçişi)
 
 - Uygulama projeleri Jira projelerinden bağımsızdır; Jira issue'ları uygulamaya dahil edilir.
 - Credential'lar veritabanında şifreli saklanır (admin + proje yöneticisi yönetir).

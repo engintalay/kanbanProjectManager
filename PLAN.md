@@ -166,7 +166,8 @@ Deploy: Docker Compose — **üç servis** (`nginx` + `web`/Gunicorn + `postgres
 
 **Faz 5 — Polishing** 🟡 kısmi
 - Birim testleri var (`kanbanapp/tests.py`)
-- Kalan: doküman senkronu (README/AGENTS/footer hâlâ “READ-ONLY” / “Faz 2+”), HTMX yok, gunicorn `requirements.txt`'te yok, `JiraCustomStatus` ölü model
+- Yapıldı: doküman senkronu (README/AGENTS/footer “READ-ONLY”/“Faz 2+” ifadeleri giderildi), gunicorn `requirements.txt`'e eklendi, `JiraCustomStatus` ölü modeli kaldırıldı (0017)
+- Kalan: HTMX yok (bkz. §11), ayrı JS dosyası yok (inline script), `JiraCustomStatus` hariç ölü `RefreshLog`/`IssueRequest` tabloları
 
 ## 11. Bilinen sapmalar / sonraki iş
 

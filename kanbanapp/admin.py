@@ -5,7 +5,6 @@ from .models import (
     CardComment,
     IssueRequest,
     JiraConnection,
-    JiraCustomStatus,
     JiraIssue,
     JiraStatus,
     KanbanCard,
@@ -96,12 +95,6 @@ class JiraIssueAdmin(admin.ModelAdmin):
 class JiraStatusAdmin(admin.ModelAdmin):
     list_display = ("name", "jira_status_key", "jira_id")
     search_fields = ("name", "jira_status_key")
-
-
-@admin.register(JiraCustomStatus)
-class JiraCustomStatusAdmin(admin.ModelAdmin):
-    list_display = ("name", "project", "position")
-    list_filter = ("project",)
 
 
 @admin.register(KanbanColumn)
