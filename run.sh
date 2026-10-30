@@ -7,5 +7,5 @@ if [ -d .venv/bin ]; then
 fi
 
 PORT="${PORT:-8000}"
-# --use-x-forwarded-for: nginx arkasındaysken gerçek istemci IP'sini loglar
-exec python manage.py runserver 0.0.0.0:"$PORT" --use-x-forwarded-for
+# Not: 404 logger'ı X-Forwarded-For header'ını zaten okur (run.sh'a ek bayrak gerekmez)
+exec python manage.py runserver 0.0.0.0:"$PORT"
