@@ -2961,6 +2961,23 @@ class DashboardSummarySprintDatesAndActivityTests(TestCase):
         self.assertContains(dash, "tamamladı")
 
 
+class HealthEndpointTests(TestCase):
+    """Dışarıdan gelen /health taramaları 404 yerine 200 dönmeli."""
+
+    def test_health_ok_without_login(self):
+        for url in ("/health/", "/health"):
+            resp = self.client.get(url)
+            self.assertEqual(resp.status_code, 200, url)
+            data = resp.json()
+            self.assertEqual(data["status"], "ok")
+            self.assertEqual(data["database"], "ok")
+
+    def test_health_redirects_anonymous_users_nowhere(self):
+        self.client.logout()
+        resp = self.client.get("/health/", follow=False)
+        self.assertNotIn("login", resp["Location"] if resp.status_code == 302 else "")
+
+
 
 
 

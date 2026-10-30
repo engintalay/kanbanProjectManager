@@ -3164,3 +3164,22 @@ def theme_select_view(request):
     return redirect("dashboard")
 
 
+def health_view(request):
+    """Uptime / load-balancer sağlık kontrolü.
+
+    Auth gerektirmez; dışarıdan gelen `/health` taramaları 404 yerine
+    200 (veya DB sorununda 503) dönsün diye vardır.
+    """
+    payload = {"status": "ok", "app": "kanban-manager"}
+    try:
+        from django.db import connection
+
+        connection.ensure_connection()
+        payload["database"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        payload["status"] = "degraded"
+        payload["database"] = str(exc)
+        return JsonResponse(payload, status=503)
+    return JsonResponse(payload)
+
+
