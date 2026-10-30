@@ -1,4 +1,5 @@
 from functools import wraps
+import logging
 
 from django.contrib.auth.decorators import login_required
 from django.utils.deprecation import MiddlewareMixin
@@ -48,3 +49,37 @@ class RoleLevelMiddleware(MiddlewareMixin):
 
     def process_request(self, request):
         request.role_level = role_level(request.user)
+
+
+notfound_logger = logging.getLogger("kanbanapp.notfound")
+
+
+class NotFoundLoggingMiddleware(MiddlewareMixin):
+    """404 alan isteklerin kaynağını kayıt altına alır.
+
+    Terminalde sadece ``"GET /v1/models" 404`` görünmek yerine kimin,
+    hangi User-Agent ve referrer ile istediğini de görürsün:
+    konsola yazar ve ``logs/notfound.log`` dosyasına yazar.
+    """
+
+    def process_response(self, request, response):
+        if response.status_code != 404:
+            return response
+
+        forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+        client_ip = forwarded.split(",")[0].strip() or request.META.get("REMOTE_ADDR", "-")
+        if getattr(request, "user", None) is not None and request.user.is_authenticated:
+            user = request.user.username
+        else:
+            user = "anon"
+
+        notfound_logger.warning(
+            "%s %s user=%s ip=%s ua=%s referer=%s",
+            request.method,
+            request.get_full_path(),
+            user,
+            client_ip or "-",
+            request.META.get("HTTP_USER_AGENT", "-"),
+            request.META.get("HTTP_REFERER", "-"),
+        )
+        return response

@@ -2978,6 +2978,29 @@ class HealthEndpointTests(TestCase):
         self.assertNotIn("login", resp["Location"] if resp.status_code == 302 else "")
 
 
+class NotFoundLoggingTests(TestCase):
+    """Bilinmeyen yollara gelen istekler IP/UA/referrer ile kaydedilmeli."""
+
+    def test_404_is_logged_with_client_details(self):
+        with self.assertLogs("kanbanapp.notfound", level="WARNING") as captured:
+            resp = self.client.get(
+                "/v1/models",
+                HTTP_USER_AGENT="some-llm-client/1.0",
+                HTTP_REFERER="http://example.local/chat",
+            )
+        self.assertEqual(resp.status_code, 404)
+        joined = "\n".join(captured.output)
+        self.assertIn("/v1/models", joined)
+        self.assertIn("some-llm-client/1.0", joined)
+        self.assertIn("http://example.local/chat", joined)
+        self.assertIn("user=anon", joined)
+
+    def test_normal_page_returns_200(self):
+        self.client.force_login(User.objects.create_superuser(username="nlog", password="pass12345"))
+        resp = self.client.get(reverse("dashboard"))
+        self.assertEqual(resp.status_code, 200)
+
+
 
 
 

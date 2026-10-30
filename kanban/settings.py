@@ -52,6 +52,7 @@ MIDDLEWARE = [
     'kanbanapp.middleware.RoleLevelMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'kanbanapp.middleware.NotFoundLoggingMiddleware',
 ]
 
 ROOT_URLCONF = 'kanban.urls'
@@ -180,3 +181,41 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Europe/Istanbul'
 USE_I18N = True
 USE_TZ = True
+
+# 404 isteklerin kaynağını görmek için (kim, hangi UA/referrer ile istedi):
+# hem terminale hem logs/notfound.log dosyasına yazar.
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'notfound': {
+            'format': '[{asctime}] {levelname} {message}',
+            'style': '{',
+            'datefmt': '%d/%b/%Y %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'notfound_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'notfound.log',
+            'maxBytes': 1_000_000,
+            'backupCount': 3,
+            'encoding': 'utf-8',
+            'formatter': 'notfound',
+        },
+        'notfound_console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'notfound',
+        },
+    },
+    'loggers': {
+        'kanbanapp.notfound': {
+            'handlers': ['notfound_file', 'notfound_console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}

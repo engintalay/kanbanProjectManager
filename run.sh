@@ -7,4 +7,5 @@ if [ -d .venv/bin ]; then
 fi
 
 PORT="${PORT:-8000}"
-exec python manage.py runserver 0.0.0.0:"$PORT"
+# --use-x-forwarded-for: nginx arkasındaysken gerçek istemci IP'sini loglar
+exec python manage.py runserver 0.0.0.0:"$PORT" --use-x-forwarded-for
