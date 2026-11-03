@@ -2424,15 +2424,36 @@ def sprint_report_view(request, project_id, sprint_id):
         ).select_related("assignee", "column")
 
     # Kart listesi: sprintteki her işin kolonu, atananı, zorluğu ve bitme durumu
-    sprint_cards = [
-        {
-            "card": card,
-            "is_done": is_done_status(card.column.name),
-        }
-        for card in cards.select_related("assignee", "column", "parent_card").order_by(
-            "column__position", "position", "id"
-        )
-    ]
+    # status: done (bitmiş) | test (test kolonunda) | todo (diğer bekleyen)
+    sprint_cards = []
+    for card in cards.select_related("assignee", "column", "parent_card").order_by(
+        "column__position", "position", "id"
+    ):
+        done = is_done_status(card.column.name)
+        if done:
+            status = "done"
+        elif "test" in (card.column.name or "").lower():
+            status = "test"
+        else:
+            status = "todo"
+        sprint_cards.append({"card": card, "is_done": done, "status": status})
+
+    total_cards_count = len(sprint_cards)
+    done_cards_count = sum(1 for item in sprint_cards if item["status"] == "done")
+    test_cards_count = sum(1 for item in sprint_cards if item["status"] == "test")
+    pending_cards_count = total_cards_count - done_cards_count - test_cards_count
+
+    # Test metrikleri:
+    # - Doluluk: şu an test kolonunda olan işlerin sprinte oranı
+    # - Bitme: test aşamasına ulaşan (testteki + bitmiş) işlerin bitme oranı
+    reached_test = done_cards_count + test_cards_count
+    test_metrics = {
+        "test_count": test_cards_count,
+        "fill_pct": round(test_cards_count * 100 / total_cards_count) if total_cards_count else 0,
+        "completion_pct": round(done_cards_count * 100 / reached_test) if reached_test else 0,
+        "reached_test": reached_test,
+        "has_test_column": project.columns.filter(name__icontains="test").exists(),
+    }
 
     return render(
         request,
@@ -2446,8 +2467,9 @@ def sprint_report_view(request, project_id, sprint_id):
             "can_view_drift": can_view_drift,
             "total_cards": cards.count(),
             "sprint_cards": sprint_cards,
-            "done_cards_count": sum(1 for item in sprint_cards if item["is_done"]),
-            "pending_cards_count": sum(1 for item in sprint_cards if not item["is_done"]),
+            "done_cards_count": done_cards_count,
+            "pending_cards_count": pending_cards_count,
+            "test_metrics": test_metrics,
             "can_manage_project": _can_manage_project(request.user, project),
             "can_edit_cards": _can_edit_cards(request.user, project),
         },

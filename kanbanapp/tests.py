@@ -3002,6 +3002,42 @@ class SprintReportCardListTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Bu sprintte kart yok")
 
+    def test_test_column_metrics_fill_and_completion(self):
+        """Test kolonu varsa doluluk ve bitme oranı metrikleri hesaplanmalı."""
+        test_col = KanbanColumn.objects.create(project=self.project, name="Test", status_type="custom", position=1)
+        done_col = KanbanColumn.objects.create(project=self.project, name="Done", status_type="custom", position=2)
+
+        KanbanCard.objects.create(project=self.project, column=self.todo, title="todo-1", sprint=self.sprint, is_extra=True)
+        KanbanCard.objects.create(project=self.project, column=test_col, title="test-1", sprint=self.sprint, is_extra=True)
+        KanbanCard.objects.create(project=self.project, column=test_col, title="test-2", sprint=self.sprint, is_extra=True)
+        KanbanCard.objects.create(project=self.project, column=done_col, title="done-1", sprint=self.sprint, is_extra=True)
+
+        resp = self.client.get(reverse("sprint_report", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id}))
+        self.assertEqual(resp.status_code, 200)
+
+        tm = resp.context["test_metrics"]
+        self.assertTrue(tm["has_test_column"])
+        self.assertEqual(tm["test_count"], 2)
+        self.assertEqual(tm["reached_test"], 3)  # 2 testte + 1 bitmiş
+        self.assertEqual(tm["fill_pct"], 50)     # 2 / 4 kart
+        self.assertEqual(tm["completion_pct"], 33)  # 1 bitmiş / 3 test aşamasına ulaşan
+
+        # Kart listesi durumları ve filtre
+        statuses = {item["card"].title: item["status"] for item in resp.context["sprint_cards"]}
+        self.assertEqual(statuses, {"todo-1": "todo", "test-1": "test", "test-2": "test", "done-1": "done"})
+
+        self.assertContains(resp, "Test Durumu")
+        self.assertContains(resp, 'data-filter="test"')
+        self.assertContains(resp, "Testte")
+
+    def test_no_test_column_hides_test_metrics(self):
+        resp = self.client.get(reverse("sprint_report", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id}))
+        tm = resp.context["test_metrics"]
+        self.assertFalse(tm["has_test_column"])
+        self.assertEqual(tm["test_count"], 0)
+        self.assertEqual(tm["completion_pct"], 0)
+        self.assertNotContains(resp, "Test Durumu")
+
 
 class HealthEndpointTests(TestCase):
     """Dışarıdan gelen /health taramaları 404 yerine 200 dönmeli."""

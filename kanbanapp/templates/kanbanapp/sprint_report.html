@@ -38,6 +38,17 @@
     <div style="font-size:0.78rem; color:var(--muted);">Kart tamamlandı</div>
   </div>
 
+  {% if test_metrics.has_test_column %}
+  <div class="capacity-card" style="margin:0;">
+    <div style="font-size:0.82rem; color:var(--muted); font-weight:600; text-transform:uppercase;">🧪 Test Durumu</div>
+    <div style="font-size:1.8rem; font-weight:700; color:{% if test_metrics.completion_pct >= 70 %}var(--ok){% elif test_metrics.completion_pct >= 40 %}var(--warn){% else %}var(--danger){% endif %}; margin:6px 0 2px;">%{{ test_metrics.completion_pct }} <span style="font-size:0.9rem; color:var(--muted);">bitme</span></div>
+    <div style="font-size:0.78rem; color:var(--muted);">
+      🧪 Doluluk: <strong>%{{ test_metrics.fill_pct }}</strong> ({{ test_metrics.test_count }} iş testte)<br>
+      Test aşamasına ulaşan <strong>{{ test_metrics.reached_test }}</strong> işten <strong>{{ done_cards_count }}</strong>'ı bitti
+    </div>
+  </div>
+  {% endif %}
+
   <div class="capacity-card" style="margin:0;">
     <div style="font-size:0.82rem; color:var(--muted); font-weight:600; text-transform:uppercase;">⚖️ Kapasite Durumu</div>
     <div style="font-size:1.4rem; font-weight:700; margin:8px 0 4px;">
@@ -60,11 +71,12 @@
   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
     <div>
       <h3 style="margin:0;">🗂️ Sprint İşleri ({{ sprint_cards|length }} kart)</h3>
-      <span class="muted" style="font-size:0.85rem;">✅ {{ done_cards_count }} tamamlandı &middot; ⏳ {{ pending_cards_count }} bekliyor</span>
+      <span class="muted" style="font-size:0.85rem;">✅ {{ done_cards_count }} tamamlandı &middot; 🧪 {{ test_metrics.test_count }} testte &middot; ⏳ {{ pending_cards_count }} bekliyor</span>
     </div>
     <div style="display:flex; gap:6px;">
       <button type="button" class="btn-secondary card-filter-btn active" data-filter="all" style="font-size:0.8rem; padding:4px 10px;">Tümü</button>
       <button type="button" class="btn-secondary card-filter-btn" data-filter="todo" style="font-size:0.8rem; padding:4px 10px;">Bekleyen</button>
+      <button type="button" class="btn-secondary card-filter-btn" data-filter="test" style="font-size:0.8rem; padding:4px 10px;">🧪 Testte</button>
       <button type="button" class="btn-secondary card-filter-btn" data-filter="done" style="font-size:0.8rem; padding:4px 10px;">Tamamlanan</button>
     </div>
   </div>
@@ -82,7 +94,7 @@
       <tbody>
         {% for item in sprint_cards %}
         {% with card=item.card %}
-        <tr data-status="{% if item.is_done %}done{% else %}todo{% endif %}">
+        <tr data-status="{{ item.status }}">
           <td>
             {% if can_edit_cards %}
             <a href="{% url 'kanban_card_edit' card.project_id card.id %}" style="font-weight:600;">{{ card.title|render_jira_inline }}</a>
@@ -96,8 +108,10 @@
           <td style="white-space: nowrap;"><span class="badge">{{ card.column.name }}</span></td>
           <td style="white-space: nowrap;">{% if card.difficulty_level %}<span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.difficulty_level }}</span>{% else %}-{% endif %}</td>
           <td style="white-space: nowrap;">
-            {% if item.is_done %}
+            {% if item.status == "done" %}
             <span class="badge badge-ok">✅ Bitti</span>
+            {% elif item.status == "test" %}
+            <span class="badge" style="background:rgba(139,92,246,0.15); color:#8b5cf6;">🧪 Testte</span>
             {% else %}
             <span class="badge badge-warn">⏳ Devam / Bekliyor</span>
             {% endif %}
