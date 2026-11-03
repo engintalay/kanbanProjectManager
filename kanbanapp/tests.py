@@ -3038,6 +3038,33 @@ class SprintReportCardListTests(TestCase):
         self.assertEqual(tm["completion_pct"], 0)
         self.assertNotContains(resp, "Test Durumu")
 
+    def test_sprint_board_shows_test_metrics(self):
+        """Test metrikleri sadece raporda değil sprint panosunda da görünmeli."""
+        test_col = KanbanColumn.objects.create(project=self.project, name="Test", status_type="custom", position=1)
+        done_col = KanbanColumn.objects.create(project=self.project, name="Done", status_type="custom", position=2)
+        KanbanCard.objects.create(project=self.project, column=test_col, title="pano-test-1", sprint=self.sprint, is_extra=True)
+        KanbanCard.objects.create(project=self.project, column=done_col, title="pano-done-1", sprint=self.sprint, is_extra=True)
+
+        url = reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+
+        tm = resp.context["test_metrics"]
+        self.assertTrue(tm["has_test_column"])
+        self.assertEqual(tm["test_count"], 1)
+        self.assertEqual(tm["completion_pct"], 50)  # 1 bitmiş / (1 bitmiş + 1 testte)
+
+        self.assertContains(resp, "Test Durumu")
+        self.assertContains(resp, "%50 bitme")
+        self.assertContains(resp, "Doluluk: <strong>%50</strong>")  # 1 / 2 kart
+
+    def test_sprint_board_hides_test_panel_without_test_column(self):
+        url = reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.context["test_metrics"]["has_test_column"])
+        self.assertNotContains(resp, "Test Durumu")
+
 
 class HealthEndpointTests(TestCase):
     """Dışarıdan gelen /health taramaları 404 yerine 200 dönmeli."""

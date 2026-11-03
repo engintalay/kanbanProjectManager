@@ -390,6 +390,32 @@ def _dashboard_summary(projects):
     }
 
 
+def _test_metrics(project, cards):
+    """Test kolonu metrikleri: doluluk oranı ve test aşamasına ulaşanların bitme oranı.
+
+    Sprint Raporu ve Sprint Panosu aynı hesabı paylaşır.
+    - Doluluk: şu an test kolonunda olan işler / toplam iş
+    - Bitme: bitmiş işler / (bitmiş + testteki)  → test→Done akışı varsayımı
+    """
+    total = done = test = 0
+    for card in cards:
+        total += 1
+        if is_done_status(card.column.name):
+            done += 1
+        elif "test" in (card.column.name or "").lower():
+            test += 1
+    reached_test = done + test
+    return {
+        "test_count": test,
+        "done_count": done,
+        "total_count": total,
+        "fill_pct": round(test * 100 / total) if total else 0,
+        "completion_pct": round(done * 100 / reached_test) if reached_test else 0,
+        "reached_test": reached_test,
+        "has_test_column": project.columns.filter(name__icontains="test").exists(),
+    }
+
+
 @login_required
 def dashboard_view(request):
     """Personalized role-based dashboard (PLAN.md §8)."""
@@ -2212,6 +2238,7 @@ def sprint_board_view(request, project_id, sprint_id):
 
     columns = KanbanColumn.objects.filter(project=project).order_by("position", "id")
     sprint_cards = sprint.cards.all()
+    test_metrics = _test_metrics(project, sprint_cards.select_related("column"))
 
     # Dependency / blocked check (PLAN.md §6.5)
     blocked_cards = []
@@ -2244,6 +2271,7 @@ def sprint_board_view(request, project_id, sprint_id):
             "sprint": sprint,
             "columns": columns,
             "blocked_cards": blocked_cards,
+            "test_metrics": test_metrics,
             "available_project_cards": available_project_cards,
             "can_manage_project": _can_manage_project(request.user, project),
             "can_edit_cards": _can_edit_cards(request.user, project),
@@ -2443,17 +2471,8 @@ def sprint_report_view(request, project_id, sprint_id):
     test_cards_count = sum(1 for item in sprint_cards if item["status"] == "test")
     pending_cards_count = total_cards_count - done_cards_count - test_cards_count
 
-    # Test metrikleri:
-    # - Doluluk: şu an test kolonunda olan işlerin sprinte oranı
-    # - Bitme: test aşamasına ulaşan (testteki + bitmiş) işlerin bitme oranı
-    reached_test = done_cards_count + test_cards_count
-    test_metrics = {
-        "test_count": test_cards_count,
-        "fill_pct": round(test_cards_count * 100 / total_cards_count) if total_cards_count else 0,
-        "completion_pct": round(done_cards_count * 100 / reached_test) if reached_test else 0,
-        "reached_test": reached_test,
-        "has_test_column": project.columns.filter(name__icontains="test").exists(),
-    }
+    # Test metrikleri (pano ile ortak hesap)
+    test_metrics = _test_metrics(project, cards.select_related("column"))
 
     return render(
         request,
