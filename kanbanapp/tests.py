@@ -2961,6 +2961,48 @@ class DashboardSummarySprintDatesAndActivityTests(TestCase):
         self.assertContains(dash, "tamamladı")
 
 
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class SprintReportCardListTests(TestCase):
+    """Sprint Raporu'nda bitme oranı dışında kartların listesi de görünmeli."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(username="sradmin", password="pass12345")
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.project = Project.objects.create(key="SPR", name="Sprint Rapor Test", created_by=self.user)
+        self.todo = KanbanColumn.objects.create(project=self.project, name="To Do", status_type="custom", position=0)
+        self.done = KanbanColumn.objects.create(project=self.project, name="Done", status_type="custom", position=1)
+        self.sprint = Sprint.objects.create(
+            project=self.project, name="S-Report", status=Sprint.STATUS_ACTIVE,
+            start_date=datetime.date.today(), duration=Sprint.DURATION_2_WEEKS,
+        )
+
+    def test_report_lists_each_card_with_done_status(self):
+        KanbanCard.objects.create(project=self.project, column=self.todo, title="Açık iş", sprint=self.sprint, is_extra=True)
+        KanbanCard.objects.create(project=self.project, column=self.done, title="Bitmiş iş", sprint=self.sprint, is_extra=True)
+
+        resp = self.client.get(reverse("sprint_report", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id}))
+        self.assertEqual(resp.status_code, 200)
+
+        sprint_cards = resp.context["sprint_cards"]
+        self.assertEqual(len(sprint_cards), 2)
+        self.assertEqual(resp.context["done_cards_count"], 1)
+        self.assertEqual(resp.context["pending_cards_count"], 1)
+
+        self.assertContains(resp, "Sprint İşleri")
+        self.assertContains(resp, "Açık iş")
+        self.assertContains(resp, "Bitmiş iş")
+        self.assertContains(resp, "Bitti")
+        # Filtre butonları
+        self.assertContains(resp, 'data-filter="done"')
+        self.assertContains(resp, 'data-filter="todo"')
+
+    def test_empty_sprint_shows_empty_message(self):
+        resp = self.client.get(reverse("sprint_report", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Bu sprintte kart yok")
+
+
 class HealthEndpointTests(TestCase):
     """Dışarıdan gelen /health taramaları 404 yerine 200 dönmeli."""
 

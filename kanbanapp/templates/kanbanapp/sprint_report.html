@@ -55,6 +55,65 @@
   </div>
 </div>
 
+<!-- 1b. Sprint İşleri — Kart Listesi -->
+<div class="capacity-card" style="margin-bottom:24px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+    <div>
+      <h3 style="margin:0;">🗂️ Sprint İşleri ({{ sprint_cards|length }} kart)</h3>
+      <span class="muted" style="font-size:0.85rem;">✅ {{ done_cards_count }} tamamlandı &middot; ⏳ {{ pending_cards_count }} bekliyor</span>
+    </div>
+    <div style="display:flex; gap:6px;">
+      <button type="button" class="btn-secondary card-filter-btn active" data-filter="all" style="font-size:0.8rem; padding:4px 10px;">Tümü</button>
+      <button type="button" class="btn-secondary card-filter-btn" data-filter="todo" style="font-size:0.8rem; padding:4px 10px;">Bekleyen</button>
+      <button type="button" class="btn-secondary card-filter-btn" data-filter="done" style="font-size:0.8rem; padding:4px 10px;">Tamamlanan</button>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="data-table" id="sprintCardTable">
+      <thead>
+        <tr>
+          <th>İş / Kart</th>
+          <th style="width: 130px; white-space: nowrap;">Atanan</th>
+          <th style="width: 150px; white-space: nowrap;">Kolon</th>
+          <th style="width: 110px; white-space: nowrap;">Zorluk</th>
+          <th style="width: 120px; white-space: nowrap;">Durum</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in sprint_cards %}
+        {% with card=item.card %}
+        <tr data-status="{% if item.is_done %}done{% else %}todo{% endif %}">
+          <td>
+            {% if can_edit_cards %}
+            <a href="{% url 'kanban_card_edit' card.project_id card.id %}" style="font-weight:600;">{{ card.title|render_jira_inline }}</a>
+            {% else %}
+            <strong>{{ card.title|render_jira_inline }}</strong>
+            {% endif %}
+            {% if card.jira_key %}<br><span class="card-key">{{ card.jira_key }}</span>{% endif %}
+            {% if card.is_sub_task %}<br><span class="muted" style="font-size:0.75rem;">↳ Alt iş{% if card.parent_card %}: {{ card.parent_card.title|truncatechars:60 }}{% endif %}</span>{% endif %}
+          </td>
+          <td style="white-space: nowrap;">{{ card.assignee.username|default:"—" }}</td>
+          <td style="white-space: nowrap;"><span class="badge">{{ card.column.name }}</span></td>
+          <td style="white-space: nowrap;">{% if card.difficulty_level %}<span class="diff-badge" style="background-color:{{ card.difficulty_color }};">{{ card.difficulty_level }}</span>{% else %}-{% endif %}</td>
+          <td style="white-space: nowrap;">
+            {% if item.is_done %}
+            <span class="badge badge-ok">✅ Bitti</span>
+            {% else %}
+            <span class="badge badge-warn">⏳ Devam / Bekliyor</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endwith %}
+        {% empty %}
+        <tr>
+          <td colspan="5" class="empty" style="text-align:center; padding:16px;">Bu sprintte kart yok.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- 2. Grafikler Grid -->
 <div class="reports-charts-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:24px; margin-bottom:30px;">
   <!-- Sprint Kolon / Statü Dağılımı -->
@@ -181,6 +240,20 @@
   </div>
 </div>
 {% endif %}
+
+<!-- Kart listesi filtresi -->
+<script>
+  document.querySelectorAll('.card-filter-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.card-filter-btn').forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var filter = btn.dataset.filter;
+      document.querySelectorAll('#sprintCardTable tbody tr[data-status]').forEach(function (row) {
+        row.style.display = (filter === 'all' || row.dataset.status === filter) ? '' : 'none';
+      });
+    });
+  });
+</script>
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

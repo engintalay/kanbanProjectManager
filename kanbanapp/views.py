@@ -2423,6 +2423,17 @@ def sprint_report_view(request, project_id, sprint_id):
             Q(requested_difficulty_level__isnull=False) | Q(initial_difficulty_level__isnull=False)
         ).select_related("assignee", "column")
 
+    # Kart listesi: sprintteki her işin kolonu, atananı, zorluğu ve bitme durumu
+    sprint_cards = [
+        {
+            "card": card,
+            "is_done": is_done_status(card.column.name),
+        }
+        for card in cards.select_related("assignee", "column", "parent_card").order_by(
+            "column__position", "position", "id"
+        )
+    ]
+
     return render(
         request,
         "kanbanapp/sprint_report.html",
@@ -2434,7 +2445,11 @@ def sprint_report_view(request, project_id, sprint_id):
             "drift_cards": drift_cards,
             "can_view_drift": can_view_drift,
             "total_cards": cards.count(),
+            "sprint_cards": sprint_cards,
+            "done_cards_count": sum(1 for item in sprint_cards if item["is_done"]),
+            "pending_cards_count": sum(1 for item in sprint_cards if not item["is_done"]),
             "can_manage_project": _can_manage_project(request.user, project),
+            "can_edit_cards": _can_edit_cards(request.user, project),
         },
     )
 
