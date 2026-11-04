@@ -439,7 +439,8 @@ def dashboard_view(request):
             project__in=projects, assignee__isnull=True
         ).select_related("project", "column")[:15]
         active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE).select_related("project")
-        planning_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_PLANNING).select_related("project")
+        # PLAN.md §8: programmers must NOT see planning/future sprints.
+        planning_sprints = Sprint.objects.none()
     else:
         # Admin / PM / Reporter: Active sprints, planning sprints, pending requests, all visible projects
         active_sprints = Sprint.objects.filter(project__in=projects, status=Sprint.STATUS_ACTIVE).select_related("project")
@@ -751,6 +752,17 @@ def refresh_project(request, project_id):
     return render(request, "kanbanapp/refresh_confirm.html", {"project": project})
 
 
+def _board_js_config(user, project):
+    """JSON config consumed by board.js / sprint-board.js (drag & drop endpoints)."""
+    return {
+        "reorderCardsUrl": reverse("kanban_cards_reorder", args=[project.id]),
+        "reorderColumnsUrl": reverse("kanban_columns_reorder", args=[project.id]),
+        "moveCardBase": reverse("kanban_card_move", args=[project.id, 100000000]).replace("100000000", ""),
+        "hasJira": bool(project.jira_connection),
+        "canReorderColumns": _can_manage_project(user, project) or _can_edit_cards(user, project),
+    }
+
+
 @login_required
 def board_view(request, project_id):
     """Kanban board for a project: columns grouped, cards within each column."""
@@ -786,6 +798,7 @@ def board_view(request, project_id):
             "pending_requests_count": pending_requests_count,
             "can_manage_project": _can_manage_project(request.user, project),
             "can_edit_cards": _can_edit_cards(request.user, project),
+            "board_config": _board_js_config(request.user, project),
         },
     )
 
@@ -2275,6 +2288,7 @@ def sprint_board_view(request, project_id, sprint_id):
             "available_project_cards": available_project_cards,
             "can_manage_project": _can_manage_project(request.user, project),
             "can_edit_cards": _can_edit_cards(request.user, project),
+            "board_config": _board_js_config(request.user, project),
         },
     )
 
@@ -2393,6 +2407,16 @@ def report_view(request, project_id):
             "project": project,
             "status_data": status_data,
             "sprint_data": sprint_data,
+            "status_chart": status_data,
+            "sprint_chart": [
+                {
+                    "name": s["name"],
+                    "diff": s["total_difficulty"],
+                    "completed": s["completed_difficulty"] or 0,
+                    "cap": s["default_capacity"],
+                }
+                for s in sprint_data
+            ],
             "drift_cards": drift_cards,
             "can_view_drift": can_view_drift,
             "total_cards": cards.count(),
@@ -2482,6 +2506,11 @@ def sprint_report_view(request, project_id, sprint_id):
             "sprint": sprint,
             "status_data": status_data,
             "assignee_data": assignee_data,
+            "status_chart": status_data,
+            "assignee_chart": [
+                {"name": a["name"], "total": a["total_points"], "completed": a["completed_points"]}
+                for a in assignee_data
+            ],
             "drift_cards": drift_cards,
             "can_view_drift": can_view_drift,
             "total_cards": cards.count(),

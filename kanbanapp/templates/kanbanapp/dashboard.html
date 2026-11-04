@@ -219,27 +219,6 @@
   </div>
   {% endif %}
 
-<!-- SON AKTİVİTELER (ticket #5) -->
-{% if activities %}
-<div style="margin-bottom: 30px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-    <h2>Son Aktiviteler</h2>
-    <span class="muted" style="font-size:0.85rem;">Son {{ activities|length }} kayıt</span>
-  </div>
-  <div class="capacity-card" style="margin:0; padding:4px 0;">
-    <ul style="list-style:none; margin:0; padding:0;">
-      {% for a in activities %}
-      <li style="display:flex; gap:12px; align-items:baseline; padding:9px 16px; border-bottom:1px solid var(--border); font-size:0.88rem; flex-wrap:wrap;">
-        <span class="muted" style="white-space:nowrap; min-width:105px;">{{ a.created_at|date:"d.m.Y H:i" }}</span>
-        <span><strong>{{ a.actor_name }}</strong> {{ a.text }}</span>
-        {% if a.project %}<span class="badge" style="background:rgba(59,130,246,0.15); color:var(--primary);">{{ a.project.key }}</span>{% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
-</div>
-{% endif %}
-
 <h2>Projeler</h2>
 <div class="projects-grid">
   {% for project in projects %}
@@ -263,13 +242,26 @@
   {% endfor %}
 </div>
 
-<script>
-  function handleBoxClick(event, url) {
-    if (event.target.closest('a, button, input, select, textarea, form, label')) {
-      return;
-    }
-    window.location.href = url;
-  }
-</script>
+<!-- SON AKTİVİTELER (ticket #5) — dashboard'un en altında -->
+{% if activities %}
+<div style="margin-bottom: 30px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+    <h2>Son Aktiviteler</h2>
+    <span class="muted" style="font-size:0.85rem;">Son {{ activities|length }} kayıt</span>
+  </div>
+  <div class="capacity-card" style="margin:0; padding:4px 0;">
+    <ul style="list-style:none; margin:0; padding:0;">
+      {% for a in activities %}
+      <li style="display:flex; gap:12px; align-items:baseline; padding:9px 16px; border-bottom:1px solid var(--border); font-size:0.88rem; flex-wrap:wrap;">
+        <span class="muted" style="white-space:nowrap; min-width:105px;">{{ a.created_at|date:"d.m.Y H:i" }}</span>
+        <span><strong>{{ a.actor_name }}</strong> {{ a.text }}</span>
+        {% if a.project %}<span class="badge" style="background:rgba(59,130,246,0.15); color:var(--primary);">{{ a.project.key }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
