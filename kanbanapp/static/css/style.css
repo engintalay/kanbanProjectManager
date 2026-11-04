@@ -2415,3 +2415,30 @@ p.jira-p:last-child {
   margin-top: 4px;
   cursor: pointer;
 }
+
+/* ── Statü eşleme ekranı: Jira statü havuzu sağda sabit (sticky) ── */
+.status-mapping-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 24px;
+  align-items: start;
+}
+
+.status-pool-sidebar {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+@media (max-width: 1100px) {
+  .status-mapping-layout {
+    grid-template-columns: 1fr;
+  }
+  .status-pool-sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}

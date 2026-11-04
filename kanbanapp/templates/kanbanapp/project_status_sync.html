@@ -2,6 +2,7 @@
 {% load static %}
 {% block title %}Jira Statü Eşleme & Aktarma — {{ project.key }}{% endblock %}
 {% block content %}
+<div id="status-mapping-root">
 <div class="page-head">
   <div>
     <a href="{% url 'board' project.id %}" class="back-link">← {{ project.name }} Panosu</a>
@@ -76,12 +77,12 @@
   </div>
 
   <p style="margin: 0; font-size: 0.88rem; color: var(--muted); line-height: 1.5;">
-    💡 <strong>Detaylı Statü Yönetimi & Mouse ile Taşıma:</strong> Aşağıdaki Jira statülerini <strong>mouse ile tutup sürükleyerek</strong> uygulama durumları üzerine bırakabilir, durumlar arasında taşıyabilir veya havuza bırakıp eşlemeyi kaldırabilirsiniz. Kart bir duruma taşındığında Jira'da <strong>[Birincil]</strong> olarak işaretlenen statüye geçiş yapılır. "Jira Aktarımı Kapalı" olan durumlarda Jira geçişi yapılmaz.
+    💡 <strong>Detaylı Statü Yönetimi & Mouse ile Taşıma:</strong> Sağdaki havuzdaki Jira statülerini <strong>mouse ile tutup sürükleyerek</strong> soldaki uygulama durumları üzerine bırakabilir, durumlar arasında taşıyabilir veya havuza bırakıp eşlemeyi kaldırabilirsiniz. Kart bir duruma taşındığında Jira'da <strong>[Birincil]</strong> olarak işaretlenen statüye geçiş yapılır. "Jira Aktarımı Kapalı" olan durumlarda Jira geçişi yapılmaz.
   </p>
 </div>
 
 <!-- Layout: Two main sections -->
-<div style="display: grid; grid-template-columns: 1fr; gap: 24px;">
+<div class="status-mapping-layout">
 
   <!-- Section 1: Application Columns & Mappings -->
   <div>
@@ -249,7 +250,7 @@
   </div>
 
   <!-- Section 2: Jira Status Pool with Draggable Chips -->
-  <div style="margin-top: 10px;">
+<aside class="status-pool-sidebar">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
       <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <h2 style="margin: 0; font-size: 1.25rem;">🌐 Jira Sunucusu Statü Havuzu</h2>
@@ -290,7 +291,7 @@
           🖐️ Mouse ile Kolonlara Sürükle & Bırak
         </span>
         <span style="font-size: 0.8rem; color: var(--muted);">
-          Aşağıdaki Jira statü kartlarını tutup yukarıdaki kolonların üzerine bırakarak doğrudan eşleyebilirsiniz. (Gizlenen statüler havuzda listelenmez).
+          Jira statü kartlarını tutup soldaki kolonların üzerine bırakarak doğrudan eşleyebilirsiniz. (Gizlenen statüler havuzda listelenmez).
         </span>
       </div>
 
@@ -302,7 +303,7 @@
              data-jira-status-name="{{ js_row.status.name }}"
              data-is-hidden="{% if js_row.is_hidden %}true{% else %}false{% endif %}"
              data-is-mapped="{% if js_row.is_mapped %}true{% else %}false{% endif %}"
-             title="{% if js_row.is_hidden %}Bu statü bu proje için gizlenmiştir.{% else %}Mouse ile tutup yukarıdaki bir uygulama durumuna sürükleyin{% endif %}">
+             title="{% if js_row.is_hidden %}Bu statü bu proje için gizlenmiştir.{% else %}Mouse ile tutup soldaki bir uygulama durumuna sürükleyin{% endif %}">
           <span class="drag-grip">{% if js_row.is_hidden %}👁️{% else %}⠿{% endif %}</span>
           <span style="font-weight: 600;">{{ js_row.status.name }}</span>
           {% if js_row.is_hidden %}
@@ -326,14 +327,17 @@
 
       {% if can_manage_project %}
       <div class="pool-drop-unmap-zone" id="poolUnmapZone">
-        <span>🗑️ <strong>Eşlemeyi Kaldır:</strong> Yukarıdan eşlenmiş bir statü kartını buraya sürükleyip bırakarak eşlemeyi silebilirsiniz</span>
+        <span>🗑️ <strong>Eşlemeyi Kaldır:</strong> Soldan eşlenmiş bir statü kartını buraya sürükleyip bırakarak eşlemeyi silebilirsiniz</span>
       </div>
       {% endif %}
     </div>
     {% endif %}
+</aside>
 
-    <!-- Status Details Table -->
-    <div style="background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto;">
+</div>
+
+<!-- Status Details Table (full width) -->
+    <div style="margin-top: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow-x: auto;">
       {% if jira_statuses_data %}
       <table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left;">
         <thead>
@@ -422,9 +426,6 @@
       </div>
       {% endif %}
     </div>
-  </div>
-
-</div>
 
 <!-- Drag & Drop Interactive Modals -->
 <!-- 1. Add Mapping Modal -->
@@ -583,6 +584,8 @@
     </form>
   </div>
 </div>
+
+</div><!-- /status-mapping-root -->
 
 <script src="{% static 'js/status-sync.js' %}"></script>
 {% endblock %}

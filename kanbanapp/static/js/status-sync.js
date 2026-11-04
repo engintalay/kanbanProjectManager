@@ -1,90 +1,90 @@
-  let draggedStatusData = null;
+// Jira status mapping screen: drag & drop pool, sticky sidebar AJAX refresh.
+// All POST actions swap #status-mapping-root content without a full reload,
+// so the scroll position is preserved after every move.
 
-  function openModal(id) {
-    const m = document.getElementById(id);
-    if (m) m.classList.add('active');
-  }
+let draggedStatusData = null;
+let currentPoolTab = 'active';
+let ajaxSubmitInFlight = false;
 
-  function closeModal(id) {
-    const m = document.getElementById(id);
-    if (m) m.classList.remove('active');
-  }
+function openModal(id) {
+  const m = document.getElementById(id);
+  if (m) m.classList.add('active');
+}
 
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-      ['addMappingModal', 'moveMappingModal', 'deleteMappingModal', 'bulkManageModal'].forEach(closeModal);
+function closeModal(id) {
+  const m = document.getElementById(id);
+  if (m) m.classList.remove('active');
+}
+
+// Filter Pool & Table by Active / Hidden / All
+function filterStatusPool(tab) {
+  currentPoolTab = tab;
+  document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
+  if (tab === 'active') document.getElementById('tabActiveStatuses')?.classList.add('active');
+  else if (tab === 'hidden') document.getElementById('tabHiddenStatuses')?.classList.add('active');
+  else if (tab === 'all') document.getElementById('tabAllStatuses')?.classList.add('active');
+
+  // Filter Chips
+  document.querySelectorAll('.jira-status-chip').forEach(chip => {
+    const isHidden = chip.dataset.isHidden === 'true';
+    if (tab === 'active') {
+      chip.style.display = isHidden ? 'none' : 'inline-flex';
+    } else if (tab === 'hidden') {
+      chip.style.display = isHidden ? 'inline-flex' : 'none';
+    } else {
+      chip.style.display = 'inline-flex';
     }
   });
 
+  // Filter Table Rows
+  document.querySelectorAll('.status-table-row').forEach(row => {
+    const isHidden = row.dataset.isHidden === 'true';
+    if (tab === 'active') {
+      row.style.display = isHidden ? 'none' : '';
+    } else if (tab === 'hidden') {
+      row.style.display = isHidden ? '' : 'none';
+    } else {
+      row.style.display = '';
+    }
+  });
+}
+
+function openBulkManageModal() {
+  openModal('bulkManageModal');
+}
+
+function filterBulkModalCheckboxes(query) {
+  const q = (query || '').toLowerCase().trim();
+  document.querySelectorAll('.bulk-status-item').forEach(item => {
+    const name = item.dataset.statusName || '';
+    item.style.display = name.includes(q) ? 'flex' : 'none';
+  });
+}
+
+function setBulkCheckboxes(checked) {
+  document.querySelectorAll('.bulk-hide-checkbox:not(:disabled)').forEach(cb => {
+    cb.checked = checked;
+  });
+}
+
+function selectUnmappedForHide() {
+  document.querySelectorAll('.bulk-status-item').forEach(item => {
+    const isMapped = item.dataset.isMapped === 'true';
+    const cb = item.querySelector('.bulk-hide-checkbox');
+    if (cb && !isMapped) {
+      cb.checked = true;
+    }
+  });
+}
+
+// Bind drag & drop handlers to current DOM. Re-run after every AJAX swap.
+function initStatusSyncBindings() {
   // Close modals on backdrop click
   document.querySelectorAll('.drag-modal-backdrop').forEach(b => {
-    b.addEventListener('click', function(e) {
+    b.addEventListener('click', function (e) {
       if (e.target === b) closeModal(b.id);
     });
   });
-
-  // Filter Pool & Table by Active / Hidden / All
-  let currentPoolTab = 'active';
-
-  function filterStatusPool(tab) {
-    currentPoolTab = tab;
-    document.querySelectorAll('.btn-tab').forEach(b => b.classList.remove('active'));
-    if (tab === 'active') document.getElementById('tabActiveStatuses')?.classList.add('active');
-    else if (tab === 'hidden') document.getElementById('tabHiddenStatuses')?.classList.add('active');
-    else if (tab === 'all') document.getElementById('tabAllStatuses')?.classList.add('active');
-
-    // Filter Chips
-    document.querySelectorAll('.jira-status-chip').forEach(chip => {
-      const isHidden = chip.dataset.isHidden === 'true';
-      if (tab === 'active') {
-        chip.style.display = isHidden ? 'none' : 'inline-flex';
-      } else if (tab === 'hidden') {
-        chip.style.display = isHidden ? 'inline-flex' : 'none';
-      } else {
-        chip.style.display = 'inline-flex';
-      }
-    });
-
-    // Filter Table Rows
-    document.querySelectorAll('.status-table-row').forEach(row => {
-      const isHidden = row.dataset.isHidden === 'true';
-      if (tab === 'active') {
-        row.style.display = isHidden ? 'none' : '';
-      } else if (tab === 'hidden') {
-        row.style.display = isHidden ? '' : 'none';
-      } else {
-        row.style.display = '';
-      }
-    });
-  }
-
-  function openBulkManageModal() {
-    openModal('bulkManageModal');
-  }
-
-  function filterBulkModalCheckboxes(query) {
-    const q = (query || '').toLowerCase().trim();
-    document.querySelectorAll('.bulk-status-item').forEach(item => {
-      const name = item.dataset.statusName || '';
-      item.style.display = name.includes(q) ? 'flex' : 'none';
-    });
-  }
-
-  function setBulkCheckboxes(checked) {
-    document.querySelectorAll('.bulk-hide-checkbox:not(:disabled)').forEach(cb => {
-      cb.checked = checked;
-    });
-  }
-
-  function selectUnmappedForHide() {
-    document.querySelectorAll('.bulk-status-item').forEach(item => {
-      const isMapped = item.dataset.isMapped === 'true';
-      const cb = item.querySelector('.bulk-hide-checkbox');
-      if (cb && !isMapped) {
-        cb.checked = true;
-      }
-    });
-  }
 
   // 1. Jira Pool Chips Dragging
   document.querySelectorAll('.jira-status-chip[draggable="true"]').forEach(chip => {
@@ -182,7 +182,7 @@
         document.getElementById('modalJiraStatusName').textContent = data.statusName;
         document.getElementById('modalColumnName').textContent = targetColName;
         document.getElementById('modalTransferCheck').checked = true;
-        document.getElementById('addMappingModal').classList.add('active');
+        openModal('addMappingModal');
       } else if (data.type === 'mapped') {
         if (data.columnId === targetColId) return; // Same column
         document.getElementById('moveMappingId').value = data.mappingId;
@@ -190,7 +190,7 @@
         document.getElementById('moveJiraStatusName').textContent = data.statusName;
         document.getElementById('moveFromColumnName').textContent = data.columnName;
         document.getElementById('moveToColumnName').textContent = targetColName;
-        document.getElementById('moveMappingModal').classList.add('active');
+        openModal('moveMappingModal');
       }
     });
   });
@@ -223,9 +223,75 @@
       document.getElementById('deleteMappingId').value = data.mappingId;
       document.getElementById('deleteJiraStatusName').textContent = data.statusName;
       document.getElementById('deleteFromColumnName').textContent = data.columnName;
-      document.getElementById('deleteMappingModal').classList.add('active');
+      openModal('deleteMappingModal');
     });
   }
+}
 
-  // Initialize status pool filter on load
-  filterStatusPool('active');
+// Replace the mapping screen content with freshly rendered HTML, keep scroll.
+function swapMappingContent(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const fresh = doc.getElementById('status-mapping-root');
+  const current = document.getElementById('status-mapping-root');
+  if (!fresh || !current) {
+    // Unexpected layout (e.g. session expired / different page) — full reload.
+    window.location.reload();
+    return;
+  }
+  const scrollY = window.scrollY;
+  current.innerHTML = fresh.innerHTML;
+  // Refresh the Django messages strip (it lives outside the root container).
+  const freshMsgs = doc.querySelector('.messages');
+  const currentMsgs = document.querySelector('.messages');
+  if (currentMsgs) currentMsgs.remove();
+  if (freshMsgs) current.parentNode.insertBefore(doc.importNode(freshMsgs, true), current);
+  window.scrollTo(0, scrollY);
+  initStatusSyncBindings();
+  filterStatusPool(currentPoolTab);
+}
+
+// AJAX-post every form on this page; the server redirects back to this page.
+document.addEventListener('submit', function (e) {
+  const form = e.target;
+  if (!form || (form.method || '').toLowerCase() !== 'post') return;
+  if (e.defaultPrevented) return; // user cancelled an inline confirm()
+  if (ajaxSubmitInFlight) {
+    e.preventDefault();
+    return;
+  }
+  e.preventDefault();
+  ajaxSubmitInFlight = true;
+  const btn = form.querySelector('button[type=submit]');
+  if (btn) btn.disabled = true;
+
+  fetch(form.action || window.location.href, {
+    method: 'POST',
+    body: new FormData(form),
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    credentials: 'same-origin',
+  })
+    .then(res => res.text())
+    .then(html => swapMappingContent(html))
+    .catch(() => window.location.reload())
+    .finally(() => {
+      ajaxSubmitInFlight = false;
+      if (btn) btn.disabled = false;
+    });
+});
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    ['addMappingModal', 'moveMappingModal', 'deleteMappingModal', 'bulkManageModal'].forEach(closeModal);
+  }
+});
+
+// Close modals on backdrop click
+document.querySelectorAll('.drag-modal-backdrop').forEach(b => {
+  b.addEventListener('click', function (e) {
+    if (e.target === b) closeModal(b.id);
+  });
+});
+
+// Initialize
+initStatusSyncBindings();
+filterStatusPool('active');
