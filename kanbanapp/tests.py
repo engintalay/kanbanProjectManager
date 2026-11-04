@@ -52,6 +52,28 @@ class KanbanBoardTests(TestCase):
         self.assertIn(b"col-drag-handle", resp.content)
         self.assertIn(b"columns/reorder", resp.content)
 
+    def test_board_config_urls_resolve_and_move_persists(self):
+        from django.urls import resolve
+
+        resp = self.client.get(reverse("board", kwargs={"project_id": self.project.id}))
+        cfg = resp.context["board_config"]
+        self.assertEqual(resolve(cfg["reorderCardsUrl"]).url_name, "kanban_cards_reorder")
+        self.assertEqual(resolve(cfg["reorderColumnsUrl"]).url_name, "kanban_columns_reorder")
+
+        card = KanbanCard.objects.create(project=self.project, column=self.col, title="Move me", is_extra=True)
+        target = KanbanColumn.objects.create(project=self.project, name="Doing", status_type="custom", position=1)
+
+        # JS builds: moveCardBase + cardId + "/move/" — must be a valid URL (no empty segments).
+        move_url = cfg["moveCardBase"] + str(card.id) + "/move/"
+        self.assertEqual(resolve(move_url).url_name, "kanban_card_move")
+
+        post = self.client.post(
+            move_url, {"column_id": target.id, "position": 0, "skip_jira_sync": "0"}
+        )
+        self.assertEqual(post.status_code, 302)
+        card.refresh_from_db()
+        self.assertEqual(card.column_id, target.id)
+
     def test_column_and_card_crud_flow(self):
         col_resp = self.client.post(
             reverse("kanban_column_create", kwargs={"project_id": self.project.id}),

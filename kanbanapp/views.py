@@ -757,7 +757,7 @@ def _board_js_config(user, project):
     return {
         "reorderCardsUrl": reverse("kanban_cards_reorder", args=[project.id]),
         "reorderColumnsUrl": reverse("kanban_columns_reorder", args=[project.id]),
-        "moveCardBase": reverse("kanban_card_move", args=[project.id, 100000000]).replace("100000000", ""),
+        "moveCardBase": reverse("kanban_card_move", args=[project.id, 0]).replace("/0/move/", "/"),
         "hasJira": bool(project.jira_connection),
         "canReorderColumns": _can_manage_project(user, project) or _can_edit_cards(user, project),
     }
