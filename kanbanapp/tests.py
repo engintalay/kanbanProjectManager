@@ -3027,6 +3027,9 @@ class SprintReportCardListTests(TestCase):
         self.assertEqual(statuses, {"todo-1": "todo", "test-1": "test", "test-2": "test", "done-1": "done"})
 
         self.assertContains(resp, "Test Durumu")
+        self.assertContains(resp, "%50")          # doluluk büyük sayıda
+        self.assertContains(resp, "testte")       # etiket: "testte"
+        self.assertContains(resp, "test aşaması bitti")  # bitme alt satırda
         self.assertContains(resp, 'data-filter="test"')
         self.assertContains(resp, "Testte")
 
@@ -3055,8 +3058,9 @@ class SprintReportCardListTests(TestCase):
         self.assertEqual(tm["completion_pct"], 50)  # 1 bitmiş / (1 bitmiş + 1 testte)
 
         self.assertContains(resp, "Test Durumu")
-        self.assertContains(resp, "%50 bitme")
-        self.assertContains(resp, "Doluluk: <strong>%50</strong>")  # 1 / 2 kart
+        self.assertContains(resp, "%50 testte")   # büyük sayı = tüm işin testte olan oranı
+        self.assertContains(resp, "1/2</strong> iş testte")
+        self.assertContains(resp, "test aşaması bitti")  # bitme alt satırda
 
     def test_sprint_board_hides_test_panel_without_test_column(self):
         url = reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id})

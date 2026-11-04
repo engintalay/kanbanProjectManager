@@ -79,16 +79,16 @@
     <div class="meter-panel" style="background:var(--card); padding:10px 14px; border-radius:8px; border:1px solid var(--border);">
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.84rem; margin-bottom:6px;">
         <span style="font-weight:600; color:#8b5cf6;">🧪 Test Durumu:</span>
-        <span style="font-weight:700; color:{% if test_metrics.completion_pct >= 70 %}var(--ok){% elif test_metrics.completion_pct >= 40 %}var(--warn){% else %}var(--danger){% endif %};">%{{ test_metrics.completion_pct }} bitme</span>
+        <span style="font-weight:700; font-size:1.05rem; color:#8b5cf6;" title="Sprintteki tüm işlerin test kolonunda olan oranı">%{{ test_metrics.fill_pct }} testte</span>
       </div>
-      <div class="progress-container" title="Test aşamasına ulaşanların bitme oranı: %{{ test_metrics.completion_pct }}">
+      <div class="progress-container" title="Tüm işin testte olan oranı: %{{ test_metrics.fill_pct }} ({{ test_metrics.test_count }} / {{ test_metrics.total_count }} iş)">
         <div class="progress-bar"
-             style="width: {% if test_metrics.completion_pct > 100 %}100{% else %}{{ test_metrics.completion_pct }}{% endif %}%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);">
+             style="width: {% if test_metrics.fill_pct > 100 %}100{% else %}{{ test_metrics.fill_pct }}{% endif %}%; background: linear-gradient(90deg, #8b5cf6, #a78bfa);">
         </div>
       </div>
-      <div style="font-size:0.75rem; color:var(--muted); margin-top:4px; display:flex; justify-content:space-between;">
-        <span>🧪 Doluluk: <strong>%{{ test_metrics.fill_pct }}</strong> ({{ test_metrics.test_count }} iş testte)</span>
-        <span><strong>{{ test_metrics.done_count }}/{{ test_metrics.reached_test }}</strong> test aşaması bitti</span>
+      <div style="font-size:0.75rem; color:var(--muted); margin-top:4px; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+        <span>🧪 <strong>{{ test_metrics.test_count }}/{{ test_metrics.total_count }}</strong> iş testte</span>
+        <span title="Test aşamasına ulaşan (testteki + bitmiş) işlerin bitme oranı">✅ Bitme: <strong style="color:{% if test_metrics.completion_pct >= 70 %}var(--ok){% elif test_metrics.completion_pct >= 40 %}var(--warn){% else %}var(--danger){% endif %};">%{{ test_metrics.completion_pct }}</strong> ({{ test_metrics.done_count }}/{{ test_metrics.reached_test }} test aşaması bitti)</span>
       </div>
     </div>
     {% endif %}
