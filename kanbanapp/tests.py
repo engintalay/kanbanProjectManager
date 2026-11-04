@@ -3062,6 +3062,27 @@ class SprintReportCardListTests(TestCase):
         self.assertContains(resp, "1/2</strong> iş testte")
         self.assertContains(resp, "test aşaması bitti")  # bitme alt satırda
 
+    def test_cozulmus_column_counts_as_done(self):
+        """'Çözülmüş' kolonu da bitmiştir: iş bittiyse testi de bitmiş sayılır."""
+        test_col = KanbanColumn.objects.create(project=self.project, name="Test", status_type="custom", position=1)
+        done_col = KanbanColumn.objects.create(project=self.project, name="Çözülmüş", status_type="custom", position=2)
+        KanbanCard.objects.create(project=self.project, column=test_col, title="testteki-is", sprint=self.sprint, is_extra=True)
+        KanbanCard.objects.create(project=self.project, column=done_col, title="bitmis-is", sprint=self.sprint, is_extra=True)
+
+        resp = self.client.get(reverse("sprint_report", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id}))
+        tm = resp.context["test_metrics"]
+        self.assertEqual(tm["done_count"], 1)
+        self.assertEqual(tm["test_count"], 1)
+        self.assertEqual(tm["completion_pct"], 50)  # 1 bitmiş / (1 bitmiş + 1 testte)
+
+        statuses = {item["card"].title: item["status"] for item in resp.context["sprint_cards"]}
+        self.assertEqual(statuses["bitmis-is"], "done")
+
+        # Pano da aynı görmeli
+        board = self.client.get(reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id}))
+        self.assertEqual(board.context["test_metrics"]["done_count"], 1)
+        self.assertContains(board, "%50 testte")
+
     def test_sprint_board_hides_test_panel_without_test_column(self):
         url = reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": self.sprint.id})
         resp = self.client.get(url)

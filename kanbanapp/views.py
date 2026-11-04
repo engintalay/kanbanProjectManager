@@ -2249,7 +2249,7 @@ def sprint_board_view(request, project_id, sprint_id):
                 # Check if blocking issues are incomplete
                 blocking_keys = issue.blocked_by
                 blocking_cards = KanbanCard.objects.filter(project=project, jira_key__in=blocking_keys)
-                incomplete_blocking = [b for b in blocking_cards if b.column.name.lower() not in ("done", "tamamlandı", "bitti")]
+                incomplete_blocking = [b for b in blocking_cards if not is_done_status(b.column.name)]
                 if incomplete_blocking:
                     blocked_cards.append({
                         "card": card,
@@ -2431,7 +2431,7 @@ def sprint_report_view(request, project_id, sprint_id):
         points = card.difficulty_level or 0
         assignee_stats[name]["total_points"] += points
         assignee_stats[name]["card_count"] += 1
-        if any(k in card.column.name.lower() for k in ("done", "tamamlandı", "tamamlandi", "bitti", "closed", "kapalı", "resolved")):
+        if is_done_status(card.column.name):
             assignee_stats[name]["completed_points"] += points
 
     assignee_data = [

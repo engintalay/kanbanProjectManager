@@ -10,6 +10,7 @@ from .fields import EncryptedCharField
 DONE_KEYWORDS = (
     "done", "tamamlandı", "tamamlandi", "bitti", "closed",
     "kapalı", "kapali", "resolved", "çözüldü", "cozuldu",
+    "çözülmüş", "cozulmus",
 )
 
 
