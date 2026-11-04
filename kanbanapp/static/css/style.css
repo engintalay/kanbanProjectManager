@@ -2442,3 +2442,9 @@ p.jira-p:last-child {
     overflow: visible;
   }
 }
+
+@media (min-width: 1500px) {
+  .status-mapping-layout {
+    grid-template-columns: minmax(0, 1fr) 420px;
+  }
+}
