@@ -1,4 +1,6 @@
 import datetime
+import json
+import re
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.test.utils import override_settings
@@ -59,6 +61,14 @@ class KanbanBoardTests(TestCase):
         cfg = resp.context["board_config"]
         self.assertEqual(resolve(cfg["reorderCardsUrl"]).url_name, "kanban_cards_reorder")
         self.assertEqual(resolve(cfg["reorderColumnsUrl"]).url_name, "kanban_columns_reorder")
+
+        # The JS file expects a #board-config JSON island with these keys.
+        self.assertContains(resp, 'id="board-config"')
+        island = re.search(rb'<script id="board-config" type="application/json">(.*?)</script>', resp.content, re.S)
+        self.assertIsNotNone(island)
+        island_cfg = json.loads(island.group(1).decode())
+        for key in ("reorderCardsUrl", "reorderColumnsUrl", "moveCardBase", "hasJira", "canReorderColumns"):
+            self.assertIn(key, island_cfg)
 
         card = KanbanCard.objects.create(project=self.project, column=self.col, title="Move me", is_extra=True)
         target = KanbanColumn.objects.create(project=self.project, name="Doing", status_type="custom", position=1)

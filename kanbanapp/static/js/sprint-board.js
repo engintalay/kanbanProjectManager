@@ -1,3 +1,6 @@
+// Board drag & drop. Page config (URLs, flags) comes from the #board-config JSON island.
+const BOARD_CONFIG = JSON.parse(document.getElementById('board-config').textContent);
+
   function openSprintAddCardModal() {
     const m = document.getElementById('sprintAddCardModal');
     if (m) {
