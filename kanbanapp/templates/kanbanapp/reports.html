@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load static %}
 {% load jira_filters %}
 {% block title %}{{ project.key }} — Raporlar{% endblock %}
 {% block content %}
@@ -101,74 +102,7 @@
 
 <!-- Chart.js via CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-  // Convert status data to arrays safely
-  const rawStatus = [
-    {% for s in status_data %}
-      { name: "{{ s.name|escapejs }}", count: {{ s.count }} },
-    {% endfor %}
-  ];
-
-  const ctxStatus = document.getElementById('statusChart').getContext('2d');
-  new Chart(ctxStatus, {
-    type: 'doughnut',
-    data: {
-      labels: rawStatus.map(s => s.name),
-      datasets: [{
-        data: rawStatus.map(s => s.count),
-        backgroundColor: ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'],
-        borderWidth: 1,
-        borderColor: '#334155'
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
-      }
-    }
-  });
-
-  // 2. Sprint Velocity Chart (KPM-T3)
-  const rawSprints = [
-    {% for s in sprint_data %}
-      { name: "{{ s.name|escapejs }}", diff: {{ s.total_difficulty }}, completed: {{ s.completed_difficulty|default:0 }}, cap: {{ s.default_capacity }} },
-    {% endfor %}
-  ];
-
-  const ctxSprint = document.getElementById('sprintChart').getContext('2d');
-  new Chart(ctxSprint, {
-    type: 'bar',
-    data: {
-      labels: rawSprints.map(s => s.name),
-      datasets: [
-        {
-          label: 'Tamamlanan (Bitme)',
-          data: rawSprints.map(s => s.completed),
-          backgroundColor: '#10b981' // Yeşil
-        },
-        {
-          label: 'Planlanan (Doluluk)',
-          data: rawSprints.map(s => s.diff),
-          backgroundColor: '#3b82f6' // Mavi (Asla yeşil değil)
-        },
-        {
-          label: 'Hedef Kapasite',
-          data: rawSprints.map(s => s.cap),
-          backgroundColor: 'rgba(148, 163, 184, 0.4)'
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } }
-      },
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
-      }
-    }
-  });
-</script>
+{{ status_chart|json_script:"status-chart" }}
+{{ sprint_chart|json_script:"sprint-chart" }}
+<script src="{% static 'js/reports.js' %}"></script>
 {% endblock %}

@@ -81,11 +81,7 @@
     <span>Kanban Manager &mdash; Jira entegrasyonlu</span>
   </footer>
 
-  <script>
-    function csrfToken() {
-      return document.querySelector('[name=csrfmiddlewaretoken]');
-    }
-  </script>
+  <script src="{% static 'js/app.js' %}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

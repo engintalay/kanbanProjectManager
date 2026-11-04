@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load static %}
 {% load jira_filters %}
 {% block title %}{{ sprint.name }} — Sprint Raporu{% endblock %}
 {% block content %}
@@ -256,84 +257,10 @@
 {% endif %}
 
 <!-- Kart listesi filtresi -->
-<script>
-  document.querySelectorAll('.card-filter-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.querySelectorAll('.card-filter-btn').forEach(function (b) { b.classList.remove('active'); });
-      btn.classList.add('active');
-      var filter = btn.dataset.filter;
-      document.querySelectorAll('#sprintCardTable tbody tr[data-status]').forEach(function (row) {
-        row.style.display = (filter === 'all' || row.dataset.status === filter) ? '' : 'none';
-      });
-    });
-  });
-</script>
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-  // 1. Sprint Kolon Dağılımı
-  const rawStatus = [
-    {% for s in status_data %}
-      { name: "{{ s.name|escapejs }}", count: {{ s.count }} },
-    {% endfor %}
-  ];
-
-  const ctxStatus = document.getElementById('statusChart').getContext('2d');
-  new Chart(ctxStatus, {
-    type: 'doughnut',
-    data: {
-      labels: rawStatus.map(s => s.name),
-      datasets: [{
-        data: rawStatus.map(s => s.count),
-        backgroundColor: ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'],
-        borderWidth: 1,
-        borderColor: '#334155'
-      }]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
-      }
-    }
-  });
-
-  // 2. Geliştirici İş Yükü ve Tamamlanma Grafiği
-  const rawAssignees = [
-    {% for a in assignee_data %}
-      { name: "{{ a.name|escapejs }}", total: {{ a.total_points }}, completed: {{ a.completed_points }} },
-    {% endfor %}
-  ];
-
-  const ctxAssignee = document.getElementById('assigneeChart').getContext('2d');
-  new Chart(ctxAssignee, {
-    type: 'bar',
-    data: {
-      labels: rawAssignees.map(a => a.name),
-      datasets: [
-        {
-          label: 'Tamamlanan Zorluk',
-          data: rawAssignees.map(a => a.completed),
-          backgroundColor: '#10b981'
-        },
-        {
-          label: 'Toplam Üstlenilen Zorluk',
-          data: rawAssignees.map(a => a.total),
-          backgroundColor: '#3b82f6'
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      scales: {
-        x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
-        y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' }, beginAtZero: true }
-      },
-      plugins: {
-        legend: { position: 'bottom', labels: { color: '#94a3b8' } }
-      }
-    }
-  });
-</script>
+{{ status_chart|json_script:"status-chart" }}
+{{ assignee_chart|json_script:"assignee-chart" }}
+<script src="{% static 'js/sprint-report.js' %}"></script>
 {% endblock %}

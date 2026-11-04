@@ -1,4 +1,5 @@
 {% extends "kanbanapp/base.html" %}
+{% load static %}
 {% block title %}Projeler - Kanban Manager{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -48,13 +49,4 @@
   {% endfor %}
 </div>
 
-<script>
-  function handleBoxClick(event, url) {
-    // If the click happened on an anchor, button, input, select, textarea or form, do not hijack it
-    if (event.target.closest('a, button, input, select, textarea, form, label')) {
-      return;
-    }
-    window.location.href = url;
-  }
-</script>
 {% endblock %}
