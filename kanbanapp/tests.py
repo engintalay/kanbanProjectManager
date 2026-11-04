@@ -1426,16 +1426,17 @@ class MultiStatusMappingAndScreenTests(TestCase):
         m1.refresh_from_db()
         self.assertEqual(m1.app_status_id, self.col_dev.id)
 
-    def test_toggle_jira_status_visibility_for_project(self):
-        # 1. Hide unmapped js_review for this project
+    def test_toggle_jira_status_visibility_global(self):
+        # 1. Hide unmapped js_review system-wide
         resp = self.client.post(
             reverse("project_status_mappings", kwargs={"project_id": self.project.id}),
             {"action": "toggle_jira_status_visibility", "jira_status_id": self.js_review.id},
             follow=True,
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertTrue(self.project.hidden_jira_statuses.filter(id=self.js_review.id).exists())
-        self.assertContains(resp, "gizlendi")
+        self.js_review.refresh_from_db()
+        self.assertTrue(self.js_review.is_hidden)
+        self.assertContains(resp, "sistem genelinde gizlendi")
 
         # 2. Toggle again to unhide
         resp = self.client.post(
@@ -1444,7 +1445,8 @@ class MultiStatusMappingAndScreenTests(TestCase):
             follow=True,
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertFalse(self.project.hidden_jira_statuses.filter(id=self.js_review.id).exists())
+        self.js_review.refresh_from_db()
+        self.assertFalse(self.js_review.is_hidden)
         self.assertContains(resp, "yeniden görünür yapıldı")
 
     def test_toggle_jira_status_visibility_prevents_hiding_mapped_status(self):
@@ -1459,7 +1461,8 @@ class MultiStatusMappingAndScreenTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Gizlemeden önce eşlemeyi kaldırmalısınız")
-        self.assertFalse(self.project.hidden_jira_statuses.filter(id=self.js_todo.id).exists())
+        self.js_todo.refresh_from_db()
+        self.assertFalse(self.js_todo.is_hidden)
 
     def test_bulk_update_hidden_statuses(self):
         js_unused1 = JiraStatus.objects.create(jira_status_key="unused1", name="Unused Status 1")
@@ -1474,16 +1477,18 @@ class MultiStatusMappingAndScreenTests(TestCase):
             follow=True,
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Jira statü görünürlük ayarları kaydedildi")
-        hidden_ids = list(self.project.hidden_jira_statuses.values_list("id", flat=True))
-        self.assertIn(js_unused1.id, hidden_ids)
-        self.assertIn(js_unused2.id, hidden_ids)
+        self.assertContains(resp, "Jira statü görünürlük ayarları sistem genelinde kaydedildi")
+        js_unused1.refresh_from_db()
+        js_unused2.refresh_from_db()
+        self.assertTrue(js_unused1.is_hidden)
+        self.assertTrue(js_unused2.is_hidden)
 
     def test_hidden_status_excluded_from_auto_map_and_dropdowns(self):
         from kanbanapp.forms import StatusMappingForm
 
-        # Hide js_todo
-        self.project.hidden_jira_statuses.add(self.js_todo)
+        # Hide js_todo system-wide
+        self.js_todo.is_hidden = True
+        self.js_todo.save(update_fields=["is_hidden"])
 
         # 1. auto_map must NOT map js_todo
         resp = self.client.post(

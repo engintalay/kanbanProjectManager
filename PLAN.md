@@ -31,10 +31,10 @@ Deploy: Docker Compose — **üç servis** (`nginx` + `web`/Gunicorn + `postgres
 
 - **roles** — id, name, slug, level(1-5), description
 - **users** — AbstractUser + role, project(optional), theme(optional), email unique
-- **projects** — id, name, key, description, jira_connection(optional), created_by, sync_jira_status, hidden_jira_statuses(M2M), default_jql, jql_max_results
+- **projects** — id, name, key, description, jira_connection(optional), created_by, sync_jira_status, default_jql, jql_max_results
 - **project_members** — id, project, user (unique)
 - **jira_connections** — id, name, host, username, password(enc), is_default, created_by, disable_proxy
-- **jira_statuses** — id, jira_status_key, name, color, jira_id
+- **jira_statuses** — id, jira_status_key, name, color, jira_id, is_hidden *(sistem geneli gizleme; tüm projelerin havuzundan düşer)*
 - **jira_custom_statuses** — id, project, name, color, position, parent_status *(model var, views/forms kullanmıyor; custom kolonlar `kanban_columns.status_type=custom`)*
 - **kanban_columns** — id, project, name, position, color, status_type(jira/custom)
 - **status_mappings** — id, project, app_status, jira_status(nullable), position, transfer_to_jira, is_primary — bir kolona birden fazla Jira durumu
@@ -92,7 +92,7 @@ Deploy: Docker Compose — **üç servis** (`nginx` + `web`/Gunicorn + `postgres
 
 - Uygulama kendi kolonlarını tutar (`kanban_columns`).
 - Yeni durum: **admin + proje yöneticisi**.
-- Eşleme ekranı (`/projects/<id>/statuses/`): çoklu map, primary, transfer toggle, gizli Jira durumları, isimle otomatik eşle, kolon sürükle-sırala.
+- Eşleme ekranı (`/projects/<id>/statuses/`): çoklu map, primary, transfer toggle, sistem geneli gizli Jira durumları (`jira_statuses.is_hidden`), isimle otomatik eşle, kolon sürükle-sırala. Jira statü havuzu tüm projelerde ortaktır (global tablo); gizleme de sistem genelidir.
 
 ## 6.5. Sprint Yönetimi (Uygulama İçi) ✅
 

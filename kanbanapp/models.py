@@ -144,13 +144,6 @@ class Project(models.Model):
         verbose_name="Jira Statü Aktarımı",
         help_text="Kart hareketlerinde Jira üzerindeki statünün de güncellenmesini sağlar. Kapatılırsa durum Jira'ya aktarılmaz.",
     )
-    hidden_jira_statuses = models.ManyToManyField(
-        "JiraStatus",
-        blank=True,
-        related_name="hidden_in_projects",
-        verbose_name="Gizlenen Jira Statüleri",
-        help_text="Bu proje için kullanılmayan ve gizlenen Jira statüleri.",
-    )
     default_jql = models.CharField(
         max_length=500,
         blank=True,
@@ -253,12 +246,17 @@ class JiraConnection(models.Model):
 
 
 class JiraStatus(models.Model):
-    """A status imported from Jira."""
+    """A status imported from Jira (shared system-wide across all projects)."""
 
     jira_status_key = models.CharField(max_length=100, db_index=True)
     name = models.CharField(max_length=200)
     color = models.JSONField(default=dict, blank=True)
     jira_id = models.IntegerField(null=True, blank=True)
+    is_hidden = models.BooleanField(
+        default=False,
+        verbose_name="Sistem Genelinde Gizli",
+        help_text="Gizlenen statüler tüm projelerin statü havuzunda ve eşleme menülerinde listelenmez.",
+    )
 
     def __str__(self):
         return self.name

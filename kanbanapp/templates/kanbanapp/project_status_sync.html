@@ -270,7 +270,7 @@
       </div>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
         {% if can_manage_project %}
-        <button type="button" class="btn-ghost" onclick="openBulkManageModal()" style="font-size: 0.82rem;" title="Kullanılmayan Jira statülerini bu proje için topluca gizle veya göster">
+        <button type="button" class="btn-ghost" onclick="openBulkManageModal()" style="font-size: 0.82rem;" title="Kullanılmayan Jira statülerini tüm projeler için topluca gizle veya göster">
           ⚙️ Statüleri Gizle / Yönet {% if hidden_jira_count > 0 %}<span class="badge" style="background:#f59e0b; color:#000; font-size:0.68rem; margin-left:4px;">{{ hidden_jira_count }} gizli</span>{% endif %}
         </button>
         {% endif %}
@@ -304,7 +304,7 @@
              data-jira-status-name="{{ js_row.status.name }}"
              data-is-hidden="{% if js_row.is_hidden %}true{% else %}false{% endif %}"
              data-is-mapped="{% if js_row.is_mapped %}true{% else %}false{% endif %}"
-             title="{% if js_row.is_hidden %}Bu statü bu proje için gizlenmiştir.{% else %}Mouse ile tutup soldaki bir uygulama durumuna sürükleyin{% endif %}">
+             title="{% if js_row.is_hidden %}Bu statü sistem genelinde gizlenmiştir.{% else %}Mouse ile tutup soldaki bir uygulama durumuna sürükleyin{% endif %}">
           <span class="drag-grip">{% if js_row.is_hidden %}👁️{% else %}⠿{% endif %}</span>
           <span style="font-weight: 600;">{{ js_row.status.name }}</span>
           {% if js_row.is_hidden %}
@@ -314,7 +314,7 @@
             {% csrf_token %}
             <input type="hidden" name="action" value="toggle_jira_status_visibility">
             <input type="hidden" name="jira_status_id" value="{{ js_row.status.id }}">
-            <button type="submit" class="btn-ghost" style="padding:1px 5px; font-size:0.68rem; line-height:1.2; color:#22c55e; border-color:rgba(34,197,94,0.4);" title="Projeye yeniden ekle">Göster</button>
+            <button type="submit" class="btn-ghost" style="padding:1px 5px; font-size:0.68rem; line-height:1.2; color:#22c55e; border-color:rgba(34,197,94,0.4);" title="Havuza geri al (sistem geneli)">Göster</button>
           </form>
           {% endif %}
           {% elif js_row.is_mapped %}
@@ -394,7 +394,7 @@
             </td>
             <td style="padding: 10px 16px;">
               {% if js_row.is_hidden %}
-              <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; font-size: 0.72rem;">Bu Projede Gizli</span>
+              <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; font-size: 0.72rem;">Sistem Genelinde Gizli</span>
               {% else %}
               <span class="badge badge-ok" style="font-size: 0.72rem;">Kullanılıyor</span>
               {% endif %}
@@ -406,11 +406,11 @@
                 <input type="hidden" name="action" value="toggle_jira_status_visibility">
                 <input type="hidden" name="jira_status_id" value="{{ js_row.status.id }}">
                 {% if js_row.is_hidden %}
-                <button type="submit" class="btn-ghost" style="padding: 3px 8px; font-size: 0.74rem; color: #22c55e; border-color: rgba(34, 197, 94, 0.4);" title="Bu statüyü bu proje için yeniden görünür yap">
+                <button type="submit" class="btn-ghost" style="padding: 3px 8px; font-size: 0.74rem; color: #22c55e; border-color: rgba(34, 197, 94, 0.4);" title="Bu statüyü sistem genelinde yeniden görünür yap">
                   👁️ Göster
                 </button>
                 {% else %}
-                <button type="submit" class="btn-ghost" style="padding: 3px 8px; font-size: 0.74rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);" title="Bu statüyü bu proje için gizle" {% if js_row.is_mapped %}onclick="return confirm('Bu statü şu anda bir uygulama durumuna eşlenmiş. Gizlemek için önce eşlemeyi kaldırmalısınız.');"{% endif %}>
+                <button type="submit" class="btn-ghost" style="padding: 3px 8px; font-size: 0.74rem; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);" title="Bu statüyü sistem genelinde gizle" {% if js_row.is_mapped %}onclick="return confirm('Bu statü şu anda bir uygulama durumuna eşlenmiş. Gizlemek için önce eşlemeyi kaldırmalısınız.');"{% endif %}>
                   👁️ Gizle
                 </button>
                 {% endif %}
@@ -531,7 +531,7 @@
 <div class="drag-modal-backdrop" id="bulkManageModal">
   <div class="drag-modal" style="max-width: 650px; width: 92%;">
     <div class="drag-modal-header">
-      <h3><span>⚙️</span> Projede Kullanılmayan Jira Statülerini Gizle</h3>
+      <h3><span>⚙️</span> Sistem Genelinde Kullanılmayan Jira Statülerini Gizle</h3>
       <button type="button" class="drag-modal-close" onclick="closeModal('bulkManageModal')">&times;</button>
     </div>
     <form method="post" id="bulkManageForm">
@@ -540,8 +540,8 @@
 
       <div class="drag-modal-body">
         <p style="margin-top: 0; margin-bottom: 12px; font-size: 0.88rem; color: var(--muted); line-height: 1.5;">
-          Bu proje için kullanılmayan Jira statülerini işaretleyerek gizleyebilirsiniz.
-          Gizlenen statüler statü eşleme havuzunda ve açılır menülerde listelenmez.
+          Sistem genelinde kullanılmayan Jira statülerini işaretleyerek gizleyebilirsiniz.
+          Gizlenen statüler tüm projelerin statü eşleme havuzunda ve açılır menülerinde listelenmez.
           <strong style="color: #f8fafc;">(Eşlenmiş statüler gizlenemez, önce eşlemeleri kaldırılmalıdır.)</strong>
         </p>
 

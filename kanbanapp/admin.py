@@ -102,7 +102,8 @@ class JiraIssueAdmin(admin.ModelAdmin):
 
 @admin.register(JiraStatus)
 class JiraStatusAdmin(admin.ModelAdmin):
-    list_display = ("name", "jira_status_key", "jira_id")
+    list_display = ("name", "jira_status_key", "jira_id", "is_hidden")
+    list_filter = ("is_hidden",)
     search_fields = ("name", "jira_status_key")
 
 

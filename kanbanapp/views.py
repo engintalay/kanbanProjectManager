@@ -1061,7 +1061,7 @@ def project_status_mappings_view(request, project_id):
         # 7. Auto-map
         elif action == "auto_map":
             synced_count = 0
-            hidden_ids = set(project.hidden_jira_statuses.values_list("id", flat=True))
+            hidden_ids = set(JiraStatus.objects.filter(is_hidden=True).values_list("id", flat=True))
             all_jira_statuses = list(JiraStatus.objects.exclude(id__in=hidden_ids))
             columns = KanbanColumn.objects.filter(project=project)
 
@@ -1113,35 +1113,39 @@ def project_status_mappings_view(request, project_id):
                 messages.info(request, "Eşleşen yeni bir Jira statüsü bulunamadı veya tüm durumlar zaten eşlenmiş.")
             return redirect("project_status_mappings", project_id=project.id)
 
-        # 8. Toggle Jira Status Visibility (Hide / Unhide for this project)
+        # 8. Toggle Jira Status Visibility (Hide / Unhide system-wide)
         elif action == "toggle_jira_status_visibility":
             jira_status_id = request.POST.get("jira_status_id")
             js = get_object_or_404(JiraStatus, id=jira_status_id)
-            if project.hidden_jira_statuses.filter(id=js.id).exists():
-                project.hidden_jira_statuses.remove(js)
-                messages.success(request, f"'{js.name}' Jira statüsü bu proje için yeniden görünür yapıldı.")
+            if js.is_hidden:
+                js.is_hidden = False
+                js.save(update_fields=["is_hidden"])
+                messages.success(request, f"'{js.name}' Jira statüsü sistem genelinde yeniden görünür yapıldı.")
             else:
-                mapped_cols = StatusMapping.objects.filter(project=project, jira_status=js)
+                mapped_cols = StatusMapping.objects.filter(jira_status=js).select_related("app_status")
                 if mapped_cols.exists():
-                    col_names = ", ".join(f"'{m.app_status.name}'" for m in mapped_cols)
+                    col_names = ", ".join(sorted({f"'{m.app_status.name}'" for m in mapped_cols}))
                     messages.warning(
                         request,
                         f"'{js.name}' statüsü şu anda {col_names} durumuna eşlenmiş. Gizlemeden önce eşlemeyi kaldırmalısınız."
                     )
                 else:
-                    project.hidden_jira_statuses.add(js)
-                    messages.success(request, f"'{js.name}' Jira statüsü bu proje için gizlendi.")
+                    js.is_hidden = True
+                    js.save(update_fields=["is_hidden"])
+                    messages.success(request, f"'{js.name}' Jira statüsü sistem genelinde gizlendi.")
             return redirect("project_status_mappings", project_id=project.id)
 
-        # 9. Bulk update hidden statuses
+        # 9. Bulk update hidden statuses (system-wide visibility set)
         elif action == "bulk_update_hidden_statuses":
             hidden_ids = [int(x) for x in request.POST.getlist("hidden_status_ids") if x.isdigit()]
             mapped_js_ids = set(
-                StatusMapping.objects.filter(project=project, jira_status__isnull=False).values_list("jira_status_id", flat=True)
+                StatusMapping.objects.filter(jira_status__isnull=False).values_list("jira_status_id", flat=True)
             )
             safe_hidden_ids = [hid for hid in hidden_ids if hid not in mapped_js_ids]
-            project.hidden_jira_statuses.set(safe_hidden_ids)
-            messages.success(request, "Jira statü görünürlük ayarları kaydedildi.")
+            JiraStatus.objects.update(is_hidden=False)
+            if safe_hidden_ids:
+                JiraStatus.objects.filter(id__in=safe_hidden_ids).update(is_hidden=True)
+            messages.success(request, "Jira statü görünürlük ayarları sistem genelinde kaydedildi.")
             return redirect("project_status_mappings", project_id=project.id)
 
     # GET
@@ -1150,7 +1154,7 @@ def project_status_mappings_view(request, project_id):
         .prefetch_related("status_mappings__jira_status")
         .order_by("position", "id")
     )
-    hidden_status_ids = set(project.hidden_jira_statuses.values_list("id", flat=True))
+    hidden_status_ids = set(JiraStatus.objects.filter(is_hidden=True).values_list("id", flat=True))
     all_jira_statuses = list(JiraStatus.objects.all().order_by("name"))
     visible_jira_statuses = [js for js in all_jira_statuses if js.id not in hidden_status_ids]
     mappings = list(StatusMapping.objects.filter(project=project).select_related("app_status", "jira_status"))
