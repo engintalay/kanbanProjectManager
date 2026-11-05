@@ -261,6 +261,21 @@ def parse_jira_issue(issue):
     }
 
 
+def parse_jira_user(user) -> dict:
+    """Convert a Jira user resource into a lightweight dict for the register form."""
+    username = str(getattr(user, "name", "") or getattr(user, "key", "") or "").strip()
+    display = (getattr(user, "displayName", "") or "").strip()
+    parts = display.split()
+    return {
+        "username": username,
+        "display_name": display,
+        "first_name": parts[0] if parts else "",
+        "last_name": " ".join(parts[1:]) if len(parts) > 1 else "",
+        "email": (getattr(user, "emailAddress", "") or "").strip(),
+        "active": bool(getattr(user, "active", True)),
+    }
+
+
 class JiraClient:
     """Thin wrapper around the Jira REST API via the `jira` SDK (READ-WRITE)."""
 
@@ -334,6 +349,43 @@ class JiraClient:
         """Fetch a single issue by key or id and return standardized issue dict."""
         issue = self.jira.issue(issue_key)
         return parse_jira_issue(issue)
+
+    def get_user(self, username):
+        """Jira dizininden kullanıcı koduna (username/key) göre bilgi çeker.
+
+        Salt okunurdur. Bulunamazsa LookupError, bağlantı/sorgu hatasında
+        ConnectionError fırlatır; başarılıysa parse_jira_user dict'i döner.
+        """
+        username = (username or "").strip()
+        if not username:
+            raise ValueError("Jira kullanıcı kodu boş olamaz.")
+
+        user = None
+        try:
+            user = self.jira.user(username)
+        except Exception as exc:  # noqa: BLE001
+            # Bazı sunucular kullanıcı kodu ile detay çekmeyi kısıtlar:
+            # kullanıcı aramasına düş ve birebir eşleşmeyi al.
+            logger.info("Jira user('%s') başarısız, aramaya düşülüyor: %s", username, exc)
+
+        if user is None:
+            try:
+                results = self.jira.search_users(user=username, includeInactive=True) or []
+            except Exception as exc:  # noqa: BLE001
+                raise ConnectionError(format_jira_error(exc)) from exc
+            exact = [
+                u for u in results
+                if (getattr(u, "name", "") or "") == username
+                or (getattr(u, "key", "") or "") == username
+            ]
+            if exact:
+                user = exact[0]
+            elif len(results) == 1:
+                user = results[0]
+
+        if user is None:
+            raise LookupError(f"'{username}' kodlu kullanıcı Jira dizininde bulunamadı.")
+        return parse_jira_user(user)
 
     def transition_issue(self, issue_key, transition_name_or_id):
         """Transition Jira issue to a new status."""
@@ -425,6 +477,11 @@ class JiraService:
         if not project.jira_connection:
             raise ValueError("Projeye bağlı bir Jira bağlantısı bulunmuyor.")
         return self.get_issue(project.jira_connection, issue_key)
+
+    def lookup_user(self, connection, username):
+        """Kullanıcı koduna göre Jira dizininden bilgi çeker (salt okunur)."""
+        self.connect(connection)
+        return self.client.get_user(username)
 
     def transition_issue(self, project, issue_key, transition_name_or_id):
         self.connect(project.jira_connection)

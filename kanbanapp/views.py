@@ -51,7 +51,7 @@ from .models import (
     is_done_status,
     log_activity,
 )
-from .services import JiraService
+from .services import JiraService, format_jira_error
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -202,8 +202,75 @@ def register_view(request):
     return render(
         request,
         "kanbanapp/register.html",
-        {"roles": roles, "projects": projects},
+        {
+            "roles": roles,
+            "projects": projects,
+            "jira_connections": JiraConnection.objects.values(
+                "id", "name", "host", "is_default"
+            ).order_by("-is_default", "name"),
+        },
     )
+
+
+@user_passes_test(is_admin)
+def jira_user_lookup_view(request):
+    """Kullanıcı ekleme ekranı: Jira kullanıcı kodundan bilgi çekme (salt okunur JSON).
+
+    Yalnızca otomatik doldurmayı kolaylaştırır; bağımsız (yerel) kullanıcı
+    oluşturma akışı hiçbir zaman değişmez — Jira zorunlu değildir.
+    """
+    if request.method != "POST":
+        return JsonResponse(
+            {"ok": False, "error": "Bu uç nokta yalnızca POST kabul eder."}, status=405
+        )
+
+    username = (request.POST.get("username") or "").strip()
+    if not username:
+        return JsonResponse({"ok": False, "error": "Jira kullanıcı kodu boş olamaz."})
+
+    conn = None
+    conn_id = request.POST.get("connection")
+    if conn_id:
+        conn = JiraConnection.objects.filter(id=conn_id).first()
+        if conn is None:
+            return JsonResponse(
+                {"ok": False, "error": "Seçilen Jira bağlantısı bulunamadı."}, status=404
+            )
+    if conn is None:
+        conn = (
+            JiraConnection.objects.filter(is_default=True).first()
+            or JiraConnection.objects.order_by("id").first()
+        )
+    if conn is None:
+        return JsonResponse({
+            "ok": False,
+            "error": "Tanımlı bir Jira bağlantısı yok. Önce Jira Bağlantıları ekranından "
+                     "ekleyin ya da alanları elle doldurun.",
+        })
+
+    service = JiraService()
+    try:
+        info = service.lookup_user(conn, username)
+    except LookupError as exc:
+        return JsonResponse({"ok": False, "error": str(exc), "connection": conn.name})
+    except ConnectionError as exc:
+        return JsonResponse({"ok": False, "error": str(exc), "connection": conn.name})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Jira kullanıcı sorgusu başarısız (%s): %s", conn.host, exc)
+        return JsonResponse({
+            "ok": False,
+            "error": f"Jira sorgusu başarısız: {format_jira_error(exc)}",
+            "connection": conn.name,
+        })
+    finally:
+        service.close()
+
+    info.update({
+        "username_taken": User.objects.filter(username=info["username"]).exists(),
+        "email_taken": bool(info["email"]) and User.objects.filter(email=info["email"]).exists(),
+        "connection": conn.name,
+    })
+    return JsonResponse({"ok": True, "found": True, **info})
 
 
 def _role_level(user):

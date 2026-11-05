@@ -3419,3 +3419,245 @@ class JiraLinkStatusAndMismatchTests(TestCase):
 
 
 
+
+
+class JiraUserLookupTests(TestCase):
+    """Kullanıcı ekleme ekranı: Jira kullanıcı kodundan bilgi çekme (admin, JSON)."""
+
+    def setUp(self):
+        self.admin_role = Role.objects.create(name="Admin", slug="admin", level=Role.LEVEL_ADMIN)
+        self.prog_role = Role.objects.create(name="Programcı", slug="prog", level=Role.LEVEL_PROGRAMMER)
+        self.admin = User.objects.create_user(username="ula", password="p", email="ula@t.local", role=self.admin_role)
+        self.programmer = User.objects.create_user(username="ulp", password="p", email="ulp@t.local", role=self.prog_role)
+        self.client = Client()
+        self.conn = JiraConnection.objects.create(
+            name="Lookup Jira", host="https://jira.lookup.local", username="svc", password="s3cret"
+        )
+        self.url = reverse("jira_user_lookup")
+
+    JIRA_INFO = {
+        "username": "ahmet.yildiz",
+        "display_name": "Ahmet Yıldız",
+        "first_name": "Ahmet",
+        "last_name": "Yıldız",
+        "email": "ahmet.yildiz@example.com",
+        "active": True,
+    }
+
+    # --- uç nokta ---
+    def test_admin_lookup_returns_jira_info(self):
+        from unittest.mock import patch
+        self.client.force_login(self.admin)
+        with patch("kanbanapp.views.JiraService.lookup_user", return_value=dict(self.JIRA_INFO)) as m:
+            resp = self.client.post(self.url, {"username": "ahmet.yildiz"})
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.content)
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["found"])
+        self.assertEqual(data["username"], "ahmet.yildiz")
+        self.assertEqual(data["first_name"], "Ahmet")
+        self.assertEqual(data["last_name"], "Yıldız")
+        self.assertEqual(data["email"], "ahmet.yildiz@example.com")
+        self.assertFalse(data["username_taken"])
+        self.assertFalse(data["email_taken"])
+        self.assertEqual(data["connection"], "Lookup Jira")
+        m.assert_called_once_with(self.conn, "ahmet.yildiz")
+
+    def test_lookup_marks_existing_username_and_email(self):
+        from unittest.mock import patch
+        User.objects.create_user(username="ahmet.yildiz", password="p", email="taken@e.com")
+        self.client.force_login(self.admin)
+        info = dict(self.JIRA_INFO, email="taken@e.com")
+        with patch("kanbanapp.views.JiraService.lookup_user", return_value=info):
+            resp = self.client.post(self.url, {"username": "ahmet.yildiz"})
+        data = json.loads(resp.content)
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["username_taken"])
+        self.assertTrue(data["email_taken"])
+
+    def test_lookup_prefers_default_connection(self):
+        from unittest.mock import patch
+        other = JiraConnection.objects.create(
+            name="Default Jira", host="https://jira.def.local", username="s", password="p", is_default=True
+        )
+        self.client.force_login(self.admin)
+        with patch("kanbanapp.views.JiraService.lookup_user", return_value=dict(self.JIRA_INFO)) as m:
+            self.client.post(self.url, {"username": "x"})
+        self.assertEqual(m.call_args[0][0].id, other.id)
+
+    def test_lookup_specific_connection_respected(self):
+        from unittest.mock import patch
+        other = JiraConnection.objects.create(name="Other", host="https://jira.o.local", username="s", password="p")
+        self.client.force_login(self.admin)
+        with patch("kanbanapp.views.JiraService.lookup_user", return_value=dict(self.JIRA_INFO)) as m:
+            self.client.post(self.url, {"username": "x", "connection": str(other.id)})
+        self.assertEqual(m.call_args[0][0].id, other.id)
+
+    def test_lookup_not_found_returns_friendly_error(self):
+        from unittest.mock import patch
+        self.client.force_login(self.admin)
+        with patch(
+            "kanbanapp.views.JiraService.lookup_user",
+            side_effect=LookupError("'yok.biri' kodlu kullanıcı Jira dizininde bulunamadı."),
+        ):
+            resp = self.client.post(self.url, {"username": "yok.biri"})
+        data = json.loads(resp.content)
+        self.assertFalse(data["ok"])
+        self.assertIn("bulunamadı", data["error"])
+
+    def test_lookup_connection_failure_reported(self):
+        from unittest.mock import patch
+        self.client.force_login(self.admin)
+        with patch(
+            "kanbanapp.views.JiraService.lookup_user",
+            side_effect=ConnectionError("Jira bağlantısı başarısız (https://jira.lookup.local): zincir"),
+        ):
+            resp = self.client.post(self.url, {"username": "x"})
+        data = json.loads(resp.content)
+        self.assertFalse(data["ok"])
+        self.assertIn("bağlantısı başarısız", data["error"])
+
+    def test_lookup_requires_admin(self):
+        from unittest.mock import patch
+        self.client.force_login(self.programmer)
+        with patch("kanbanapp.views.JiraService.lookup_user") as m:
+            resp = self.client.post(self.url, {"username": "x"}, follow=True)
+        m.assert_not_called()
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn('"ok"', resp.content.decode("utf-8", errors="ignore"))
+
+    def test_lookup_rejects_get(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 405)
+
+    def test_lookup_empty_code(self):
+        self.client.force_login(self.admin)
+        resp = self.client.post(self.url, {"username": "   "})
+        data = json.loads(resp.content)
+        self.assertFalse(data["ok"])
+        self.assertIn("boş", data["error"])
+
+    def test_lookup_without_any_connection(self):
+        self.client.force_login(self.admin)
+        JiraConnection.objects.all().delete()
+        resp = self.client.post(self.url, {"username": "x"})
+        data = json.loads(resp.content)
+        self.assertFalse(data["ok"])
+        self.assertIn("Jira bağlantısı yok", data["error"])
+
+    def test_register_page_shows_lookup_box_and_manual_fields(self):
+        self.client.force_login(self.admin)
+        resp = self.client.get(reverse("register"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "jira-lookup-btn")
+        self.assertContains(resp, "jira-user-code")
+        # Bağımsız (yerel) kullanıcı girişi için elle doldurma alanları duruyor
+        self.assertContains(resp, 'name="username"')
+        self.assertContains(resp, 'name="email"')
+        self.assertContains(resp, 'name="password1"')
+
+
+class JiraClientUserParsingTests(TestCase):
+    """JiraClient.get_user ve parse_jira_user birim testleri (ağ yok)."""
+
+    def setUp(self):
+        self.conn = JiraConnection.objects.create(
+            name="C", host="https://jira.c.local", username="svc", password="p"
+        )
+
+    def _client(self, fake_jira):
+        from .services import JiraClient
+        client = JiraClient(self.conn)
+        client._jira = fake_jira
+        return client
+
+    def test_parse_jira_user_splits_multiword_surname(self):
+        from types import SimpleNamespace
+        from .services import parse_jira_user
+        user = SimpleNamespace(
+            name="a.yildiz", key="a.yildiz", displayName="Ahmet Yıldız Baş",
+            emailAddress="a@e.com ", active=True,
+        )
+        info = parse_jira_user(user)
+        self.assertEqual(info["username"], "a.yildiz")
+        self.assertEqual(info["first_name"], "Ahmet")
+        self.assertEqual(info["last_name"], "Yıldız Baş")
+        self.assertEqual(info["email"], "a@e.com")
+        self.assertTrue(info["active"])
+
+    def test_parse_jira_user_missing_email_and_single_word(self):
+        from types import SimpleNamespace
+        from .services import parse_jira_user
+        info = parse_jira_user(SimpleNamespace(name="ops", displayName="Ops", active=False))
+        self.assertEqual(info["email"], "")
+        self.assertEqual(info["first_name"], "Ops")
+        self.assertEqual(info["last_name"], "")
+        self.assertFalse(info["active"])
+
+    def test_get_user_uses_user_endpoint_first(self):
+        from types import SimpleNamespace
+
+        calls = {"user": [], "search": []}
+
+        class FakeJira:
+            def user(self, username):
+                calls["user"].append(username)
+                return SimpleNamespace(
+                    name=username, displayName="Ali Veli",
+                    emailAddress="ali@e.com", active=True,
+                )
+
+            def search_users(self, **kwargs):
+                calls["search"].append(kwargs)
+                return []
+
+        info = self._client(FakeJira()).get_user("ali")
+        self.assertEqual(info["username"], "ali")
+        self.assertEqual(info["first_name"], "Ali")
+        self.assertEqual(calls["user"], ["ali"])
+        self.assertEqual(calls["search"], [])  # ilk deneme başarılıysa arama yapılmaz
+
+    def test_get_user_falls_back_to_search_exact_match(self):
+        from types import SimpleNamespace
+
+        class FakeJira:
+            def user(self, username):
+                raise Exception("404 User not found")
+
+            def search_users(self, **kwargs):
+                return [
+                    SimpleNamespace(name="ali.can", displayName="Ali Can", emailAddress="", active=True),
+                    SimpleNamespace(name="ali", displayName="Ali Veli", emailAddress="a@e.com", active=True),
+                ]
+
+        info = self._client(FakeJira()).get_user("ali")
+        self.assertEqual(info["display_name"], "Ali Veli")
+
+    def test_get_user_not_found_raises_lookup_error(self):
+        class FakeJira:
+            def user(self, username):
+                raise Exception("404 User not found")
+
+            def search_users(self, **kwargs):
+                return []
+
+        with self.assertRaises(LookupError):
+            self._client(FakeJira()).get_user("yok")
+
+    def test_get_user_search_failure_raises_connection_error(self):
+        class FakeJira:
+            def user(self, username):
+                raise Exception("404 User not found")
+
+            def search_users(self, **kwargs):
+                raise Exception("Connection refused")
+
+        with self.assertRaises(ConnectionError):
+            self._client(FakeJira()).get_user("x")
+
+    def test_get_user_empty_code(self):
+        from .services import JiraClient
+        client = JiraClient(self.conn)
+        with self.assertRaises(ValueError):
+            client.get_user("   ")

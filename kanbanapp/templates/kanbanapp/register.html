@@ -6,6 +6,34 @@
   <h1>Kullanıcı Kaydı</h1>
   <p class="hint">(Sadece sistem yöneticisi / admin tarafından yapılır)</p>
   {% if error %}<div class="message message-error">{{ error }}</div>{% endif %}
+
+  <!-- Jira'dan bilgi çekme (opsiyonel): kodu yaz, bilgileri otomatik gelsin, sadece şifreyi gir. -->
+  <div class="jira-lookup-box" style="border:1px solid var(--border, #334155); border-radius:8px; padding:12px 14px; margin:12px 0 16px;">
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+      <label style="flex:1; min-width:180px;">Jira Kullanıcı Kodu <span class="hint">(opsiyonel)</span>
+        <input type="text" id="jira-user-code" placeholder="ör. ahmet.yildiz" autocomplete="off">
+      </label>
+      {% if jira_connections|length > 1 %}
+      <label>Jira Bağlantısı
+        <select id="jira-conn">
+          {% for c in jira_connections %}
+          <option value="{{ c.id }}" {% if c.is_default %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% elif jira_connections|length == 1 %}
+      <input type="hidden" id="jira-conn" value="{{ jira_connections.0.id }}">
+      {% endif %}
+      <button type="button" class="btn-secondary" id="jira-lookup-btn"
+              data-lookup-url="{% url 'jira_user_lookup' %}">🔍 Jira'dan Getir</button>
+    </div>
+    {% csrf_token %}
+    <div id="jira-lookup-status" class="hint" style="margin-top:8px;"></div>
+    {% if not jira_connections %}
+    <div class="hint" style="margin-top:4px;">Tanımlı Jira bağlantısı yok — aşağıdaki alanları elle doldurabilirsiniz.</div>
+    {% endif %}
+  </div>
+
   <form method="post" class="auth-form">
     {% csrf_token %}
     <label>Kullanıcı adı <input type="text" name="username" required autofocus></label>
@@ -35,6 +63,7 @@
       <a href="{% url 'dashboard' %}" class="btn-secondary">İptal</a>
     </div>
   </form>
+  <p class="hint">Jira zorunlu değildir: bilgileri elle girerek <strong>bağımsız (yerel) kullanıcı</strong> da oluşturabilirsiniz.</p>
 </div>
 {% endblock %}
 {% block scripts %}
