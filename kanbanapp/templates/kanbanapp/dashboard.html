@@ -45,7 +45,7 @@
           {% endif %}
         </div>
         <div class="card-meta-row">
-          <span class="card-key">{{ card.project.key }}{% if card.jira_key %} / {{ card.jira_key }}{% endif %}</span>
+          <span class="card-key">{{ card.project.key }}{% if card.jira_key %} / {% if card.jira_url %}<a href="{{ card.jira_url }}" target="_blank" rel="noopener noreferrer" style="color:inherit;" title="Jira'da aç">{{ card.jira_key }} ↗</a>{% else %}{{ card.jira_key }}{% endif %}{% endif %}</span>
           <span class="badge">{{ card.column.name }}</span>
           {% if card.sprint %}<span class="badge">🏃 {{ card.sprint.name }}</span>{% endif %}
         </div>
@@ -73,7 +73,7 @@
           {% endif %}
         </div>
         <div class="card-meta-row">
-          <span class="card-key">{{ card.project.key }}{% if card.jira_key %} / {{ card.jira_key }}{% endif %}</span>
+          <span class="card-key">{{ card.project.key }}{% if card.jira_key %} / {% if card.jira_url %}<a href="{{ card.jira_url }}" target="_blank" rel="noopener noreferrer" style="color:inherit;" title="Jira'da aç">{{ card.jira_key }} ↗</a>{% else %}{{ card.jira_key }}{% endif %}{% endif %}</span>
           <span class="badge">{{ card.column.name }}</span>
         </div>
         <div class="card-actions" style="margin-top:auto; padding-top:8px;">

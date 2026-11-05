@@ -39,6 +39,16 @@
   </div>
 </div>
 
+{% if not request.jira_write_enabled %}
+<div class="alert-box alert-warn" style="margin-bottom: 20px;">
+  <strong>🔒 Jira Salt Okunur Mod:</strong>
+  Uygulama şu anda <strong>Jira'ya hiçbir veri yazmıyor</strong> (statü aktarımı askıya alındı).
+  Jira'dan okuma, başlık/açıklama güncelleme ve kart linkleri çalışıyor.
+  Bu sayfadaki <em>"Jira'ya Aktar"</em> anahtarları yalnızca yazma modu tekrar açıldığında etkili olur
+  (<code>JIRA_WRITE_ENABLED=1</code>).
+</div>
+{% endif %}
+
 <!-- Sync Status & Stats Card -->
 <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 22px; margin-bottom: 22px;">
   <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 14px;">

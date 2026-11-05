@@ -1,10 +1,13 @@
 from datetime import date, timedelta
+import re
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.utils.functional import cached_property
 
 from .fields import EncryptedCharField
+from .jira_rules import is_issue_closed
 
 # Kolon adında geçiyorsa kart "tamamlanmış" sayılır (backfill: eski kodda da aynı liste kullanılıyordu).
 DONE_KEYWORDS = (
@@ -219,6 +222,11 @@ class Project(models.Model):
             return super().delete(*args, **kwargs)
 
 
+# Gerçek Jira issue anahtarı: PROJE-123 (alt görev kartlarındaki
+# "EBELGE-80-sub1" gibi sahte anahtarlar link üretilmesin diye)
+JIRA_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*-\d+$")
+
+
 class JiraConnection(models.Model):
     name = models.CharField(max_length=200)
     host = models.CharField(max_length=255)
@@ -243,6 +251,25 @@ class JiraConnection(models.Model):
     @property
     def is_valid(self):
         return bool(self.host) and bool(self.username) and bool(self.password)
+
+    def issue_url(self, key: str):
+        """Jira issue tarayıcı bağlantısı: <host>/browse/<KEY>.
+
+        Host genelde şema ile gelir (https://jira...), yoksa http:// eklenir.
+        Gerçek Jira anahtarı (PROJE-123) değilse None döner — alt görev
+        kartlarındaki sahte anahtarlar için geçersiz link üretilmesin.
+        """
+        if not key:
+            return None
+        key = str(key).strip()
+        if not JIRA_KEY_RE.match(key):
+            return None
+        base = (self.host or "").strip().rstrip("/")
+        if not base:
+            return None
+        if "://" not in base:
+            base = f"http://{base}"
+        return f"{base}/browse/{key}"
 
 
 class JiraStatus(models.Model):
@@ -549,6 +576,48 @@ class KanbanCard(models.Model):
     def completed_sub_tasks_count(self):
         return sum(1 for s in self.sub_tasks.all() if is_done_status(s.column.name))
 
+    # ---- Jira bilgileri (kart üzerinde ayrı gösterim + uyuşmazlık rozeti) ----
+
+    @cached_property
+    def jira_issue(self):
+        """Bu karta bağlı JiraIssue satırı (yoksa None). Kart başına tek sorgu."""
+        if not self.jira_key:
+            return None
+        return (
+            JiraIssue.objects.filter(project_id=self.project_id, jira_key=self.jira_key)
+            .order_by("-last_seen_at", "-pulled_at")
+            .first()
+        )
+
+    @cached_property
+    def jira_url(self):
+        """Jira issue tarayıcı bağlantısı (bağlantı yoksa None)."""
+        if not self.jira_key:
+            return None
+        conn = self.project.jira_connection
+        if not conn:
+            return None
+        return conn.issue_url(self.jira_key)
+
+    @cached_property
+    def jira_status_name(self):
+        """Jira'daki statü adı (kayıt yoksa boş string)."""
+        issue = self.jira_issue
+        return (issue.status_key if issue else None) or ""
+
+    @cached_property
+    def jira_closed(self):
+        """Jira tarafında iş kapalı mı?"""
+        issue = self.jira_issue
+        return bool(issue and issue.is_closed)
+
+    @cached_property
+    def status_mismatch(self):
+        """Uyuşmazlık: Jira'da kapalı ama projede henüz bitmemiş kolonda."""
+        if not self.jira_closed:
+            return False
+        return not is_done_status(self.column.name)
+
     def clean(self):
         super().clean()
         if self.sprint and self.project_id and self.sprint.project_id != self.project_id:
@@ -723,6 +792,16 @@ class JiraIssue(models.Model):
     description = models.TextField(blank=True, default="")
     status_id = models.IntegerField(null=True, blank=True, db_index=True)
     status_key = models.CharField(max_length=100, null=True, blank=True, db_index=True)
+    status_category = models.CharField(
+        max_length=50, blank=True, default="", db_index=True,
+        verbose_name="Jira Statü Kategorisi",
+        help_text="Jira statusCategory anahtarı (ör. todo/inprogress/done) — kapalı iş tespiti için.",
+    )
+    resolution = models.CharField(
+        max_length=100, blank=True, default="",
+        verbose_name="Resolution",
+        help_text="Jira resolution adı; doluysa iş çözülmüş/kapatılmış sayılır.",
+    )
     assignee = models.CharField(max_length=255, null=True, blank=True)
     reporter = models.CharField(max_length=255, null=True, blank=True)
     created = models.CharField(max_length=100, null=True, blank=True)
@@ -732,6 +811,11 @@ class JiraIssue(models.Model):
     blocks = models.JSONField(default=list, blank=True)
     blocked_by = models.JSONField(default=list, blank=True)
     pulled_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(
+        auto_now=True, null=True, blank=True,
+        verbose_name="Son Jira Kontrolü",
+        help_text="Bu kayıt en son Jira'dan ne zaman güncellendi (rozetin tazeliği).",
+    )
 
     class Meta:
         ordering = ["jira_key"]
@@ -741,6 +825,25 @@ class JiraIssue(models.Model):
 
     def __str__(self):
         return f"{self.project.key}:{self.jira_key}"
+
+    @property
+    def is_closed(self):
+        """Jira tarafında iş kapalı mı? (statusCategory → resolution → statü adı)."""
+        return is_issue_closed(
+            {
+                "status_category": self.status_category,
+                "resolution": self.resolution,
+                "status_key": self.status_key,
+            }
+        )
+
+    @property
+    def url(self):
+        """Jira issue tarayıcı bağlantısı (bağlantı yoksa None)."""
+        conn = self.project.jira_connection if self.project_id else None
+        if not conn:
+            return None
+        return conn.issue_url(self.jira_key)
 
 
 class RefreshLog(models.Model):

@@ -1,6 +1,7 @@
 import logging
 import re
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -55,73 +56,9 @@ from .services import JiraService
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
-CLOSED_STATUS_NAMES = {
-    "resolved",
-    "closed",
-    "ready",
-    "done",
-    "kapatıldı",
-    "kapatildi",
-    "kapalı",
-    "kapali",
-    "çözüldü",
-    "cozuldu",
-    "tamamlandı",
-    "tamamlandi",
-    "iptal",
-    "cancelled",
-    "canceled",
-    "rejected",
-    "bitti",
-    "hazır",
-    "hazir",
-}
-
-CLOSED_STATUS_PATTERNS = (
-    "resolved",
-    "closed",
-    "ready",
-    "done",
-    "tamamlan",
-    "kapatıl",
-    "kapatil",
-    "kapalı",
-    "kapali",
-    "çözül",
-    "cozul",
-    "bitti",
-    "hazır",
-    "hazir",
-    "iptal",
-    "cancel",
-    "reject",
-)
-
-
-def is_issue_closed(issue_dict: dict) -> bool:
-    """Return True if a Jira issue is resolved, closed, or ready."""
-    # 1. statusCategory in Jira (e.g. 'done')
-    cat = (issue_dict.get("status_category") or "").strip().lower()
-    if cat in ("done", "closed"):
-        return True
-
-    # 2. resolution set
-    if issue_dict.get("resolution"):
-        return True
-
-    # 3. status name matching closed / resolved / ready statuses (exact or pattern)
-    status_name = (issue_dict.get("status_key") or "").strip().lower()
-    if not status_name:
-        return False
-
-    if status_name in CLOSED_STATUS_NAMES:
-        return True
-
-    for pattern in CLOSED_STATUS_PATTERNS:
-        if pattern in status_name:
-            return True
-
-    return False
+# Jira statü kuralları ortak modülde (kanbanapp.jira_rules) — models de aynı
+# kuralları kullanır, views ile models arasında döngüsel import olmasın diye.
+from .jira_rules import CLOSED_STATUS_NAMES, CLOSED_STATUS_PATTERNS, is_issue_closed  # noqa: E402,F401
 
 
 def build_open_issues_jql(base_jql: str, project_key: str = "") -> str:
@@ -416,6 +353,11 @@ def _test_metrics(project, cards):
     }
 
 
+def _jira_mismatch_cards(cards):
+    """Jira'da kapalı ama pano'da aktif kolonda olan kartlar (uyuşmazlık rozeti)."""
+    return [card for card in cards.select_related("column") if card.status_mismatch]
+
+
 @login_required
 def dashboard_view(request):
     """Personalized role-based dashboard (PLAN.md §8)."""
@@ -703,42 +645,30 @@ def refresh_project(request, project_id):
                         defaults={
                             "jira_key": issue["key"], "summary": issue["summary"],
                             "description": issue["description"], "status_id": issue["status_id"],
-                            "status_key": issue["status_key"], "assignee": issue["assignee"],
+                            "status_key": issue["status_key"],
+                            "status_category": issue.get("status_category") or "",
+                            "resolution": issue.get("resolution") or "",
+                            "assignee": issue["assignee"],
                             "reporter": issue["reporter"], "created": issue["created"],
                             "updated": issue["updated"], "sprint": issue["sprint"],
                             "epic_key": issue["epic_key"], "blocks": issue.get("blocks", []),
                              "blocked_by": issue.get("blocked_by", []),
                          },
                      )
-                    # Update contents and column of existing cards from Jira
+                    # Kartın içeriğini Jira'dan tazele — ama KOLONA DOKUNMA:
+                    # pano sırası projenin kontrolündedir, Jira yalnız bilgi kaynağıdır.
                     for card in project.cards.filter(jira_key=issue["key"]):
                         card.title = issue["summary"] or card.title
                         card.description = issue["description"] or ""
                         if issue.get("id") and str(issue["id"]).isdigit():
                             card.jira_issue_id = int(issue["id"])
-                        if project.sync_jira_status:
-                            status_key = issue.get("status_key")
-                            if status_key:
-                                mappings = StatusMapping.objects.filter(
-                                    project=project, jira_status__isnull=False
-                                ).filter(
-                                    Q(jira_status__name__iexact=status_key)
-                                    | Q(jira_status__jira_status_key__iexact=status_key)
-                                )
-                                # If card is already in one of the columns mapped to this Jira status, keep it!
-                                already_in_mapped_column = mappings.filter(app_status=card.column).exists()
-                                if not already_in_mapped_column:
-                                    primary_mapping = (
-                                        mappings.filter(transfer_to_jira=True)
-                                        .order_by("-is_primary", "position", "id")
-                                        .first()
-                                    ) or mappings.order_by("-is_primary", "position", "id").first()
-                                    if primary_mapping and primary_mapping.app_status:
-                                        card.column = primary_mapping.app_status
                         card.save()
                 log.pulled_count = len(count)
                 log.status = "success"
-                messages.success(request, f"{len(count)} issue başarıyla çekildi.")
+                messages.success(
+                    request,
+                    f"{len(count)} issue çekildi; başlık/açıklama Jira'dan tazelendi, pano kolonları değiştirilmedi.",
+                )
             else:
                 messages.info(request, "İssue bulunamadı.")
         except Exception as exc:  # noqa: BLE001
@@ -783,6 +713,8 @@ def board_view(request, project_id):
     if selected_sprint_id:
         selected_sprint = sprints.filter(id=selected_sprint_id).first()
 
+    mismatch_cards = _jira_mismatch_cards(project.cards.all())
+
     return render(
         request,
         "kanbanapp/board.html",
@@ -796,6 +728,7 @@ def board_view(request, project_id):
             "planning_sprints": planning_sprints,
             "selected_sprint": selected_sprint,
             "pending_requests_count": pending_requests_count,
+            "mismatch_cards": mismatch_cards,
             "can_manage_project": _can_manage_project(request.user, project),
             "can_edit_cards": _can_edit_cards(request.user, project),
             "board_config": _board_js_config(request.user, project),
@@ -1424,6 +1357,8 @@ def kanban_card_import_jira_view(request, project_id):
                         "description": issue_data.get("description", ""),
                         "status_id": issue_data.get("status_id"),
                         "status_key": issue_data.get("status_key"),
+                        "status_category": issue_data.get("status_category") or "",
+                        "resolution": issue_data.get("resolution") or "",
                         "assignee": issue_data.get("assignee"),
                         "reporter": issue_data.get("reporter"),
                         "created": issue_data.get("created", ""),
@@ -1625,6 +1560,8 @@ def kanban_card_jira_refresh_view(request, project_id, card_id):
                 "description": issue_data.get("description", ""),
                 "status_id": issue_data.get("status_id"),
                 "status_key": issue_data.get("status_key"),
+                "status_category": issue_data.get("status_category") or "",
+                "resolution": issue_data.get("resolution") or "",
                 "assignee": issue_data.get("assignee"),
                 "reporter": issue_data.get("reporter"),
                 "created": issue_data.get("created", ""),
@@ -1640,27 +1577,19 @@ def kanban_card_jira_refresh_view(request, project_id, card_id):
         if issue_data.get("id") and str(issue_data["id"]).isdigit():
             card.jira_issue_id = int(issue_data["id"])
 
-        if project.sync_jira_status:
-            status_key = issue_data.get("status_key")
-            if status_key:
-                mappings = StatusMapping.objects.filter(
-                    project=project, jira_status__isnull=False
-                ).filter(
-                    Q(jira_status__name__iexact=status_key)
-                    | Q(jira_status__jira_status_key__iexact=status_key)
-                )
-                already_in_mapped_column = mappings.filter(app_status=card.column).exists()
-                if not already_in_mapped_column:
-                    primary_mapping = (
-                        mappings.filter(transfer_to_jira=True)
-                        .order_by("-is_primary", "position", "id")
-                        .first()
-                    ) or mappings.order_by("-is_primary", "position", "id").first()
-                    if primary_mapping and primary_mapping.app_status:
-                        card.column = primary_mapping.app_status
-
+        # NOT: Jira'dan gelen statü artık panoya yazılmıyor. Pano kolonu
+        # projenin kontrolündedir; Jira durumu kartın üzerinde ayrı gösterilir
+        # ve uyuşmazlık (Jira kapalı / panoda aktif) rozetle bildirilir.
         card.save()
-        messages.success(request, f"'{card.jira_key}' detayları Jira'dan güncellendi (Durum: {status_key or 'Belirtilmedi'}).")
+
+        jira_issue = card.jira_issue
+        status_label = issue_data.get("status_key") or "Belirtilmedi"
+        closed_note = " · Jira'da KAPALI" if (jira_issue and jira_issue.is_closed) else ""
+        messages.success(
+            request,
+            f"'{card.jira_key}' Jira'dan güncellendi (Durum: {status_label}{closed_note}). "
+            "Pano kolonu değiştirilmedi.",
+        )
     except Exception as exc:  # noqa: BLE001
         messages.error(request, f"Jira'dan detaylar çekilirken hata oluştu: {exc}")
     finally:
@@ -1832,8 +1761,11 @@ def kanban_card_move_view(request, project_id, card_id):
             )
 
         # Jira Transition (READ-WRITE) if card is linked and mapping exists
+        # settings.JIRA_WRITE_ENABLED: tüm projeler için Jira'ya yazma anahtarı
+        # (salt okunur mod — ilk aşamada askıya alındı).
         skip_jira = (
             not project.sync_jira_status
+            or not getattr(settings, "JIRA_WRITE_ENABLED", False)
             or request.POST.get("skip_jira_sync") == "1"
             or request.POST.get("sync_jira") == "0"
         )
@@ -1853,6 +1785,12 @@ def kanban_card_move_view(request, project_id, card_id):
                         messages.warning(request, f"Kart taşındı fakat Jira geçişi başarısız: {exc}")
                     finally:
                         service.close()
+                elif not getattr(settings, "JIRA_WRITE_ENABLED", False):
+                    messages.info(
+                        request,
+                        f"Kart '{target_column.name}' durumuna taşındı. "
+                        "Jira salt okunur modda: Jira'ya yazma askıya alındığı için statü aktarılmadı.",
+                    )
                 else:
                     messages.info(request, f"Kart '{target_column.name}' durumuna taşındı (Jira statü aktarımı yapılmadı).")
             else:
@@ -2256,6 +2194,7 @@ def sprint_board_view(request, project_id, sprint_id):
     columns = KanbanColumn.objects.filter(project=project).order_by("position", "id")
     sprint_cards = sprint.cards.all()
     test_metrics = _test_metrics(project, sprint_cards.select_related("column"))
+    mismatch_cards = _jira_mismatch_cards(sprint_cards)
 
     # Dependency / blocked check (PLAN.md §6.5)
     blocked_cards = []
@@ -2289,6 +2228,7 @@ def sprint_board_view(request, project_id, sprint_id):
             "columns": columns,
             "blocked_cards": blocked_cards,
             "test_metrics": test_metrics,
+            "mismatch_cards": mismatch_cards,
             "available_project_cards": available_project_cards,
             "can_manage_project": _can_manage_project(request.user, project),
             "can_edit_cards": _can_edit_cards(request.user, project),

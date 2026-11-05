@@ -102,7 +102,19 @@
             {% else %}
             <strong>{{ card.title|render_jira_inline }}</strong>
             {% endif %}
-            {% if card.jira_key %}<br><span class="card-key">{{ card.jira_key }}</span>{% endif %}
+            {% if card.jira_key %}
+            <br><span class="card-key">
+              {% if card.jira_url %}
+              <a href="{{ card.jira_url }}" target="_blank" rel="noopener noreferrer" title="Jira'da aç">{{ card.jira_key }} ↗</a>
+              {% else %}{{ card.jira_key }}{% endif %}
+              {% if card.jira_status_name %}
+              <span class="badge" style="font-size:0.66rem; background:rgba(99,102,241,0.15); color:#818cf8; margin-left:4px;" title="Jira statüsü (son çekim: {{ card.jira_issue.last_seen_at|date:'d.m.Y H:i'|default:'?' }})">Jira: {{ card.jira_status_name }}</span>
+              {% endif %}
+              {% if card.status_mismatch %}
+              <span class="badge badge-warn" style="font-size:0.66rem; margin-left:4px;" title="Jira'da kapalı, projede aktif">⚠️ Jira kapalı</span>
+              {% endif %}
+            </span>
+            {% endif %}
             {% if card.is_sub_task %}<br><span class="muted" style="font-size:0.75rem;">↳ Alt iş{% if card.parent_card %}: {{ card.parent_card.title|truncatechars:60 }}{% endif %}</span>{% endif %}
           </td>
           <td style="white-space: nowrap;">{{ card.assignee.username|default:"—" }}</td>

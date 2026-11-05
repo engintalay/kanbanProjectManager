@@ -30,6 +30,11 @@ CSRF_TRUSTED_ORIGINS = [
     o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o and "<" not in o and "your-" not in o
 ]
 
+# Jira'ya YAZMA anahtarı (statü geçişi, atama, yorum).
+# False = salt okunur mod: uygulama Jira'dan okur ama Jira'ya asla yazmaz.
+# İlk aşamada askıya alındı. Yeniden açmak için: JIRA_WRITE_ENABLED=1
+JIRA_WRITE_ENABLED = env_bool("JIRA_WRITE_ENABLED", default=False)
+
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------

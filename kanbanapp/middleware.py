@@ -45,10 +45,13 @@ def _forbidden(request):
 
 
 class RoleLevelMiddleware(MiddlewareMixin):
-    """Expose ``role_level`` to every request (used by templates/views)."""
+    """Expose ``role_level`` and Jira write flag to every request (used by templates/views)."""
 
     def process_request(self, request):
         request.role_level = role_level(request.user)
+        from django.conf import settings as django_settings
+
+        request.jira_write_enabled = getattr(django_settings, "JIRA_WRITE_ENABLED", False)
 
 
 notfound_logger = logging.getLogger("kanbanapp.notfound")

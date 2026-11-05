@@ -70,6 +70,28 @@
 </div>
 {% endif %}
 
+{% if mismatch_cards %}
+<div class="alert-box alert-warn" style="margin-bottom: 18px; padding: 12px 16px;">
+  <div style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center;">
+    <div>
+      <strong>⚠️ Jira ile pano uyuşmuyor:</strong>
+      {{ mismatch_cards|length }} iş Jira'da <strong>kapalı</strong> ama panoda hâlâ <strong>aktif</strong> kolonda.
+    </div>
+    <span class="muted" style="font-size: 0.78rem;">Pano kolonu değiştirilmedi; Jira durumu kartın üzerinde ayrıca gösterilir.</span>
+  </div>
+  <ul style="margin: 8px 0 0 18px; font-size: 0.84rem; line-height: 1.6;">
+    {% for c in mismatch_cards %}
+    <li>
+      {% if c.jira_url %}<a href="{{ c.jira_url }}" target="_blank" rel="noopener noreferrer">{{ c.jira_key }} ↗</a>{% else %}{{ c.jira_key }}{% endif %}
+      — {{ c.title|truncatechars:70 }}
+      <span class="badge" style="font-size:0.68rem; background:rgba(99,102,241,0.15); color:#818cf8;">Jira: {{ c.jira_status_name|default:"kapalı" }}</span>
+      <span class="badge" style="font-size:0.68rem;">{{ c.column.name }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div class="board-filter-bar">
   <div class="board-filter-label">Kart Filtresi:</div>
   <button type="button" class="board-filter-btn active" data-type-filter="all" onclick="filterBoardCards('all', this)">Tümü (Ana + Alt Görevler)</button>
@@ -156,7 +178,21 @@
         {% endif %}
 
         <div class="card-meta-row">
-          {% if card.jira_key %}<span class="card-key">{{ card.jira_key }}</span>{% endif %}
+          {% if card.jira_key %}
+          <span class="card-key">
+            {% if card.jira_url %}
+            <a href="{{ card.jira_url }}" target="_blank" rel="noopener noreferrer" title="Jira'da aç" style="color: inherit;">{{ card.jira_key }} ↗</a>
+            {% else %}
+            {{ card.jira_key }}
+            {% endif %}
+          </span>
+          {% endif %}
+          {% if card.jira_status_name %}
+          <span class="badge" style="font-size:0.68rem; background:rgba(99,102,241,0.15); color:#818cf8;" title="Jira statüsü (son çekim: {{ card.jira_issue.last_seen_at|date:'d.m.Y H:i'|default:'?' }})">Jira: {{ card.jira_status_name }}</span>
+          {% endif %}
+          {% if card.status_mismatch %}
+          <span class="badge badge-warn" style="font-size:0.68rem;" title="Jira'da iş kapalı ama bu kart hâlâ aktif kolonda. Pano ile Jira'yı kontrol edin.">⚠️ Jira kapalı</span>
+          {% endif %}
           {% if card.assignee %}
           <span class="assignee-badge">👤 {{ card.assignee.username }}</span>
           {% elif can_edit_cards and role_level == 3 %}
@@ -310,7 +346,11 @@
       <div class="drag-modal-footer">
         <button type="button" class="btn-ghost" onclick="closeCardMoveModal()">Vazgeç</button>
         <button type="button" class="btn-ghost" id="cardMoveSkipBtn" onclick="submitCardMove(true)" style="display: none;">Sadece Panoda Taşı</button>
+        {% if request.jira_write_enabled %}
         <button type="button" class="btn-primary" onclick="submitCardMove(false)">Taşı & Jira'ya Aktar</button>
+        {% else %}
+        <button type="button" class="btn-primary" onclick="submitCardMove(false)" title="Jira salt okunur modda: Jira'ya yazılmaz">Taşı</button>
+        {% endif %}
       </div>
     </form>
   </div>

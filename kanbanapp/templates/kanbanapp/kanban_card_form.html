@@ -10,7 +10,21 @@
       <a href="{% if next_url %}{{ next_url }}{% else %}{% url 'board' project.id %}{% endif %}" class="back-link">← Geri Dön</a>
       <div style="display:flex; align-items:center; gap:12px; margin-top:6px; flex-wrap:wrap;">
         {% if card.jira_key %}
-        <span class="card-key" style="font-size:0.95rem; padding:4px 10px; border-radius:6px;">{{ card.jira_key }}</span>
+        <span class="card-key" style="font-size:0.95rem; padding:4px 10px; border-radius:6px;">
+          {% if card.jira_url %}
+          <a href="{{ card.jira_url }}" target="_blank" rel="noopener noreferrer" title="Jira'da aç" style="color:inherit;">{{ card.jira_key }} ↗</a>
+          {% else %}{{ card.jira_key }}{% endif %}
+        </span>
+        {% if card.jira_status_name %}
+        <span class="badge" style="font-size:0.75rem; background:rgba(99,102,241,0.15); color:#818cf8;" title="Jira statüsü (son çekim: {{ card.jira_issue.last_seen_at|date:'d.m.Y H:i'|default:'?' }})">
+          Jira: {{ card.jira_status_name }}
+        </span>
+        {% endif %}
+        {% if card.status_mismatch %}
+        <span class="badge badge-warn" style="font-size:0.75rem;" title="Jira'da iş kapalı ama kartınız hâlâ aktif kolonda">
+          ⚠️ Jira kapalı / projede aktif
+        </span>
+        {% endif %}
         {% endif %}
         <h1 style="margin:0; font-size:1.45rem;">{% if mode == "edit" %}{{ card.title|render_jira_inline|default:"Kartı Düzenle" }}{% else %}Yeni Kart Oluştur{% endif %}</h1>
       </div>
@@ -39,7 +53,17 @@
         {% if card.jira_key %}
         <div class="jira-info-banner">
           <div class="jira-info-title">
-            <span>🔗 <strong>Jira Entegrasyonu</strong> ({{ card.jira_key }})</span>
+            <span>🔗 <strong>Jira Entegrasyonu</strong> (
+              {% if card.jira_url %}
+              <a href="{{ card.jira_url }}" target="_blank" rel="noopener noreferrer" style="color:inherit;">{{ card.jira_key }} ↗</a>
+              {% else %}{{ card.jira_key }}{% endif %}
+            )</span>
+            {% if card.jira_status_name %}
+            <span class="badge" style="font-size:0.72rem; background:rgba(99,102,241,0.15); color:#818cf8;">Jira: {{ card.jira_status_name }}</span>
+            {% endif %}
+            {% if card.jira_issue and card.jira_issue.is_closed %}
+            <span class="badge" style="font-size:0.72rem; background:rgba(239,68,68,0.15); color:#ef4444;">Jira'da kapalı</span>
+            {% endif %}
             {% if project.jira_connection %}
             <span class="muted" style="font-size:0.78rem;">Sunucu: {{ project.jira_connection.host }}</span>
             {% endif %}

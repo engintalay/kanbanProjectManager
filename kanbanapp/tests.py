@@ -985,8 +985,9 @@ class JiraImportAndSyncTests(TestCase):
         card.refresh_from_db()
         self.assertEqual(card.title, "Jira'da Güncellenmiş Başlık")
         self.assertEqual(card.description, "Jira'da Güncellenmiş Açıklama")
-        # Column should have updated to col_done via StatusMapping
-        self.assertEqual(card.column_id, self.col_done.id)
+        # Jira'dan gelen statü PANoya yazılmaz: kolon projenin kontrolündedir.
+        self.assertEqual(card.column_id, self.col_todo.id)
+        self.assertContains(resp, "Pano kolonu değiştirilmedi")
 
     def test_card_without_jira_key_rejected(self):
         self.client.force_login(self.prog)
@@ -1187,6 +1188,7 @@ class JiraStatusSyncOptionTests(TestCase):
         self.card = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Sync Task", jira_key="JSO-1")
         self.client.force_login(self.admin)
 
+    @override_settings(JIRA_WRITE_ENABLED=True)
     def test_move_card_with_sync_enabled_calls_transition(self):
         from unittest.mock import patch
         with patch("kanbanapp.views.JiraService.transition_issue") as mock_trans:
@@ -1212,7 +1214,7 @@ class JiraStatusSyncOptionTests(TestCase):
             )
             self.assertEqual(resp.status_code, 200)
             mock_trans.assert_not_called()
-            self.assertIn("Jira statü aktarımı yapılmadı", resp.content.decode("utf-8"))
+            self.assertIn("salt okunur", resp.content.decode("utf-8"))
             self.card.refresh_from_db()
             self.assertEqual(self.card.column_id, self.col_done.id)
 
@@ -1228,6 +1230,40 @@ class JiraStatusSyncOptionTests(TestCase):
             )
             self.assertEqual(resp.status_code, 200)
             mock_trans.assert_not_called()
+            self.assertIn("salt okunur", resp.content.decode("utf-8"))
+            self.card.refresh_from_db()
+            self.assertEqual(self.card.column_id, self.col_done.id)
+
+    @override_settings(JIRA_WRITE_ENABLED=True)
+    def test_move_card_with_mapping_transfer_disabled_skips_transition_when_write_enabled(self):
+        self.mapping_done.transfer_to_jira = False
+        self.mapping_done.save()
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.transition_issue") as mock_trans:
+            resp = self.client.post(
+                reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+                {"column_id": self.col_done.id},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            mock_trans.assert_not_called()
+            self.assertIn("Jira statü aktarımı yapılmadı", resp.content.decode("utf-8"))
+            self.card.refresh_from_db()
+            self.assertEqual(self.card.column_id, self.col_done.id)
+
+    @override_settings(JIRA_WRITE_ENABLED=False)
+    def test_move_card_with_write_disabled_never_calls_transition(self):
+        """Salt okunur modda (varsayılan) transition asla çağrılmaz."""
+        from unittest.mock import patch
+        with patch("kanbanapp.views.JiraService.transition_issue") as mock_trans:
+            resp = self.client.post(
+                reverse("kanban_card_move", kwargs={"project_id": self.project.id, "card_id": self.card.id}),
+                {"column_id": self.col_done.id},
+                follow=True,
+            )
+            self.assertEqual(resp.status_code, 200)
+            mock_trans.assert_not_called()
+            self.assertIn("salt okunur", resp.content.decode("utf-8"))
             self.card.refresh_from_db()
             self.assertEqual(self.card.column_id, self.col_done.id)
 
@@ -1285,6 +1321,7 @@ class MultiStatusMappingAndScreenTests(TestCase):
             project=self.project, column=self.col_todo, title="Multi Card", jira_key="MULT-1"
         )
 
+    @override_settings(JIRA_WRITE_ENABLED=True)
     def test_multiple_jira_statuses_for_single_app_status_picks_primary_on_move(self):
         # Column 'Geliştirme' has 2 Jira statuses mapped: 'In Progress' (primary) and 'In Review'
         m1 = StatusMapping.objects.create(
@@ -3166,6 +3203,204 @@ class NotFoundLoggingTests(TestCase):
         self.client.force_login(User.objects.create_superuser(username="nlog", password="pass12345"))
         resp = self.client.get(reverse("dashboard"))
         self.assertEqual(resp.status_code, 200)
+
+
+@override_settings(AUTH_PASSWORD_VALIDATORS=[])
+class JiraLinkStatusAndMismatchTests(TestCase):
+    """Jira linki, ayrı Jira statüsü ve pano/Jira uyuşmazlık rozeti."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username="jira_admin", password="pass12345")
+        self.client = Client()
+        self.client.force_login(self.admin)
+        self.conn = JiraConnection.objects.create(
+            name="Test Jira", host="https://jira.example.local", username="u", password="p"
+        )
+        self.project = Project.objects.create(
+            key="JLM", name="Jira Link Projesi", created_by=self.admin,
+            jira_connection=self.conn, sync_jira_status=True,
+        )
+        self.col_todo = KanbanColumn.objects.create(project=self.project, name="Yapılacak", position=0, status_type="custom")
+        self.col_doing = KanbanColumn.objects.create(project=self.project, name="Çalışılıyor", position=1, status_type="custom")
+        self.col_done = KanbanColumn.objects.create(project=self.project, name="Çözülmüş", position=2, status_type="custom")
+
+    def _card(self, key="JLM-1", column=None):
+        return KanbanCard.objects.create(
+            project=self.project, column=column or self.col_doing,
+            title="İş", jira_key=key, is_extra=True,
+        )
+
+    # --- URL ---
+    def test_issue_url_builds_browse_link(self):
+        self.assertEqual(self.conn.issue_url("JLM-1"), "https://jira.example.local/browse/JLM-1")
+        self.assertIsNone(self.conn.issue_url(""))
+        self.assertIsNone(self.conn.issue_url(None))
+
+        no_scheme = JiraConnection.objects.create(name="Bare", host="jira.local", username="u", password="p")
+        self.assertEqual(no_scheme.issue_url("A-1"), "http://jira.local/browse/A-1")
+
+        trailing = JiraConnection.objects.create(name="Slash", host="https://jira.local/", username="u", password="p")
+        self.assertEqual(trailing.issue_url("A-1"), "https://jira.local/browse/A-1")
+
+    def test_card_jira_url_none_without_key_or_connection(self):
+        plain = KanbanCard.objects.create(project=self.project, column=self.col_todo, title="Bağımsız", is_extra=True)
+        self.assertIsNone(plain.jira_url)
+        self.assertEqual(plain.jira_status_name, "")
+        self.assertFalse(plain.status_mismatch)
+
+        no_conn_project = Project.objects.create(key="NC", name="Bağlantısız", created_by=self.admin)
+        no_conn_col = KanbanColumn.objects.create(project=no_conn_project, name="To Do", position=0, status_type="custom")
+        no_conn_card = KanbanCard.objects.create(
+            project=no_conn_project, column=no_conn_col, title="X", jira_key="NC-1", is_extra=True
+        )
+        self.assertIsNone(no_conn_card.jira_url)
+
+    def test_issue_url_rejects_fake_subtask_keys(self):
+        """Alt görev anahtarları (KEY-sub1) Jira'da link üretilmesin."""
+        self.assertIsNone(self.conn.issue_url("EBELGE-80-sub1"))
+        self.assertIsNone(self.conn.issue_url("not a key"))
+        self.assertIsNone(self.conn.issue_url("  "))
+
+        sub = KanbanCard.objects.create(
+            project=self.project, column=self.col_doing, title="Alt görev",
+            jira_key="EBELGE-80-sub1", is_extra=True,
+        )
+        self.assertIsNone(sub.jira_url)
+        self.assertEqual(sub.jira_status_name, "")
+        self.assertFalse(sub.status_mismatch)
+
+    # --- is_closed ---
+    def test_jira_issue_is_closed_three_ways(self):
+        by_cat = JiraIssue.objects.create(
+            project=self.project, jira_id="1", jira_key="JLM-1",
+            status_key="In Progress", status_category="done",
+        )
+        self.assertTrue(by_cat.is_closed)
+
+        by_res = JiraIssue.objects.create(
+            project=self.project, jira_id="2", jira_key="JLM-2",
+            status_key="Open", resolution="Fixed",
+        )
+        self.assertTrue(by_res.is_closed)
+
+        by_name = JiraIssue.objects.create(
+            project=self.project, jira_id="3", jira_key="JLM-3",
+            status_key="Çözülmüş",
+        )
+        self.assertTrue(by_name.is_closed)
+
+        open_issue = JiraIssue.objects.create(
+            project=self.project, jira_id="4", jira_key="JLM-4",
+            status_key="In Progress", status_category="indeterminate",
+        )
+        self.assertFalse(open_issue.is_closed)
+
+    # --- kart yardımcıları + rozet ---
+    def test_card_status_mismatch_only_when_jira_closed_and_board_active(self):
+        JiraIssue.objects.create(
+            project=self.project, jira_id="11", jira_key="JLM-1",
+            status_key="Closed", status_category="done",
+        )
+        active_card = self._card("JLM-1", self.col_doing)
+        self.assertEqual(active_card.jira_status_name, "Closed")
+        self.assertTrue(active_card.jira_closed)
+        self.assertTrue(active_card.status_mismatch)
+        self.assertEqual(active_card.jira_url, "https://jira.example.local/browse/JLM-1")
+
+        done_card = self._card("JLM-1", self.col_done)
+        self.assertFalse(done_card.status_mismatch)
+
+        no_issue_card = self._card("JLM-99", self.col_doing)
+        self.assertEqual(no_issue_card.jira_status_name, "")
+        self.assertFalse(no_issue_card.status_mismatch)
+
+    def test_board_renders_jira_link_status_and_mismatch_banner(self):
+        JiraIssue.objects.create(
+            project=self.project, jira_id="11", jira_key="JLM-1",
+            status_key="Closed", status_category="done",
+        )
+        self._card("JLM-1", self.col_doing)
+
+        resp = self.client.get(reverse("board", kwargs={"project_id": self.project.id}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        # Link
+        self.assertIn('href="https://jira.example.local/browse/JLM-1"', html)
+        self.assertIn("JLM-1 ↗", html)
+        # Ayrı Jira statüsü rozeti
+        self.assertIn("Jira: Closed", html)
+        # Uyuşmazlık rozeti + pano üstü banner
+        self.assertIn("⚠️ Jira kapalı", html)
+        self.assertIn("Jira ile pano uyuşmuyor", html)
+        self.assertEqual(len(resp.context["mismatch_cards"]), 1)
+
+    def test_board_has_no_mismatch_banner_when_board_follows_jira(self):
+        JiraIssue.objects.create(
+            project=self.project, jira_id="11", jira_key="JLM-1",
+            status_key="Closed", status_category="done",
+        )
+        self._card("JLM-1", self.col_done)
+
+        resp = self.client.get(reverse("board", kwargs={"project_id": self.project.id}))
+        self.assertNotContains(resp, "Jira ile pano uyuşmuyor")
+        self.assertEqual(resp.context["mismatch_cards"], [])
+
+    def test_sprint_board_and_report_show_jira_status(self):
+        JiraIssue.objects.create(
+            project=self.project, jira_id="11", jira_key="JLM-1",
+            status_key="In Progress", status_category="indeterminate",
+        )
+        card = self._card("JLM-1", self.col_doing)
+        sprint = Sprint.objects.create(project=self.project, name="JLM Sprint", status=Sprint.STATUS_ACTIVE)
+        card.sprint = sprint
+        card.save()
+
+        board = self.client.get(reverse("sprint_board", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(board.status_code, 200)
+        self.assertContains(board, "Jira: In Progress")
+        self.assertIn(f'href="https://jira.example.local/browse/JLM-1"', board.content.decode())
+
+        report = self.client.get(reverse("sprint_report", kwargs={"project_id": self.project.id, "sprint_id": sprint.id}))
+        self.assertEqual(report.status_code, 200)
+        self.assertContains(report, "Jira: In Progress")
+
+    def test_card_detail_shows_jira_link_and_status(self):
+        JiraIssue.objects.create(
+            project=self.project, jira_id="11", jira_key="JLM-1",
+            status_key="In Progress", status_category="indeterminate",
+        )
+        card = self._card("JLM-1", self.col_doing)
+        resp = self.client.get(reverse("kanban_card_edit", kwargs={"project_id": self.project.id, "card_id": card.id}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "https://jira.example.local/browse/JLM-1")
+        self.assertContains(resp, "Jira: In Progress")
+
+    def test_refresh_stores_status_category_and_resolution_without_touching_column(self):
+        from unittest.mock import patch
+
+        card = self._card("JLM-1", self.col_doing)
+        mock_pull = [{
+            "id": "11", "key": "JLM-1", "summary": "Başlık", "description": "Açıklama",
+            "status_id": 5, "status_key": "Closed", "status_category": "done", "resolution": "Fixed",
+            "assignee": None, "reporter": None, "created": "", "updated": "2026-11-05T10:00:00",
+            "sprint": None, "epic_key": None, "blocks": [], "blocked_by": [],
+        }]
+        with patch("kanbanapp.views.JiraService.pull_project_issues", return_value=mock_pull), \
+             patch("kanbanapp.views.JiraService.sync_statuses", return_value=1):
+            resp = self.client.post(reverse("refresh_project", kwargs={"project_id": self.project.id}), follow=True)
+            self.assertEqual(resp.status_code, 200)
+
+        issue = JiraIssue.objects.get(project=self.project, jira_key="JLM-1")
+        self.assertEqual(issue.status_category, "done")
+        self.assertEqual(issue.resolution, "Fixed")
+        self.assertTrue(issue.is_closed)
+
+        card.refresh_from_db()
+        # Pano kolonu ezilmez
+        self.assertEqual(card.column_id, self.col_doing.id)
+        # Uyuşmazlık rozeti artık yanmalı
+        self.assertTrue(card.status_mismatch)
 
 
 

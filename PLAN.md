@@ -6,10 +6,11 @@ Durum: **Faz 1–4 tamamlandı.** Faz 5 (dokümantasyon/cilalama) kısmen. Bu do
 
 Yerel ağda (LAN) çalışan, **Python + Django** tabanlı web uygulaması. Jira Server/Data Center REST API'sine bağlanır:
 
-- **READ:** issue çekme, JQL import, durum senkronu, kart yenileme.
-- **WRITE (sınırlı):** kolon taşımasında, proje `sync_jira_status` + mapping `transfer_to_jira` açıksa Jira **durum geçişi** (`transition_issue`).
+- **READ:** issue çekme, JQL import, durum senkronu, kart yenileme. Jira statüsü kartın üzerinde **ayrı** gösterilir; pano ile Jira ayrışınca uyuşmazlık rozeti çıkar.
+- **WRITE (askıya alındı):** geçiş (`transition_issue`) kodda duruyor ama `settings.JIRA_WRITE_ENABLED = False` (**salt okunur mod**) sayesinde hiçbir zaman çağrılmıyor. Yeniden açmak için ortam değişkeni `JIRA_WRITE_ENABLED=1`.
 - **Yerel kalanlar:** atama, yorum, sprint — Jira'ya yazılmaz.
 - **Yapılmaz:** Jira'da issue oluşturma, Jira sprint yönetimi.
+- **Kolon sahipliği:** Jira'dan yenileme başlık/açıklama günceller ama **pano kolonuna dokunmaz**.
 
 Kanban kartları uygulamanın kendi veritabanında takip edilir.
 
@@ -85,7 +86,8 @@ Deploy: Docker Compose — **üç servis** (`nginx` + `web`/Gunicorn + `postgres
 - Çekim **manuel**: proje yenile, kart yenile, durum senkronu. `RefreshLog` tutulur.
 - Çekilen: issueKey, summary, description, status, assignee, reporter, created, updated, sprint, epicLink, **blocks, blocked_by**.
 - **Sprint yalnızca uygulama içi** — Jira sprint yazılmaz.
-- **WRITE:** sadece kolon taşımasında, `sync_jira_status` + `transfer_to_jira` açıksa `transition_issue`.
+- **WRITE:** sadece kolon taşımasında `transition_issue` — ama `JIRA_WRITE_ENABLED=False` (**salt okunur mod**) nedeniyle şu an **hiçbir Jira'ya yazma yapılmıyor**.
+- **Yenileme kolonu ezmez:** `refresh_project` / kart 🔄 yalnız başlık, açıklama ve JiraIssue kaydını tazeler; pano kolonu projenin kontrolündedir (`KanbanCard.status_mismatch` ayrışmayı rozetler).
 - **Yazılmaz:** Jira atama, Jira yorum, Jira issue create (must-not / sonra).
 
 ## 6. Kanban Durumları (Kolonlar) ✅
@@ -137,6 +139,9 @@ Deploy: Docker Compose — **üç servis** (`nginx` + `web`/Gunicorn + `postgres
 - **Dashboard özeti & son aktiviteler** — üst özet şeridi (toplam iş / aktif sprint / tamamlanan / devam eden / geciken) + `ActivityLog` tabanlı saatli akış (ticket #4, #5).
 - **Sprint tarihleri** — `start_date` + süre → `end_date` / `days_left` / `is_overdue`, kartlarda "kalan gün / gecikme" rozeti (ticket #6).
 - **Kart sayaçları** — proje ve sprint kartlarında toplam / tamamlanan / devam eden / yapılacak dağılımı (`classify_card_counts`) (ticket #7).
+- **Jira linki + statü + uyuşmazlık rozeti** — kartlarda `KEY ↗` (`host/browse/KEY`, sahte `KEY-subN` anahtarları elenir), ayrı `Jira: <statü>` rozeti ve `⚠️ Jira kapalı` uyuşmazlık rozeti; pano/sprint panosu üstünde "Jira ile pano uyuşmuyor" bandı. `JiraIssue.status_category / resolution / last_seen_at` (migration `0020`), `KanbanCard.jira_url / jira_status_name / status_mismatch`.
+- **Jira salt okunur mod** — `settings.JIRA_WRITE_ENABLED = False`: `transition_issue` asla çağrılmaz; yenileme pano kolonunu **ezmez**, sadece içeriği tazeler. Mod bayrağı `request.jira_write_enabled` ile şablonlara yansır (buton "Taşı"ya döner, statü eşleme sayfasında kilit notu).
+- **Sprint Raporu kart listesi** — her kartın kolonu/atamanı/zorluğu/bitme durumu + Tümü/Bekleyen/🧪 Testte/Tamamlanan filtresi; Test Doluluğu ve Test Bitme metrikleri (pano paneli ile aynı `_test_metrics` hesabı).
 - **Jira wiki markup** — `kanbanapp/templatetags/jira_filters.py`.
 - **Favicon** — `kanbanapp/static/favicon.ico`.
 
@@ -176,7 +181,7 @@ Deploy: Docker Compose — **üç servis** (`nginx` + `web`/Gunicorn + `postgres
 
 | Konu | Plan | Gerçek | Aksiyon |
 |------|------|--------|---------|
-| Jira WRITE | durum + atama + yorum | sadece transition | Spec'i mevcut davranışa kilitle veya atama/yorum yaz |
+| Jira WRITE | durum + atama + yorum | kodda transition var, **salt okunur modda kapalı** (`JIRA_WRITE_ENABLED=False`) | Açılmak istenirse ortam değişkeni; atama/yorum yazımı hâlâ yok |
 | project_groups | grup ACL | yok | İstenirse Faz 5+ |
 | Extra kart / Jira issue create | must-not | extra sadece ticket→kart | Bilinçli istisna |
 | Sprint onay kapısı | zorunlu | yok | İstenirse ekle |
