@@ -44,7 +44,15 @@ class ProjectForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
+        # Scope Jira connections to the current user (full isolation).
+        if self.user is not None:
+            from .views import _user_jira_connections
+            conn_qs = _user_jira_connections(self.user)
+        else:
+            conn_qs = JiraConnection.objects.none()
+        self.fields["jira_connection"].queryset = conn_qs
         self.fields["jira_connection"].required = False
         self.fields["jira_connection"].empty_label = "--- Jira Bağlantısı Seçin ---"
         self.fields["jira_connection"].help_text = "Projeye ait Jira sunucu bağlantısını seçin. Kartlar bu Jira üzerinden çekilecektir."
@@ -54,11 +62,24 @@ class ProjectForm(forms.ModelForm):
         self.fields["jql_max_results"].required = False
         self.fields["jql_max_results"].initial = 100
         self.fields["jql_max_results"].help_text = "JQL aramasında getirilecek maksimum kayıt sayısı (varsayılan: 100, max: 500)."
-        # If new project and default connection exists, pre-select it
+        # If new project and default connection exists, pre-select it (user-scoped)
         if not self.instance.pk and not self.initial.get("jira_connection"):
-            default_conn = JiraConnection.objects.filter(is_default=True).first() or JiraConnection.objects.first()
+            if self.user is not None:
+                default_conn = conn_qs.filter(is_default=True).first() or conn_qs.first()
+            else:
+                default_conn = None
             if default_conn:
                 self.initial["jira_connection"] = default_conn.id
+
+    def clean_jira_connection(self):
+        conn = self.cleaned_data.get("jira_connection")
+        if conn is None:
+            return conn
+        if self.user is not None:
+            from .views import _owns_jira_connection
+            if not _owns_jira_connection(self.user, conn):
+                raise forms.ValidationError("Seçilen Jira bağlantısı size ait değil.")
+        return conn
 
     def clean_jql_max_results(self):
         val = self.cleaned_data.get("jql_max_results")

@@ -12,8 +12,14 @@ def request_user(request):
 
     active_theme = None
     available_themes = []
+    jira_has_default = False
+    jira_has_connections = False
     try:
-        from .models import Theme
+        from .models import JiraConnection, Theme
+        if getattr(user, "is_authenticated", False):
+            conns = JiraConnection.objects.filter(created_by=user)
+            jira_has_connections = conns.exists()
+            jira_has_default = conns.filter(is_default=True).exists()
         theme_id = request.session.get("active_theme_id")
         if theme_id:
             active_theme = Theme.objects.filter(id=theme_id, is_active=True).first()
@@ -37,4 +43,6 @@ def request_user(request):
         "can_manage_jira": lvl is not None and lvl <= 2,
         "active_theme": active_theme,
         "available_themes": available_themes,
+        "jira_has_default": jira_has_default,
+        "jira_has_connections": jira_has_connections,
     }

@@ -268,7 +268,7 @@ class BugFixesAndPermissionsTests(TestCase):
     def test_project_create_and_edit_with_jira_connection(self):
         from .models import JiraConnection
 
-        conn = JiraConnection.objects.create(name="Dev Jira", host="https://jira.dev.lan", username="u", password="p")
+        conn = JiraConnection.objects.create(name="Dev Jira", host="https://jira.dev.lan", username="u", password="p", created_by=self.admin)
         self.client.force_login(self.admin)
         create_resp = self.client.post(
             reverse("project_create"),
@@ -671,6 +671,7 @@ class SprintAndCardWorkflowTests(TestCase):
             host="https://jira.example.local",
             username="mockuser",
             password="mockpassword",
+            created_by=self.pm,
         )
 
         self.client.force_login(self.pm)
@@ -973,7 +974,7 @@ class JiraImportAndSyncTests(TestCase):
             "blocked_by": [],
         }
 
-        self.client.force_login(self.prog)
+        self.client.force_login(self.pm)
         with patch("kanbanapp.views.JiraService.get_project_issue", return_value=mock_updated):
             resp = self.client.get(
                 reverse("kanban_card_jira_refresh", kwargs={"project_id": self.project.id, "card_id": card.id}),
@@ -1179,7 +1180,7 @@ class JiraStatusSyncOptionTests(TestCase):
     def setUp(self):
         self.client = Client()
         self.admin = User.objects.create_superuser(username="admin_sync_opt", password="p")
-        self.conn = JiraConnection.objects.create(name="Sync Jira", host="https://jira.sync.local", username="u", password="p")
+        self.conn = JiraConnection.objects.create(name="Sync Jira", host="https://jira.sync.local", username="u", password="p", created_by=self.admin)
         self.project = Project.objects.create(key="JSO", name="Sync Option Project", created_by=self.admin, jira_connection=self.conn, sync_jira_status=True)
         self.col_todo = KanbanColumn.objects.create(project=self.project, name="To Do", position=0)
         self.col_done = KanbanColumn.objects.create(project=self.project, name="Done", position=1)
@@ -1303,7 +1304,8 @@ class MultiStatusMappingAndScreenTests(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self.conn = JiraConnection.objects.create(
-            name="Test Jira", host="https://jira.example.local", username="admin", password="enc_password"
+            name="Test Jira", host="https://jira.example.local", username="admin", password="enc_password",
+            created_by=self.user,
         )
         self.project = Project.objects.create(
             key="MULT", name="Multi Status Project", created_by=self.user,
@@ -1674,7 +1676,8 @@ class JqlCardImportTests(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self.conn = JiraConnection.objects.create(
-            name="JQL Jira", host="https://jira.example.local", username="admin", password="enc_password"
+            name="JQL Jira", host="https://jira.example.local", username="admin", password="enc_password",
+            created_by=self.user,
         )
         self.project = Project.objects.create(
             key="JQLP", name="JQL Project", created_by=self.user,
@@ -2692,7 +2695,8 @@ class ProjectJqlAndCardCommentsTests(TestCase):
         self.other_user.save()
 
         self.conn = JiraConnection.objects.create(
-            name="Test Jira", host="https://jira.example.local", username="user", password="pwd", is_default=True
+            name="Test Jira", host="https://jira.example.local", username="user", password="pwd", is_default=True,
+            created_by=self.admin,
         )
         self.project = Project.objects.create(
             name="JQL Project",
@@ -3214,7 +3218,8 @@ class JiraLinkStatusAndMismatchTests(TestCase):
         self.client = Client()
         self.client.force_login(self.admin)
         self.conn = JiraConnection.objects.create(
-            name="Test Jira", host="https://jira.example.local", username="u", password="p"
+            name="Test Jira", host="https://jira.example.local", username="u", password="p",
+            created_by=self.admin,
         )
         self.project = Project.objects.create(
             key="JLM", name="Jira Link Projesi", created_by=self.admin,
@@ -3431,7 +3436,8 @@ class JiraUserLookupTests(TestCase):
         self.programmer = User.objects.create_user(username="ulp", password="p", email="ulp@t.local", role=self.prog_role)
         self.client = Client()
         self.conn = JiraConnection.objects.create(
-            name="Lookup Jira", host="https://jira.lookup.local", username="svc", password="s3cret"
+            name="Lookup Jira", host="https://jira.lookup.local", username="svc", password="s3cret",
+            created_by=self.admin,
         )
         self.url = reverse("jira_user_lookup")
 
@@ -3478,7 +3484,8 @@ class JiraUserLookupTests(TestCase):
     def test_lookup_prefers_default_connection(self):
         from unittest.mock import patch
         other = JiraConnection.objects.create(
-            name="Default Jira", host="https://jira.def.local", username="s", password="p", is_default=True
+            name="Default Jira", host="https://jira.def.local", username="s", password="p", is_default=True,
+            created_by=self.admin,
         )
         self.client.force_login(self.admin)
         with patch("kanbanapp.views.JiraService.lookup_user", return_value=dict(self.JIRA_INFO)) as m:
@@ -3487,7 +3494,7 @@ class JiraUserLookupTests(TestCase):
 
     def test_lookup_specific_connection_respected(self):
         from unittest.mock import patch
-        other = JiraConnection.objects.create(name="Other", host="https://jira.o.local", username="s", password="p")
+        other = JiraConnection.objects.create(name="Other", host="https://jira.o.local", username="s", password="p", created_by=self.admin)
         self.client.force_login(self.admin)
         with patch("kanbanapp.views.JiraService.lookup_user", return_value=dict(self.JIRA_INFO)) as m:
             self.client.post(self.url, {"username": "x", "connection": str(other.id)})

@@ -74,6 +74,15 @@
       </div>
     {% endif %}
 
+    {% if user.is_authenticated and can_manage_jira and not jira_has_default %}
+      <div class="messages">
+        <div class="message message-warning">
+          Varsayılan bir Jira bağlantınız yok. Jira verilerini güncelleyebilmek için
+          <a href="{% url 'jira_connections' %}">Jira Bağlantıları</a> ekranından en az bir bağlantı ekleyip varsayılan olarak işaretleyin.
+        </div>
+      </div>
+    {% endif %}
+
     {% block content %}{% endblock %}
   </main>
 

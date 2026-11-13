@@ -205,7 +205,9 @@ def register_view(request):
         {
             "roles": roles,
             "projects": projects,
-            "jira_connections": JiraConnection.objects.values(
+            "jira_connections": JiraConnection.objects.filter(
+                created_by=request.user
+            ).values(
                 "id", "name", "host", "is_default"
             ).order_by("-is_default", "name"),
         },
@@ -231,15 +233,15 @@ def jira_user_lookup_view(request):
     conn = None
     conn_id = request.POST.get("connection")
     if conn_id:
-        conn = JiraConnection.objects.filter(id=conn_id).first()
+        conn = JiraConnection.objects.filter(id=conn_id, created_by=request.user).first()
         if conn is None:
             return JsonResponse(
                 {"ok": False, "error": "Seçilen Jira bağlantısı bulunamadı."}, status=404
             )
     if conn is None:
         conn = (
-            JiraConnection.objects.filter(is_default=True).first()
-            or JiraConnection.objects.order_by("id").first()
+            JiraConnection.objects.filter(created_by=request.user, is_default=True).first()
+            or JiraConnection.objects.filter(created_by=request.user).order_by("id").first()
         )
     if conn is None:
         return JsonResponse({
@@ -488,7 +490,7 @@ def project_create_view(request):
         return _forbidden(request)
 
     if request.method == "POST":
-        form = ProjectForm(request.POST)
+        form = ProjectForm(request.POST, user=request.user)
         if form.is_valid():
             project = form.save(commit=False)
             project.created_by = request.user
@@ -497,7 +499,7 @@ def project_create_view(request):
             return redirect("projects")
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
-        form = ProjectForm(initial={"created_by": request.user})
+        form = ProjectForm(initial={"created_by": request.user}, user=request.user)
     return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "create"})
 
 
@@ -509,7 +511,7 @@ def project_edit_view(request, project_id):
 
     next_url = request.GET.get("next") or request.POST.get("next")
     if request.method == "POST":
-        form = ProjectForm(request.POST, instance=project)
+        form = ProjectForm(request.POST, instance=project, user=request.user)
         if form.is_valid():
             form.save()
             messages.success(request, f"{project.name} projesi güncellendi.")
@@ -518,7 +520,7 @@ def project_edit_view(request, project_id):
             return redirect("projects")
         messages.error(request, "Formdaki hataları düzeltin.")
     else:
-        form = ProjectForm(instance=project)
+        form = ProjectForm(instance=project, user=request.user)
     return render(request, "kanbanapp/project_form.html", {"form": form, "mode": "edit", "project": project, "next": next_url})
 
 
@@ -545,14 +547,18 @@ def project_delete_view(request, project_id):
 
 @login_required
 def jira_connections(request):
-    """List all Jira connections. Admin sees all, project managers see their own."""
-    connections = JiraConnection.objects.all()
-    if not _is_admin(request.user):
-        connections = connections.filter(created_by=request.user)
+    """List Jira connections owned by the current user (full isolation)."""
+    connections = _user_jira_connections(request.user)
+    has_default = connections.filter(is_default=True).exists()
     return render(
         request,
         "kanbanapp/jira_connections.html",
-        {"connections": connections, "can_manage_jira": _can_manage_jira(request.user)},
+        {
+            "connections": connections,
+            "can_manage_jira": _can_manage_jira(request.user),
+            "has_default": has_default,
+            "has_connections": connections.exists(),
+        },
     )
 
 
@@ -567,6 +573,11 @@ def jira_connection_create(request):
             connection = form.save(commit=False)
             connection.created_by = request.user
             connection.save()
+            # Auto-default: if user has no default connection yet, make this one default.
+            if not JiraConnection.objects.filter(created_by=request.user, is_default=True).exclude(id=connection.id).exists():
+                if not connection.is_default:
+                    connection.is_default = True
+                    connection.save(update_fields=["is_default"])
             messages.success(request, "Jira bağlantısı eklendi.")
             return redirect("jira_connections")
         messages.error(request, "Formdaki hataları düzeltin.")
@@ -578,7 +589,7 @@ def jira_connection_create(request):
 @login_required
 def jira_connection_edit(request, connection_id):
     connection = get_object_or_404(JiraConnection, id=connection_id)
-    if not _can_manage_jira(request.user):
+    if not _can_manage_jira(request.user) or not _owns_jira_connection(request.user, connection):
         return _forbidden(request)
 
     if request.method == "POST":
@@ -597,14 +608,38 @@ def _can_manage_jira(user):
     return _role_level(user) <= 2
 
 
+def _user_jira_connections(user):
+    """Jira connections visible/usable by a user.
+
+    Full isolation: every user (including admin) sees only their own
+    connections. There is no global/admin override anymore.
+    """
+    return JiraConnection.objects.filter(created_by=user)
+
+
+def _owns_jira_connection(user, conn):
+    if conn is None:
+        return False
+    return getattr(conn, "created_by_id", None) == getattr(user, "id", None)
+
 @login_required
 def jira_connection_delete(request, connection_id):
     connection = get_object_or_404(JiraConnection, id=connection_id)
-    if not _can_manage_jira(request.user):
+    if not _can_manage_jira(request.user) or not _owns_jira_connection(request.user, connection):
         return _forbidden(request)
 
     if request.method == "POST":
+        was_default = connection.is_default
+        owner = connection.created_by
         connection.delete()
+        # Promote another connection to default if needed.
+        if was_default and owner is not None:
+            remaining = JiraConnection.objects.filter(created_by=owner)
+            if remaining.exists() and not remaining.filter(is_default=True).exists():
+                first = remaining.order_by("id").first()
+                if first is not None:
+                    first.is_default = True
+                    first.save(update_fields=["is_default"])
         messages.success(request, "Jira bağlantısı silindi.")
         return redirect("jira_connections")
     return render(request, "kanbanapp/connection_confirm_delete.html", {"connection": connection})
@@ -613,7 +648,7 @@ def jira_connection_delete(request, connection_id):
 @login_required
 def jira_test_connection(request, connection_id):
     connection = get_object_or_404(JiraConnection, id=connection_id)
-    if not _can_manage_jira(request.user):
+    if not _can_manage_jira(request.user) or not _owns_jira_connection(request.user, connection):
         return _forbidden(request)
 
     if not connection.is_valid:
@@ -639,7 +674,7 @@ def jira_test_connection(request, connection_id):
 def jira_sync_statuses(request, connection_id):
     """Sync all statuses from a Jira connection into local JiraStatus table."""
     connection = get_object_or_404(JiraConnection, id=connection_id)
-    if not _can_manage_jira(request.user):
+    if not _can_manage_jira(request.user) or not _owns_jira_connection(request.user, connection):
         return _forbidden(request)
 
     if not connection.is_valid:
@@ -670,6 +705,10 @@ def project_jira_sync_statuses(request, project_id):
         messages.error(request, "Bu projeye atanmış bir Jira bağlantısı bulunmuyor.")
         return redirect("board", project_id=project.id)
 
+    if not _owns_jira_connection(request.user, project.jira_connection):
+        messages.error(request, "Bu projenin Jira bağlantısı size ait değil; senkronizasyon yapılamaz.")
+        return redirect("board", project_id=project.id)
+
     service = JiraService()
     try:
         count = service.sync_statuses(project.jira_connection)
@@ -691,6 +730,10 @@ def refresh_project(request, project_id):
 
     if not project.jira_connection:
         messages.error(request, "Bu projeye bir Jira bağlantısı tanımlı değil.")
+        return redirect("projects")
+
+    if not _owns_jira_connection(request.user, project.jira_connection):
+        messages.error(request, "Bu projenin Jira bağlantısı size ait değil; yenileme yapılamaz.")
         return redirect("projects")
 
     if request.method == "POST":
@@ -1613,6 +1656,10 @@ def kanban_card_jira_refresh_view(request, project_id, card_id):
 
     if not project.jira_connection:
         messages.error(request, "Bu projeye atanmış bir Jira bağlantısı bulunmuyor.")
+        return redirect("board", project_id=project.id)
+
+    if not _owns_jira_connection(request.user, project.jira_connection):
+        messages.error(request, "Bu projenin Jira bağlantısı size ait değil; kart yenilenemez.")
         return redirect("board", project_id=project.id)
 
     service = JiraService()

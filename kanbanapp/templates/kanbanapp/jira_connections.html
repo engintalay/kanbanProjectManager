@@ -7,6 +7,11 @@
   <a href="{% url 'jira_connection_create' %}" class="btn-primary">Yeni Bağlantı Ekle</a>
   {% endif %}
 </div>
+{% if not has_connections %}
+<div class="messages"><div class="message message-warning">Henüz bir Jira bağlantınız yok. Jira verilerini güncelleyebilmek için en az bir bağlantı ekleyin.</div></div>
+{% elif not has_default %}
+<div class="messages"><div class="message message-warning">Varsayılan Jira bağlantınız yok. Bir bağlantıyı "varsayılan" olarak işaretleyin; aksi halde senkronizasyon çalışmayabilir.</div></div>
+{% endif %}
 <div class="projects-grid">
   {% for conn in connections %}
   <div class="project-card">
