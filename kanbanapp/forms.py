@@ -52,6 +52,10 @@ class ProjectForm(forms.ModelForm):
             conn_qs = _user_jira_connections(self.user)
         else:
             conn_qs = JiraConnection.objects.none()
+        # Mevcut projenin bağlantısı kullanıcıya ait olmasa bile formda korunsun
+        # (proje erişimi olan kullanıcı bağlantıyı değiştirebilir/kaldırabilir).
+        if self.instance and self.instance.pk and self.instance.jira_connection_id:
+            conn_qs = (conn_qs | JiraConnection.objects.filter(pk=self.instance.jira_connection_id)).distinct()
         self.fields["jira_connection"].queryset = conn_qs
         self.fields["jira_connection"].required = False
         self.fields["jira_connection"].empty_label = "--- Jira Bağlantısı Seçin ---"
@@ -75,9 +79,12 @@ class ProjectForm(forms.ModelForm):
         conn = self.cleaned_data.get("jira_connection")
         if conn is None:
             return conn
-        if self.user is not None:
+        if self.user is not None and conn is not None:
+            # Kullanıcı kendi bağlantısını seçebilir; mevcut projenin bağlantısı
+            # (başkasına ait olsa bile) korunabilir — Jira yetkisi Jira tarafında denetlenir.
             from .views import _owns_jira_connection
-            if not _owns_jira_connection(self.user, conn):
+            is_current = bool(self.instance and self.instance.pk and self.instance.jira_connection_id == conn.id)
+            if not (is_current or _owns_jira_connection(self.user, conn)):
                 raise forms.ValidationError("Seçilen Jira bağlantısı size ait değil.")
         return conn
 

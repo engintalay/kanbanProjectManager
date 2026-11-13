@@ -705,10 +705,8 @@ def project_jira_sync_statuses(request, project_id):
         messages.error(request, "Bu projeye atanmış bir Jira bağlantısı bulunmuyor.")
         return redirect("board", project_id=project.id)
 
-    if not _owns_jira_connection(request.user, project.jira_connection):
-        messages.error(request, "Bu projenin Jira bağlantısı size ait değil; senkronizasyon yapılamaz.")
-        return redirect("board", project_id=project.id)
-
+    # Jira bağlantıları kullanıcıya özel değildir: proje erişimi olan kullanıcı,
+    # Jira'da yetkisi varsa senkronizasyon yapabilir; yetkisi yoksa Jira hata döner.
     service = JiraService()
     try:
         count = service.sync_statuses(project.jira_connection)
@@ -730,10 +728,6 @@ def refresh_project(request, project_id):
 
     if not project.jira_connection:
         messages.error(request, "Bu projeye bir Jira bağlantısı tanımlı değil.")
-        return redirect("projects")
-
-    if not _owns_jira_connection(request.user, project.jira_connection):
-        messages.error(request, "Bu projenin Jira bağlantısı size ait değil; yenileme yapılamaz.")
         return redirect("projects")
 
     if request.method == "POST":
@@ -1656,10 +1650,6 @@ def kanban_card_jira_refresh_view(request, project_id, card_id):
 
     if not project.jira_connection:
         messages.error(request, "Bu projeye atanmış bir Jira bağlantısı bulunmuyor.")
-        return redirect("board", project_id=project.id)
-
-    if not _owns_jira_connection(request.user, project.jira_connection):
-        messages.error(request, "Bu projenin Jira bağlantısı size ait değil; kart yenilenemez.")
         return redirect("board", project_id=project.id)
 
     service = JiraService()
